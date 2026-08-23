@@ -3,27 +3,79 @@
   <head>
     <meta charset="utf-8" />
     <style>
+      :root {
+        --color-bg: #f6f7f5;
+        --color-surface: #ffffff;
+        --color-border: #dde1db;
+        --color-text: #1f2a24;
+        --color-text-muted: #667066;
+        --color-accent: #1f7a4d;
+        --color-accent-hover: #17603c;
+        --radius: 10px;
+      }
+      * {
+        box-sizing: border-box;
+      }
       body {
-        font-family: system-ui, sans-serif;
+        font-family:
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
         max-width: 360px;
-        margin: 2rem auto;
+        margin: 3rem auto;
+        padding: 1.5rem;
+        background: var(--color-surface);
+        color: var(--color-text);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius);
+      }
+      h1 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin: 0 0 1.25rem;
       }
       label {
         display: block;
-        margin-bottom: 0.75rem;
+        margin-bottom: 0.85rem;
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: var(--color-text-muted);
       }
       input {
         width: 100%;
-        padding: 0.4rem;
-        box-sizing: border-box;
-        margin-top: 0.25rem;
+        margin-top: 0.3rem;
+        padding: 0.5rem 0.6rem;
+        font-size: 0.9rem;
+        font-family: inherit;
+        color: var(--color-text);
+        background: var(--color-bg);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius);
+      }
+      input:focus {
+        outline: none;
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 3px rgb(31 122 77 / 15%);
       }
       button {
-        padding: 0.4rem 0.8rem;
+        padding: 0.5rem 1rem;
+        font-size: 0.9rem;
+        font-weight: 600;
+        font-family: inherit;
+        color: #fff;
+        background: var(--color-accent);
+        border: none;
+        border-radius: var(--radius);
+        cursor: pointer;
+      }
+      button:hover {
+        background: var(--color-accent-hover);
       }
       #status {
-        color: #2e7d32;
-        margin-top: 0.5rem;
+        margin-left: 0.6rem;
+        font-size: 0.85rem;
+        color: var(--color-accent);
       }
     </style>
   </head>

@@ -47,5 +47,5 @@ this small and single-user.
   to already be on the product's page.
 - No feedback beyond "Added." / "Failed (\<status\>)" in the popup — check
   `/admin` if you want to confirm what actually landed in `items.yml`.
-- A non-Woolworths-product-page tab hides the form entirely rather than
-  showing a disabled one.
+- A non-Woolworths-product-page tab hides the form and offers a button to
+  open woolworths.com.au in a new tab instead of showing a disabled form.
