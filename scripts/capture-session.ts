@@ -3,8 +3,11 @@ import { REQUIRED_COOKIES, SessionStore } from '../src/woolworths/session.ts'
 
 async function main(): Promise<void> {
   const sessionPath = process.env.SESSION_PATH ?? 'session.json'
-  const browser = await chromium.launch({ headless: false })
-  const context = await browser.newContext()
+  const browser = await chromium.launch({
+    headless: false,
+    args: ['--window-position=0,0', '--window-size=1280,900'],
+  })
+  const context = await browser.newContext({ viewport: null })
   const page = await context.newPage()
   await page.goto('https://www.woolworths.com.au/shop/search/products?searchTerm=milk')
 
