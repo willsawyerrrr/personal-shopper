@@ -37,6 +37,7 @@ async function init() {
 
   document.getElementById('url').value = tab.url
   document.getElementById('name').value = cleanTitle(await getPageTitle(tab.id))
+  document.getElementById('word').focus()
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault()
