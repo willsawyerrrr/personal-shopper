@@ -49,15 +49,20 @@ See [`deployment.md`](deployment.md).
   present on woolworths.com.au. Plain HTTP requests without a real browser's
   fingerprint risk being challenged or blocked; that's why session capture
   goes through an actual browser rather than a scripted login.
-- **Click & Collect store/slot persistence is unverified.** No dedicated
-  fulfilment/store-selection API endpoint was found or captured — the working
-  assumption is that whatever store and slot were active in the browser
-  during session capture carry over onto subsequent API-only cart calls made
-  with the same cookies. This hasn't been confirmed against a live order. If
-  items land against the wrong store, or the trolley API rejects calls
-  without an explicit slot, this is the next thing to investigate by
-  capturing live traffic around `acs.woolworths.com.au/rest/v1/delivery` and
-  the fulfilment UI.
+- **Click & Collect store/slot persistence is unverified.** Store lookup is
+  now confirmed: `GET /api/v3/ui/fulfilment/stores?postcode=XXXX` returns
+  nearby stores, each with a `FulfilmentStoreId` and `FulfilmentMethod`
+  (`DriveUp` is Direct to boot, `DTBNow` is Direct to boot Now, `Pickup` is
+  in-store). Saving a Direct to boot selection redirects an unauthenticated
+  session to `/shop/securelogin` — the fulfilment store is bound to an
+  authenticated session, not set by an anonymous call. What's still
+  unconfirmed: the exact request that _saves_ the chosen store once logged
+  in (not captured live — reaching it needs an authenticated session, which
+  only a human can create per the SMS 2FA constraint above), and whether
+  that selection persists onto subsequent API-only cart calls replaying the
+  captured cookies. The working assumption remains that picking the store by
+  hand in `pnpm capture-session`'s real browser carries that selection over;
+  this hasn't been confirmed against a live order.
 - **Response field names in `parseSearchResponse`** (`src/woolworths/client.ts`)
   are best-effort from community docs, not a captured live response — verify
   with `pnpm search-product <term>` before trusting the output.
