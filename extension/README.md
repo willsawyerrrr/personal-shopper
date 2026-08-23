@@ -21,9 +21,11 @@ this small and single-user.
    production PC's LAN IP, e.g. `http://192.168.1.50:3000`) and
    `SHARED_SECRET`. Stored in `chrome.storage.local` — this browser only,
    never synced to Google.
-3. On any `woolworths.com.au/shop/productdetails/...` page, click the icon.
-   The product URL and a name (from the page's `<title>`) are prefilled;
-   type a trigger word and quantity, then submit.
+3. On any `woolworths.com.au/shop/productdetails/...` page, click the icon
+   (or press `Ctrl+Shift+Y` / `Cmd+Shift+Y` on Mac — reassign at
+   `chrome://extensions/shortcuts` if it clashes with something else). The
+   product URL and a name (from the page's `<title>`) are prefilled; type a
+   trigger word and quantity, then submit.
 
 ## Permissions
 
