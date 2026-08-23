@@ -17,9 +17,10 @@ this small and single-user.
 1. `chrome://extensions` → enable Developer Mode → Load unpacked → this
    folder.
 2. Click the extension icon → "Options" (or right-click the icon → Options)
-   → set your server URL (`http://localhost:3000` for local dev, or your
-   production Cloudflare Tunnel hostname) and `SHARED_SECRET`. Stored in
-   `chrome.storage.local` — this browser only, never synced to Google.
+   → set your server URL (`http://localhost:3000` for local dev, or the
+   production PC's LAN IP, e.g. `http://192.168.1.50:3000`) and
+   `SHARED_SECRET`. Stored in `chrome.storage.local` — this browser only,
+   never synced to Google.
 3. On any `woolworths.com.au/shop/productdetails/...` page, click the icon.
    The product URL and a name (from the page's `<title>`) are prefilled;
    type a trigger word and quantity, then submit.
@@ -30,10 +31,13 @@ this small and single-user.
   you open the popup, to prefill the form. No `tabs`, no broad host access
   to browse tabs you haven't opened the popup on.
 - `storage` — save your server URL and secret locally.
-- `host_permissions` for the server itself (`localhost:3000` and the
-  production hostname) — required for the popup's `fetch` to reach it at
-  all; extension pages aren't otherwise exempt from the target needing to
-  allow cross-origin requests, and this server sets no CORS headers.
+- `host_permissions: ["http://*/*"]` — required for the popup's `fetch` to
+  reach the server at all; extension pages aren't otherwise exempt from the
+  target needing to allow cross-origin requests, and this server sets no
+  CORS headers. Scoped to plain HTTP rather than `<all_urls>` since the
+  server is only ever reachable over HTTP on the home LAN (`localhost` for
+  dev, a LAN IP in production) — a specific hostname pattern isn't possible
+  here since that LAN IP isn't known ahead of time.
 
 ## What this doesn't cover
 

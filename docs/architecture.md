@@ -46,8 +46,11 @@ into `session.json`.
 
 ## Deployment
 
-Runs on an always-on Windows PC via WSL, exposed through a Cloudflare Tunnel.
-See [`deployment.md`](deployment.md).
+Runs natively on an always-on Windows PC, reachable only over the home
+network — no public exposure, deliberately. `pnpm capture-session` needs a
+real browser you can approve with a passkey anyway, so there's no benefit to
+running elsewhere, and this sidesteps WSL2's port-forwarding limitations for
+LAN reachability. See [`deployment.md`](deployment.md).
 
 ## Risks / open questions
 

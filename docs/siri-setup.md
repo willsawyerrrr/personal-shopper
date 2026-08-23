@@ -20,7 +20,9 @@ executes on the paired phone):
 2. Trigger: **Reminders** → **When a reminder is added** → select the shared
    list.
 3. Add action **Get Contents of URL**:
-   - URL: your deployed webhook, e.g. `https://shopper.willsawyerrrr.dev/items`
+   - URL: the PC's LAN IP, e.g. `http://192.168.1.50:3000/items` (see
+     [`deployment.md`](deployment.md) for reserving a static DHCP lease so
+     this doesn't change)
    - Method: `POST`
    - Headers: `Authorization: Bearer <SHARED_SECRET>`, `Content-Type: application/json`
    - Request Body (JSON): `{ "item": "Shortcut Input" }` — use the magic
@@ -28,6 +30,11 @@ executes on the paired phone):
 4. Add a following action to mark the reminder complete (or delete it) so the
    list doesn't re-trigger and stays tidy.
 5. Turn **off** "Ask Before Running".
+
+The service is only reachable on the home network — the automation only
+works while the triggering phone is on home WiFi, not out on cellular. If a
+reminder gets added while out, it'll fail silently until you're back home;
+there's no offline queue or retry.
 
 ## 3. One-time network permission
 
