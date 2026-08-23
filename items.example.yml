@@ -1,0 +1,8 @@
+# Copy to items.yml and fill in real stockcodes.
+# Find a stockcode with: pnpm search-product "<term>"
+milk:
+  stockcode: 123456
+  quantity: 1
+bread:
+  stockcode: 234567
+  quantity: 1

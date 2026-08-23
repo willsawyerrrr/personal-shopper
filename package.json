@@ -1,0 +1,37 @@
+{
+  "name": "personal-shopper",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.22.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts",
+    "lint": "oxlint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "capture-session": "tsx scripts/capture-session.ts",
+    "search-product": "tsx scripts/search-product.ts"
+  },
+  "dependencies": {
+    "fastify": "^5.6.1",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.2",
+    "@vitest/coverage-v8": "^4.1.11",
+    "oxlint": "^1.74.0",
+    "playwright": "^1.56.1",
+    "prettier": "^3.9.5",
+    "tsx": "^4.20.6",
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.11"
+  }
+}
