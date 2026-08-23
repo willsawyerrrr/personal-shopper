@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Personal Shopper — Add Item",
+  "version": "1.0.0",
+  "description": "Adds the current Woolworths product page to your personal-shopper items list.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Add to Personal Shopper"
+  },
+  "options_page": "options.html",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["http://localhost:3000/*", "https://shopper.willsawyerrrr.dev/*"]
+}

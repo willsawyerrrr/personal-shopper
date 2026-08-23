@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        width: 280px;
+        padding: 0.75rem;
+      }
+      label {
+        display: block;
+        margin-bottom: 0.6rem;
+        font-size: 0.85rem;
+      }
+      input {
+        width: 100%;
+        padding: 0.35rem;
+        box-sizing: border-box;
+        margin-top: 0.15rem;
+      }
+      button {
+        width: 100%;
+        padding: 0.5rem;
+      }
+      #status {
+        font-size: 0.85rem;
+        margin-bottom: 0.6rem;
+        color: #666;
+      }
+      a {
+        color: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <p id="status"></p>
+    <form id="form">
+      <label
+        >Trigger word
+        <input id="word" name="word" required placeholder="milk" />
+      </label>
+      <label
+        >Display name
+        <input id="name" name="name" />
+      </label>
+      <label
+        >Quantity
+        <input id="quantity" name="quantity" type="number" min="1" value="1" />
+      </label>
+      <input id="url" type="hidden" />
+      <button type="submit">Add item</button>
+    </form>
+    <script src="popup.js"></script>
+  </body>
+</html>

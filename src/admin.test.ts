@@ -81,7 +81,7 @@ describe('admin', () => {
       headers: authHeader,
       payload: { word: 'bread', url: 'not a url' },
     })
-    expect(response.statusCode).toBe(200)
+    expect(response.statusCode).toBe(400)
     expect(response.body).toContain('Could not find a stockcode')
     const items = await readFile(config.itemsPath, 'utf8')
     expect(items).not.toContain('bread:')

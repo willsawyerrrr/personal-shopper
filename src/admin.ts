@@ -30,6 +30,7 @@ export async function registerAdmin(app: FastifyInstance, config: AppConfig): Pr
         if (!stockcode) {
           const items = await loadItems(config.itemsPath)
           reply
+            .code(400)
             .type('text/html')
             .send(
               renderPage(

@@ -27,6 +27,10 @@
    product on woolworths.com.au yourself and paste its URL in; the stockcode
    is parsed out of `/shop/productdetails/<stockcode>/...`. Lists, adds, and
    removes entries in `items.yml` directly, no restart required.
+7. **The `extension/` Chrome extension** calls the same `POST /admin/items`
+   endpoint from a popup on the Woolworths product page you're already
+   looking at, prefilling the URL and name so there's no tab-switching to
+   copy them across by hand. See [`extension/README.md`](../extension/README.md).
 
 ## Session capture
 
