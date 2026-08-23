@@ -44,5 +44,6 @@ pnpm run search-product <term>  # find a stockcode for items.yml
 
 ## Conventions
 
-- Planning happens in Linear, not in ad-hoc conversation: the **Personal
-  Shopper** project, team `WSD`.
+- Planning happens in Linear, not in ad-hoc conversation or another planning
+  tool: break work into issues in the **Personal Shopper** project (team
+  `WSD`) before implementing, and track decisions there.
