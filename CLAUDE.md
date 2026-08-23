@@ -16,9 +16,10 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   household wants a different brand, they edit the file.
 - Session auth is manual-login-then-cookie-replay
   (`scripts/capture-session.ts`), not automated credential login — Woolworths'
-  login requires approving a passkey (or SMS code) in a real browser and sits
-  behind Akamai Bot Manager, neither of which a script can satisfy unattended.
-  See
+  login requires approving a passkey (synced through 1Password, or an SMS
+  code) in a real browser and sits behind Akamai Bot Manager, neither of
+  which a script or RPA can satisfy unattended without undermining the point
+  of the passkey or tripping bot detection. See
   [`docs/architecture.md`](docs/architecture.md#risks--open-questions).
 - Voice capture piggybacks on Apple's native Reminders NLU via a shared
   iCloud list, not a custom Siri phrase. See
