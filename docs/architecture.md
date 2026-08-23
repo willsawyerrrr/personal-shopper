@@ -39,9 +39,16 @@ Woolworths' login requires approving a passkey (or SMS code) in a real,
 visible browser and sits behind Akamai Bot Manager, so there's no clean
 programmatic login path — every existing community project that automates
 this API does the same thing: a human logs in through a real browser once,
-and the cookies get replayed for subsequent API calls. Passkey approval
-still needs the physical device present, so it doesn't unlock scripted
-login even though it drops the SMS-code step.
+and the cookies get replayed for subsequent API calls. The passkey is
+synced through 1Password rather than tied to one physical key, but
+WebAuthn's user-verification step still requires a human to unlock the
+vault and approve it, so it doesn't unlock scripted login even though it
+drops the SMS-code step. Driving the approval via RPA (e.g. scripting
+clicks through the 1Password extension) doesn't change that either: it
+would need the vault unlocked non-interactively — undermining the point
+of gating login behind a passkey — and running login through Playwright
+repeatedly (session lifetime is 55 minutes, see below) is exactly the
+scripted-browser pattern Akamai Bot Manager is positioned to catch.
 
 `pnpm capture-session` (`scripts/capture-session.ts`) opens a real,
 non-headless browser via Playwright, waits for you to log in and set your
