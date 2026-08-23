@@ -2,32 +2,33 @@
 
 ## Flow
 
-1. **Voice capture** reuses Apple's native Reminders NLU instead of a custom
-   Siri phrase: a shared iCloud Reminders list (e.g. "Grocery List") that
-   either partner adds to with "Hey Siri, add milk to Grocery List" on the
-   HomePod. No app, no custom vocabulary — Siri already parses arbitrary item
-   text onto a list reliably.
-2. An iPhone Shortcuts **personal automation** triggers on "when a reminder is
-   added" to that list, reads the reminder's text, and calls the webhook
-   below. Lives entirely in the Shortcuts app — see
-   [`siri-setup.md`](siri-setup.md).
-3. **`POST /items`** (this repo, `src/app.ts`) — bearer-auth via `SHARED_SECRET`,
+1. **Voice capture**: a Shortcut with a fixed Siri phrase (e.g. "Add to
+   shopping list") runs **Dictate Text**, which triggers Siri's own built-in
+   spoken prompt ("What's the text?"), then **Get Contents of URL** to call
+   the webhook below with whatever you said. Lives entirely in the Shortcuts
+   app, confirmed working end-to-end — see [`siri-setup.md`](siri-setup.md).
+   There's no native Reminders-list trigger to hook into Shortcuts
+   automations with, and no way for a user-created Shortcut to register a
+   Siri phrase with an embedded free-text slot — this is the actual
+   available mechanism, not the more elegant-sounding alternative it
+   replaced.
+2. **`POST /items`** (this repo, `src/app.ts`) — bearer-auth via `SHARED_SECRET`,
    body `{ "item": "milk" }`. Looks up the spoken term in `items.yml`
    (`stockcode` + `quantity`, maintained by hand) and calls
    `WoolworthsClient.addToCart`.
-4. **`WoolworthsClient`** (`src/woolworths/client.ts`) calls Woolworths'
+3. **`WoolworthsClient`** (`src/woolworths/client.ts`) calls Woolworths'
    unofficial API directly. `POST /api/v3/ui/trolley/update` for cart changes
    is confirmed working against a live cart. `POST /apis/ui/Search/products`
    for search is confirmed broken or deprecated — see the risks below.
-5. **`SessionStore`** (`src/woolworths/session.ts`) holds the cookie jar
+4. **`SessionStore`** (`src/woolworths/session.ts`) holds the cookie jar
    (`session.json`, gitignored) those calls authenticate with.
-6. **`GET /admin`** (`src/admin.ts`), Basic-Auth protected with
+5. **`GET /admin`** (`src/admin.ts`), Basic-Auth protected with
    `SHARED_SECRET` as the password. Since Woolworths' search is broken (see
    risks below), there's no in-app product search — instead you find a
    product on woolworths.com.au yourself and paste its URL in; the stockcode
    is parsed out of `/shop/productdetails/<stockcode>/...`. Lists, adds, and
    removes entries in `items.yml` directly, no restart required.
-7. **The `extension/` Chrome extension** calls the same `POST /admin/items`
+6. **The `extension/` Chrome extension** calls the same `POST /admin/items`
    endpoint from a popup on the Woolworths product page you're already
    looking at, prefilling the URL and name so there's no tab-switching to
    copy them across by hand. See [`extension/README.md`](../extension/README.md).

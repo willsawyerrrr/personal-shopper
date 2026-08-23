@@ -1,44 +1,52 @@
 # Siri / HomePod setup
 
 This lives entirely in Apple's Shortcuts app — nothing here is part of this
-repo's code.
+repo's code. Confirmed working end-to-end against a live cart.
 
-## 1. Shared Reminders list
+There's no native "when a reminder is added" trigger in Shortcuts, and no
+way to record a custom Siri phrase with an embedded free-text slot (that's
+only available to real installed apps built with Apple's App Intents
+framework, not user-created Shortcuts) — so this doesn't use Reminders at
+all. Instead, one Shortcut with a fixed trigger phrase asks a follow-up
+question and captures your spoken answer.
 
-Create an iCloud Reminders list (e.g. "Grocery List") and share it with your
-partner so both Apple IDs can add to it. Saying "Hey Siri, add milk to
-Grocery List" on either HomePod adds "milk" as a reminder — Apple's built-in
-NLU handles arbitrary item text without any custom Siri phrase.
+## 1. Build the shortcut
 
-## 2. Personal automation
-
-On an iPhone that's reliably on and connected (this is what actually runs the
-automation — HomePod triggers the Siri request, but the automation itself
-executes on the paired phone):
-
-1. Shortcuts app → **Automation** → **+** → **Create Personal Automation**.
-2. Trigger: **Reminders** → **When a reminder is added** → select the shared
-   list.
+1. Shortcuts app → **+** → New Shortcut.
+2. Add action **Dictate Text**.
 3. Add action **Get Contents of URL**:
    - URL: the PC's LAN IP, e.g. `http://192.168.1.50:3000/items` (see
      [`deployment.md`](deployment.md) for reserving a static DHCP lease so
      this doesn't change)
    - Method: `POST`
    - Headers: `Authorization: Bearer <SHARED_SECRET>`, `Content-Type: application/json`
-   - Request Body (JSON): `{ "item": "Shortcut Input" }` — use the magic
-     variable for the reminder's title as the `item` value.
-4. Add a following action to mark the reminder complete (or delete it) so the
-   list doesn't re-trigger and stays tidy.
-5. Turn **off** "Ask Before Running".
+   - Request Body (JSON): `{ "item": [Dictated Text] }` — use Dictate Text's
+     result as the magic variable.
+4. Name it (e.g. "Add to Shopping List").
 
-The service is only reachable on the home network — the automation only
-works while the triggering phone is on home WiFi, not out on cellular. If a
-reminder gets added while out, it'll fail silently until you're back home;
-there's no offline queue or retry.
+Don't add a "Speak Text" prompt before **Dictate Text** — Siri already asks
+its own fixed question ("What's the text?") when this action runs via
+voice, and there's no way to suppress or customize it. Adding your own
+prompt just doubles it up.
 
-## 3. One-time network permission
+## 2. Record the Siri phrase
 
-The first time any personal automation makes a network request, iOS asks for
-confirmation even with "Ask Before Running" off — a one-time OS-level gate,
-not a per-run prompt. Trigger it once manually (add an item, confirm the
-prompt) before relying on it running unattended.
+In the shortcut's settings (⋯ menu → settings icon) → **Add to Siri** →
+record a phrase, e.g. "Add to shopping list".
+
+## 3. Run it
+
+"Hey Siri, add to shopping list" (on the HomePod or your phone) → Siri asks
+"What's the text?" → say the item name → it's added to the cart.
+
+Since items still need a `stockcode` mapping in `items.yml` to actually add
+anything (via `/admin` or the Chrome extension), this isn't truly
+free-text — it just moves the "what did you say" matching from a custom
+phrase per item to whatever you say after Siri's prompt, checked against
+`items.yml`'s keys.
+
+## Home-network only
+
+Only works while the triggering device is on home WiFi — the LAN IP isn't
+reachable from cellular/away from home. If it's tried while out, it fails
+silently until you're back home; there's no offline queue or retry.
