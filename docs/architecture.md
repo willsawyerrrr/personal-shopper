@@ -35,10 +35,13 @@
 
 ## Session capture
 
-Woolworths' login requires SMS 2FA and sits behind Akamai Bot Manager, so
-there's no clean programmatic login path — every existing community project
-that automates this API does the same thing: a human logs in through a real
-browser once, and the cookies get replayed for subsequent API calls.
+Woolworths' login requires approving a passkey (or SMS code) in a real,
+visible browser and sits behind Akamai Bot Manager, so there's no clean
+programmatic login path — every existing community project that automates
+this API does the same thing: a human logs in through a real browser once,
+and the cookies get replayed for subsequent API calls. Passkey approval
+still needs the physical device present, so it doesn't unlock scripted
+login even though it drops the SMS-code step.
 
 `pnpm capture-session` (`scripts/capture-session.ts`) opens a real,
 non-headless browser via Playwright, waits for you to log in and set your
