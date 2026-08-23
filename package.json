@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "start": "node --env-file=.env dist/server.js",
+    "start": "node --env-file=.env dist/src/server.js",
     "dev": "tsx watch --env-file=.env src/server.ts",
     "lint": "oxlint",
     "typecheck": "tsc --noEmit",

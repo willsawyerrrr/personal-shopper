@@ -55,17 +55,45 @@ below, rather than hand-editing `items.yml`.
 ## Run at startup
 
 A Scheduled Task with an "At startup" trigger survives reboots without
-needing anyone logged in, and restarts the process if it crashes:
+needing anyone logged in, and restarts the process if it crashes. Registering
+a task that runs as `SYSTEM` requires an **elevated** PowerShell prompt (Run
+as Administrator) — a non-elevated session fails with "Access is denied".
+
+Find `node.exe`'s stable install path first. `(Get-Command node).Source`
+looks right but resolves through `fnm`'s per-session "multishell" symlink,
+which stops existing once that specific shell session closes — a task built
+on that path runs fine until you close the window you registered it from,
+then fails silently (`LastTaskResult` nonzero, nothing listening on the
+port). Search for the real, persistent install instead:
+
+```powershell
+$nodePath = Get-ChildItem -Path $env:LOCALAPPDATA,$env:APPDATA -Recurse -Filter node.exe -ErrorAction SilentlyContinue |
+  Where-Object { $_.FullName -notmatch 'multishell' } |
+  Select-Object -First 1 -ExpandProperty FullName
+```
+
+Then register the task, pointing at the compiled entrypoint
+(`dist/src/server.js` — `tsc`'s output mirrors `src/`'s structure, it is not
+flattened into `dist/` directly):
 
 ```powershell
 $action = New-ScheduledTaskAction `
-  -Execute (Get-Command node).Source `
-  -Argument '--env-file=.env dist/server.js' `
+  -Execute $nodePath `
+  -Argument '--env-file=.env dist/src/server.js' `
   -WorkingDirectory (Get-Location)
 $trigger = New-ScheduledTaskTrigger -AtStartup
 $settings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)
 Register-ScheduledTask -TaskName 'PersonalShopper' -Action $action -Trigger $trigger -Settings $settings -RunLevel Highest -User 'SYSTEM'
 Start-ScheduledTask -TaskName 'PersonalShopper'
+```
+
+Verify it actually started — `Get-ScheduledTaskInfo -TaskName
+'PersonalShopper'`'s `LastTaskResult` should read `0`. Task Scheduler
+doesn't capture the process's stdout/stderr, so if something's still wrong,
+run the same command directly in a terminal to see the real error:
+
+```powershell
+& $nodePath --env-file=.env dist/src/server.js
 ```
 
 To pick up an update later: `git pull`, `pnpm install --frozen-lockfile`,
