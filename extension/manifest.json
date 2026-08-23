@@ -9,5 +9,5 @@
   },
   "options_page": "options.html",
   "permissions": ["activeTab", "scripting", "storage"],
-  "host_permissions": ["http://localhost:3000/*", "https://shopper.willsawyerrrr.dev/*"]
+  "host_permissions": ["http://*/*"]
 }
