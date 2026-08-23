@@ -54,23 +54,35 @@ export class WoolworthsClient implements CartClient {
     const response = await fetch(`${BASE_URL}${path}`, {
       method: 'POST',
       headers: {
+        Accept: 'application/json, text/plain, */*',
         'Content-Type': 'application/json',
+        Origin: BASE_URL,
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         Cookie: this.sessions.toCookieHeader(session),
       },
       body: JSON.stringify(body),
     })
     if (!response.ok) {
+      const errorBody = await response.text()
       throw new Error(
-        `Woolworths request to ${path} failed: ${response.status} ${response.statusText}`,
+        `Woolworths request to ${path} failed: ${response.status} ${response.statusText} ${errorBody}`,
       )
     }
     return response.json()
   }
 }
 
-// Field names below come from community reverse-engineering of Woolworths'
-// unofficial API, not official docs — verify against a live response with
-// `pnpm search-product` before relying on them.
+// `POST /apis/ui/Search/products` returns a generic 400 against a real
+// authenticated session as of 2026-08 — confirmed broken or deprecated, not
+// a payload-shape issue (adding the extra community-documented fields
+// `formatObject`/`isSpecial`/`isBundle`/`isMobile`/`groupEdmVariants` didn't
+// change the result). `addToCart` is unaffected and confirmed working
+// against a live cart. Until a working search endpoint is found, look up
+// stockcodes by hand from a product's URL
+// (`/shop/productdetails/<stockcode>/...`) instead of `pnpm search-product`.
+// Field names below are still best-effort from community docs, unverified
+// against a real response.
 function parseSearchResponse(response: unknown): SearchResultProduct[] {
   const products = (response as { Products?: unknown[] }).Products ?? []
   return products.map((entry) => {
