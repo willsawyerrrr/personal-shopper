@@ -16,10 +16,11 @@ LAN — no Cloudflare account, no subdomain delegation, no WSL2
 port-forwarding workarounds.
 
 `SHARED_SECRET` gates both the bearer-authed `/items` webhook and the
-Basic-Auth-protected `/admin` UI (username is ignored, password is
-`SHARED_SECRET`). Since nothing here leaves your home network, this is
-belt-and-braces rather than the only thing standing between the service and
-the internet — but treat it as a real secret regardless.
+`/admin` UI, signed into via a login form at `/admin/login` — store it in a
+password manager and let it autofill that form rather than typing it by
+hand. Since nothing here leaves your home network, this is belt-and-braces
+rather than the only thing standing between the service and the internet —
+but treat it as a real secret regardless.
 
 ## Install Node + pnpm
 

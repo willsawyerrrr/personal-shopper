@@ -22,16 +22,23 @@
    for search is confirmed broken or deprecated — see the risks below.
 4. **`SessionStore`** (`src/woolworths/session.ts`) holds the cookie jar
    (`session.json`, gitignored) those calls authenticate with.
-5. **`GET /admin`** (`src/admin.ts`), Basic-Auth protected with
-   `SHARED_SECRET` as the password. Since Woolworths' search is broken (see
-   risks below), there's no in-app product search — instead you find a
-   product on woolworths.com.au yourself and paste its URL in; the stockcode
-   is parsed out of `/shop/productdetails/<stockcode>/...`. Lists, adds, and
-   removes entries in `items.yml` directly, no restart required.
+5. **`GET /admin`** (`src/admin.ts`), gated by a login form at
+   `/admin/login` (password field is `SHARED_SECRET`, autofillable from a
+   password manager) that sets an in-memory session cookie — not
+   Basic-Auth, so it works with a real form instead of the browser's native
+   auth dialog. Since Woolworths' search is broken (see risks below),
+   there's no in-app product search — instead you find a product on
+   woolworths.com.au yourself and paste its URL in; the stockcode is parsed
+   out of `/shop/productdetails/<stockcode>/...`. Lists, adds, and removes
+   entries in `items.yml` directly, no restart required.
 6. **The `extension/` Chrome extension** calls the same `POST /admin/items`
    endpoint from a popup on the Woolworths product page you're already
    looking at, prefilling the URL and name so there's no tab-switching to
-   copy them across by hand. See [`extension/README.md`](../extension/README.md).
+   copy them across by hand. Authenticates with a Basic-Auth header (its own
+   `SHARED_SECRET`, entered once in the extension's options page) rather
+   than the admin UI's session cookie, since it's a background `fetch` call
+   with no browser chrome to show a login form in. See
+   [`extension/README.md`](../extension/README.md).
 
 ## Session capture
 

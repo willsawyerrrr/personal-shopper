@@ -24,10 +24,80 @@ describe('admin', () => {
     await rm(dir, { recursive: true, force: true })
   })
 
-  it('rejects requests without the shared secret', async () => {
+  it('serves the login page', async () => {
+    const app = buildApp(config, cart)
+    const response = await app.inject({ method: 'GET', url: '/admin/login' })
+    expect(response.statusCode).toBe(200)
+    expect(response.body).toContain('Shared secret')
+  })
+
+  it('redirects unauthenticated browser requests to the login page', async () => {
     const app = buildApp(config, cart)
     const response = await app.inject({ method: 'GET', url: '/admin' })
+    expect(response.statusCode).toBe(302)
+    expect(response.headers.location).toBe('/admin/login')
+  })
+
+  it('rejects unauthenticated API requests', async () => {
+    const app = buildApp(config, cart)
+    const response = await app.inject({ method: 'POST', url: '/admin/items', payload: {} })
     expect(response.statusCode).toBe(401)
+  })
+
+  it('signs in with the shared secret and sets a session cookie', async () => {
+    const app = buildApp(config, cart)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/admin/login',
+      payload: { secret: 'secret' },
+    })
+    expect(response.statusCode).toBe(302)
+    expect(response.headers.location).toBe('/admin')
+    const cookie = response.headers['set-cookie']
+    expect(cookie).toContain('ps_admin_session=')
+
+    const authed = await app.inject({
+      method: 'GET',
+      url: '/admin',
+      headers: { cookie: String(cookie).split(';')[0] },
+    })
+    expect(authed.statusCode).toBe(200)
+  })
+
+  it('rejects sign-in with the wrong secret', async () => {
+    const app = buildApp(config, cart)
+    const response = await app.inject({
+      method: 'POST',
+      url: '/admin/login',
+      payload: { secret: 'wrong' },
+    })
+    expect(response.statusCode).toBe(401)
+    expect(response.body).toContain('Incorrect secret')
+  })
+
+  it('logs out by clearing the session cookie', async () => {
+    const app = buildApp(config, cart)
+    const login = await app.inject({
+      method: 'POST',
+      url: '/admin/login',
+      payload: { secret: 'secret' },
+    })
+    const sessionCookie = String(login.headers['set-cookie']).split(';')[0]
+
+    const logout = await app.inject({
+      method: 'POST',
+      url: '/admin/logout',
+      headers: { cookie: sessionCookie },
+    })
+    expect(logout.statusCode).toBe(302)
+    expect(logout.headers.location).toBe('/admin/login')
+
+    const afterLogout = await app.inject({
+      method: 'GET',
+      url: '/admin',
+      headers: { cookie: sessionCookie },
+    })
+    expect(afterLogout.statusCode).toBe(302)
   })
 
   it('lists existing items', async () => {
