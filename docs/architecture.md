@@ -16,9 +16,9 @@
    (`stockcode` + `quantity`, maintained by hand) and calls
    `WoolworthsClient.addToCart`.
 4. **`WoolworthsClient`** (`src/woolworths/client.ts`) calls Woolworths'
-   unofficial API directly: `POST /apis/ui/Search/products` for search,
-   `POST /api/v3/ui/trolley/update` for cart changes. Both endpoints and their
-   payload shapes come from community reverse-engineering, not official docs.
+   unofficial API directly. `POST /api/v3/ui/trolley/update` for cart changes
+   is confirmed working against a live cart. `POST /apis/ui/Search/products`
+   for search is confirmed broken or deprecated — see the risks below.
 5. **`SessionStore`** (`src/woolworths/session.ts`) holds the cookie jar
    (`session.json`, gitignored) those calls authenticate with.
 
@@ -49,20 +49,20 @@ See [`deployment.md`](deployment.md).
   present on woolworths.com.au. Plain HTTP requests without a real browser's
   fingerprint risk being challenged or blocked; that's why session capture
   goes through an actual browser rather than a scripted login.
-- **Click & Collect store/slot persistence is unverified.** Store lookup is
-  now confirmed: `GET /api/v3/ui/fulfilment/stores?postcode=XXXX` returns
-  nearby stores, each with a `FulfilmentStoreId` and `FulfilmentMethod`
-  (`DriveUp` is Direct to boot, `DTBNow` is Direct to boot Now, `Pickup` is
-  in-store). Saving a Direct to boot selection redirects an unauthenticated
-  session to `/shop/securelogin` — the fulfilment store is bound to an
-  authenticated session, not set by an anonymous call. What's still
-  unconfirmed: the exact request that _saves_ the chosen store once logged
-  in (not captured live — reaching it needs an authenticated session, which
-  only a human can create per the SMS 2FA constraint above), and whether
-  that selection persists onto subsequent API-only cart calls replaying the
-  captured cookies. The working assumption remains that picking the store by
-  hand in `pnpm capture-session`'s real browser carries that selection over;
-  this hasn't been confirmed against a live order.
-- **Response field names in `parseSearchResponse`** (`src/woolworths/client.ts`)
-  are best-effort from community docs, not a captured live response — verify
-  with `pnpm search-product <term>` before trusting the output.
+- **Click & Collect store/slot persistence is confirmed working.** Picking
+  the store by hand in `pnpm capture-session`'s real browser, then replaying
+  the captured cookies through `WoolworthsClient.addToCart`, successfully
+  added an item to the live cart — the fulfilment store selected during
+  capture does carry over onto subsequent API-only cart calls. Store lookup
+  itself is also confirmed: `GET /api/v3/ui/fulfilment/stores?postcode=XXXX`
+  returns nearby stores, each with a `FulfilmentStoreId` and
+  `FulfilmentMethod` (`DriveUp` is Direct to boot, `DTBNow` is Direct to boot
+  Now, `Pickup` is in-store); saving a selection requires an authenticated
+  session (an anonymous save redirects to `/shop/securelogin`).
+- **`POST /apis/ui/Search/products` is confirmed broken or deprecated.**
+  Against a real authenticated session it returns a generic 400 ("Sorry an
+  error has occurred") regardless of the request body shape — adding the
+  extra community-documented fields (`formatObject`, `isSpecial`, `isBundle`,
+  `isMobile`, `groupEdmVariants`) made no difference. `pnpm search-product`
+  doesn't currently work; find stockcodes by hand instead from a product's
+  URL (`/shop/productdetails/<stockcode>/...`). `addToCart` is unaffected.
