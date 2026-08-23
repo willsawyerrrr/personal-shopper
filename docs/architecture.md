@@ -21,6 +21,12 @@
    for search is confirmed broken or deprecated — see the risks below.
 5. **`SessionStore`** (`src/woolworths/session.ts`) holds the cookie jar
    (`session.json`, gitignored) those calls authenticate with.
+6. **`GET /admin`** (`src/admin.ts`), Basic-Auth protected with
+   `SHARED_SECRET` as the password. Since Woolworths' search is broken (see
+   risks below), there's no in-app product search — instead you find a
+   product on woolworths.com.au yourself and paste its URL in; the stockcode
+   is parsed out of `/shop/productdetails/<stockcode>/...`. Lists, adds, and
+   removes entries in `items.yml` directly, no restart required.
 
 ## Session capture
 

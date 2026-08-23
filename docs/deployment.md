@@ -1,9 +1,16 @@
 # Deployment
 
-Runs on an always-on Windows PC via WSL, exposed publicly through a
-Cloudflare Tunnel. The bearer secret on `/items` is the only auth boundary
-once the tunnel makes the service reachable from the internet, so treat
-`SHARED_SECRET` accordingly.
+The service runs anywhere `pnpm dev`/`pnpm start` runs — same code, same
+config, no separate "dev build". Use your own machine for local development
+and testing (`pnpm dev`, then `POST /items` and `/admin` against
+`localhost`); production is an always-on Windows PC via WSL, exposed
+publicly through a Cloudflare Tunnel, covered below.
+
+`SHARED_SECRET` is the only auth boundary once the tunnel makes the service
+reachable from the internet — it gates both the bearer-authed `/items`
+webhook and the Basic-Auth-protected `/admin` UI (username is ignored,
+password is `SHARED_SECRET`) for adding or removing items. Treat it
+accordingly.
 
 ## WSL setup
 
