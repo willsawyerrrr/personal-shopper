@@ -21,6 +21,7 @@
     "search-product": "tsx scripts/search-product.ts"
   },
   "dependencies": {
+    "@fastify/formbody": "^9.0.0",
     "fastify": "^5.6.1",
     "yaml": "^2.8.1"
   },
