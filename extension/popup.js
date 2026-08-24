@@ -28,6 +28,13 @@ async function init() {
   const status = document.getElementById('status')
   const form = document.getElementById('form')
   const openWoolworths = document.getElementById('openWoolworths')
+  const adminLink = document.getElementById('adminLink')
+
+  const { serverUrl, sharedSecret } = await chrome.storage.local.get(['serverUrl', 'sharedSecret'])
+  if (serverUrl) {
+    adminLink.href = `${serverUrl.replace(/\/$/, '')}/admin`
+    adminLink.hidden = false
+  }
 
   const tab = await getActiveTab()
   if (!tab.url || !PRODUCT_PATTERN.test(tab.url)) {
@@ -40,7 +47,6 @@ async function init() {
     return
   }
 
-  const { serverUrl, sharedSecret } = await chrome.storage.local.get(['serverUrl', 'sharedSecret'])
   if (!serverUrl || !sharedSecret) {
     setStatus(status, "Set your server URL and secret in the extension's options first.")
     form.hidden = true

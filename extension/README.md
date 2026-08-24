@@ -26,6 +26,8 @@ this small and single-user.
    `chrome://extensions/shortcuts` if it clashes with something else). The
    product URL and a name (from the page's `<title>`) are prefilled; type a
    trigger word and quantity, then submit.
+4. "Manage items" at the bottom of the popup opens `/admin` on your
+   configured server in a new tab, once a server URL is set.
 
 ## Permissions
 
