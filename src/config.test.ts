@@ -13,6 +13,7 @@ describe('loadConfig', () => {
       sharedSecret: 'secret',
       itemsPath: 'items.yml',
       sessionPath: 'session.json',
+      remindersSync: undefined,
     })
   })
 
@@ -26,5 +27,40 @@ describe('loadConfig', () => {
     expect(config.port).toBe(4000)
     expect(config.itemsPath).toBe('/tmp/items.yml')
     expect(config.sessionPath).toBe('/tmp/session.json')
+  })
+
+  it('leaves reminders sync disabled unless both iCloud credentials are set', () => {
+    expect(
+      loadConfig({ SHARED_SECRET: 'secret', ICLOUD_USERNAME: 'me@example.com' }).remindersSync,
+    ).toBeUndefined()
+    expect(
+      loadConfig({ SHARED_SECRET: 'secret', ICLOUD_APP_SPECIFIC_PASSWORD: 'abcd-abcd-abcd-abcd' })
+        .remindersSync,
+    ).toBeUndefined()
+  })
+
+  it('enables reminders sync with defaults once both iCloud credentials are set', () => {
+    const config = loadConfig({
+      SHARED_SECRET: 'secret',
+      ICLOUD_USERNAME: 'me@example.com',
+      ICLOUD_APP_SPECIFIC_PASSWORD: 'abcd-abcd-abcd-abcd',
+    })
+    expect(config.remindersSync).toEqual({
+      icloudUsername: 'me@example.com',
+      icloudAppSpecificPassword: 'abcd-abcd-abcd-abcd',
+      listName: 'Shopping List',
+      intervalMs: 5 * 60 * 1000,
+    })
+  })
+
+  it('reads reminders sync overrides from the environment', () => {
+    const config = loadConfig({
+      SHARED_SECRET: 'secret',
+      ICLOUD_USERNAME: 'me@example.com',
+      ICLOUD_APP_SPECIFIC_PASSWORD: 'abcd-abcd-abcd-abcd',
+      REMINDERS_LIST_NAME: 'Woolworths Queue',
+      REMINDERS_SYNC_INTERVAL_MS: '60000',
+    })
+    expect(config.remindersSync).toMatchObject({ listName: 'Woolworths Queue', intervalMs: 60000 })
   })
 })

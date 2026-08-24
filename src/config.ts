@@ -1,8 +1,16 @@
+export interface RemindersSyncConfig {
+  icloudUsername: string
+  icloudAppSpecificPassword: string
+  listName: string
+  intervalMs: number
+}
+
 export interface AppConfig {
   port: number
   sharedSecret: string
   itemsPath: string
   sessionPath: string
+  remindersSync: RemindersSyncConfig | undefined
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -15,5 +23,23 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     sharedSecret,
     itemsPath: env.ITEMS_PATH ?? 'items.yml',
     sessionPath: env.SESSION_PATH ?? 'session.json',
+    remindersSync: loadRemindersSyncConfig(env),
+  }
+}
+
+// Syncing the offline-queue Reminders list (see docs/architecture.md) needs
+// an iCloud app-specific password, so it's opt-in — deployments that don't
+// set these two vars just skip it.
+function loadRemindersSyncConfig(env: NodeJS.ProcessEnv): RemindersSyncConfig | undefined {
+  const icloudUsername = env.ICLOUD_USERNAME
+  const icloudAppSpecificPassword = env.ICLOUD_APP_SPECIFIC_PASSWORD
+  if (!icloudUsername || !icloudAppSpecificPassword) {
+    return undefined
+  }
+  return {
+    icloudUsername,
+    icloudAppSpecificPassword,
+    listName: env.REMINDERS_LIST_NAME ?? 'Shopping List',
+    intervalMs: Number(env.REMINDERS_SYNC_INTERVAL_MS ?? 5 * 60 * 1000),
   }
 }

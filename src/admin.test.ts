@@ -16,7 +16,13 @@ describe('admin', () => {
     dir = await mkdtemp(join(tmpdir(), 'personal-shopper-admin-'))
     const itemsPath = join(dir, 'items.yml')
     await writeFile(itemsPath, 'milk:\n  stockcode: 123456\n  quantity: 1\n')
-    config = { port: 0, sharedSecret: 'secret', itemsPath, sessionPath: join(dir, 'session.json') }
+    config = {
+      port: 0,
+      sharedSecret: 'secret',
+      itemsPath,
+      sessionPath: join(dir, 'session.json'),
+      remindersSync: undefined,
+    }
     cart = { addToCart: vi.fn() }
   })
 
