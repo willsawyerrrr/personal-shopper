@@ -40,6 +40,27 @@
    with no browser chrome to show a login form in. See
    [`extension/README.md`](../extension/README.md).
 
+## Reminders offline queue
+
+Step 1's webhook call only succeeds on home WiFi (see
+[`deployment.md`](deployment.md)); a Shortcut fallback (`siri-setup.md`
+step 1a) queues anything it can't deliver by adding a reminder to a shared
+iCloud Reminders list ("Shopping List" by default) instead of losing it.
+
+`ICloudRemindersClient` (`src/reminders/client.ts`) polls that list over
+iCloud's CalDAV interface (`https://caldav.icloud.com`), authenticated with
+an app-specific password (`ICLOUD_USERNAME` /
+`ICLOUD_APP_SPECIFIC_PASSWORD`, generated at appleid.apple.com — not the
+Apple ID password itself). `syncReminders` (`src/reminders/sync.ts`) runs on
+an interval (`REMINDERS_SYNC_INTERVAL_MS`, default 5 minutes) from
+`src/server.ts`: for each pending reminder it resolves the title against
+`items.yml` exactly like `POST /items` does, calls
+`WoolworthsClient.addToCart` directly (no HTTP hop), and deletes the
+reminder once it lands in the cart. A reminder with no mapping, or one that
+fails because the Woolworths session is expired, is left queued and retried
+on the next interval. This is opt-in — deployments that don't set both
+iCloud env vars skip it entirely.
+
 ## Session capture
 
 Woolworths' login requires approving a passkey (or SMS code) in a real,
@@ -97,3 +118,11 @@ LAN reachability. See [`deployment.md`](deployment.md).
   `isMobile`, `groupEdmVariants`) made no difference. `pnpm search-product`
   doesn't currently work; find stockcodes by hand instead from a product's
   URL (`/shop/productdetails/<stockcode>/...`). `addToCart` is unaffected.
+- **No Shortcut-only path into the Woolworths app exists.** Its
+  `apple-app-site-association` file (`https://www.woolworths.com.au/.well-
+  known/apple-app-site-association`) confirms `/shop/productdetails/*` is a
+  registered universal link, so a Shortcut's "Open URL" does deep-link into
+  the app's product page — but there's no documented URL parameter, App
+  Intent, or Siri Shortcut donation that adds to cart from there, so it
+  still needs a manual tap. An on-device-only Shortcut can't replace this
+  repo's server.

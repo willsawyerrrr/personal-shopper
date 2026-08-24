@@ -21,9 +21,13 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   which a script or RPA can satisfy unattended without undermining the point
   of the passkey or tripping bot detection. See
   [`docs/architecture.md`](docs/architecture.md#risks--open-questions).
-- Voice capture piggybacks on Apple's native Reminders NLU via a shared
-  iCloud list, not a custom Siri phrase. See
-  [`docs/siri-setup.md`](docs/siri-setup.md).
+- Voice capture uses a fixed-phrase Shortcut with a follow-up Dictate Text
+  prompt, not a custom Siri phrase with an embedded free-text slot — that's
+  only available to apps built with Apple's App Intents framework. A shared
+  iCloud Reminders list is a fallback offline queue for when the Shortcut
+  can't reach the webhook directly, not the primary capture mechanism. See
+  [`docs/siri-setup.md`](docs/siri-setup.md) and
+  [`docs/architecture.md`](docs/architecture.md#reminders-offline-queue).
 
 ## Layout
 
