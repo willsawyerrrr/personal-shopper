@@ -45,20 +45,37 @@ cookies a passkey login lacks.
 ## First deploy
 
 ```bash
-fly apps create personal-shopper        # names are global; if taken, pick another and edit `app` in fly.toml
+fly apps create willsawyerrrr-personal-shopper   # names are global; must match `app` in fly.toml
 fly volumes create data --region syd --size 1
 fly secrets set SHARED_SECRET=... ICLOUD_USERNAME=... ICLOUD_APP_SPECIFIC_PASSWORD=...
 fly deploy
 ```
 
-Upload the Woolworths login to the volume, then restart so the server picks
-it up:
+Upload the passkey credentials to the volume. `sftp` creates the file
+root-owned with mode 0644, so hand it to the server user and lock it down:
 
 ```bash
 fly ssh sftp shell
-> put session.json /data/session.json
 > put passkey-credentials.json /data/passkey-credentials.json
-fly machine restart
+> exit
+fly ssh console -C "chown node:node /data/passkey-credentials.json"
+fly ssh console -C "chmod 600 /data/passkey-credentials.json"
+```
+
+Create `session.json` on the machine itself by signing in with those
+credentials as `node`, so it is owned correctly (uploading a local
+`session.json` with `put` also works, followed by the same `chown`):
+
+```bash
+fly ssh console -C "su node -s /bin/sh -c \"node --input-type=module -e \\\"import { passkeyLogin } from '/app/dist/src/woolworths/passkey.js'; import { SessionStore } from '/app/dist/src/woolworths/session.js'; await new SessionStore('/data/session.json').save(await passkeyLogin('/data/passkey-credentials.json'))\\\"\"\""
+```
+
+Restart so the server picks up the session. `fly machine restart` takes the
+machine id from `fly status`:
+
+```bash
+fly status
+fly machine restart <machine-id>
 ```
 
 `passkey-credentials.json` is a secret: it is uploaded over SSH rather than
@@ -67,7 +84,7 @@ baked into the image or set as an env var, and `.dockerignore` keeps it and
 refreshes the session through the heartbeat but cannot sign back in once
 `w-aref` is rejected.
 
-Verify with `curl https://personal-shopper.fly.dev/healthz`.
+Verify with `curl https://willsawyerrrr-personal-shopper.fly.dev/healthz`.
 
 ## Custom domain
 
@@ -75,9 +92,17 @@ Verify with `curl https://personal-shopper.fly.dev/healthz`.
 fly certs add personal-shopper.willsawyerrrr.dev
 ```
 
-Add the CNAME it prints (`personal-shopper` -> `personal-shopper.fly.dev`)
-at the DNS provider, then check `fly certs show personal-shopper.willsawyerrrr.dev`
-until the certificate is issued. Point the Shortcut at
+The zone is on Vercel DNS, whose wildcard `ALIAS` record would otherwise
+answer for the subdomain, so add explicit `A` and `AAAA` records using the
+addresses from the `fly certs add` output (or `fly ips list`):
+
+```bash
+vercel dns add willsawyerrrr.dev personal-shopper A <ipv4>
+vercel dns add willsawyerrrr.dev personal-shopper AAAA <ipv6>
+```
+
+Check `fly certs show personal-shopper.willsawyerrrr.dev` until the
+certificate is issued. Point the Shortcut at
 `https://personal-shopper.willsawyerrrr.dev/items`.
 
 ## Updating
