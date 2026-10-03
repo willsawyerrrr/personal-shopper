@@ -1,7 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { exportJWK, generateKeyPair, SignJWT, type CryptoKey, type JWK } from 'jose'
-
-type GeneratedKeyPair = Awaited<ReturnType<typeof generateKeyPair>>
+import { importJWK, SignJWT, type CryptoKey, type JWK } from 'jose'
+import { inject } from 'vitest'
 
 export const CLIENT_ID = 'test-client-id.apps.googleusercontent.com'
 export const CLIENT_SECRET = 'test-client-secret'
@@ -26,8 +25,14 @@ interface IssuedCode {
   redirectUri: string
 }
 
-// RSA key generation is slow; the suite shares one pair of keys.
-let keyPairs: Promise<[GeneratedKeyPair, GeneratedKeyPair]> | undefined
+async function loadKeyPair(index: number): Promise<{ publicJwk: JWK; privateKey: CryptoKey }> {
+  const pair = inject('googleKeyPairs')[index]
+  if (!pair) throw new Error(`missing test key pair ${index}`)
+  return {
+    publicJwk: pair.publicJwk,
+    privateKey: (await importJWK(pair.privateJwk, 'RS256')) as CryptoKey,
+  }
+}
 
 /** A stand-in for Google's authorization, token and JWKS endpoints, served through a `fetch` mock. */
 export class FakeGoogle {
@@ -43,17 +48,15 @@ export class FakeGoogle {
   ) {}
 
   static async create(now: () => number = Date.now): Promise<FakeGoogle> {
-    keyPairs ??= Promise.all([generateKeyPair('RS256'), generateKeyPair('RS256')])
-    const [{ publicKey, privateKey }, other] = await keyPairs
-    const jwk = { ...(await exportJWK(publicKey)), kid: 'key-1', alg: 'RS256', use: 'sig' }
+    const [{ publicJwk, privateKey }, other] = await Promise.all([loadKeyPair(0), loadKeyPair(1)])
+    const jwk = { ...publicJwk, kid: 'key-1', alg: 'RS256', use: 'sig' }
     return new FakeGoogle(privateKey, other.privateKey, { keys: [jwk] }, now)
   }
 
   /** Rotates Google's signing key: the old one stops verifying, a new `kid` is published. */
   async rotateKey(): Promise<void> {
-    const { publicKey, privateKey } = await generateKeyPair('RS256')
-    const jwk = { ...(await exportJWK(publicKey)), kid: 'key-2', alg: 'RS256', use: 'sig' }
-    this.jwks = { keys: [jwk] }
+    const { publicJwk, privateKey } = await loadKeyPair(2)
+    this.jwks = { keys: [{ ...publicJwk, kid: 'key-2', alg: 'RS256', use: 'sig' }] }
     this.privateKey = privateKey
   }
 
