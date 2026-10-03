@@ -26,7 +26,7 @@ this small and single-user.
 3. On any `woolworths.com.au/shop/productdetails/...` page, click the icon
    (or press `Ctrl+Shift+Y` / `Cmd+Shift+Y` on Mac — reassign at
    `chrome://extensions/shortcuts` if it clashes with something else). The
-   product URL and a name (from the page's `<title>`) are prefilled; type a
+   product URL is prefilled; type a
    trigger word and quantity, then submit. Signed out, the popup shows a
    "Sign in with Google" button instead; a `401` from the server signs you
    out.
@@ -61,8 +61,8 @@ digit mapped `0-9a-f` to `a-p`).
 
 ## Permissions
 
-- `activeTab` / `scripting` — read the current tab's URL and title only when
-  you open the popup, to prefill the form. No `tabs`, no broad host access
+- `activeTab` — read the current tab's URL only when you open the popup, to
+  prefill the form. No `tabs`, no broad host access
   to browse tabs you haven't opened the popup on.
 - `identity` — `chrome.identity.launchWebAuthFlow` and `getRedirectURL` for
   Google sign-in through the server.

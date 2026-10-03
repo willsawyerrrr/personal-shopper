@@ -31,7 +31,6 @@ public struct AddItemForm: View {
                 Section("Product") { Text(link.url.absoluteString).font(.footnote).lineLimit(2) }
             }
             Section {
-                TextField("Name", text: $model.name)
                 TextField("Trigger word, e.g. milk", text: $model.word)
                     .textInputAutocapitalization(.never)
                 Stepper("Quantity: \(model.quantity)", value: $model.quantity, in: 1...99)

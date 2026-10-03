@@ -9,33 +9,28 @@ struct AddItemIntent: AppIntent {
     @Parameter(title: "Product URL", requestValueDialog: "Which Woolworths product link?")
     var url: URL
 
-    @Parameter(title: "Trigger Word", description: "Defaults to the product name.")
+    @Parameter(title: "Trigger Word", description: "Defaults to the name in the link.")
     var word: String?
-
-    @Parameter(title: "Name", description: "Defaults to the name in the link.")
-    var name: String?
 
     @Parameter(title: "Quantity", default: 1, inclusiveRange: (1, 99))
     var quantity: Int
 
     static var parameterSummary: some ParameterSummary {
         Summary("Add \(\.$url) as \(\.$word)") {
-            \.$name
             \.$quantity
         }
     }
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         guard let link = ProductLink.parse(url) else { throw AddItemIntentError.notAProduct }
-        let displayName = name?.trimmingCharacters(in: .whitespaces).nilIfEmpty ?? link.suggestedName
-        guard let trigger = word?.trimmingCharacters(in: .whitespaces).nilIfEmpty ?? displayName?.lowercased()
+        guard let trigger = word?.trimmingCharacters(in: .whitespaces).nilIfEmpty ?? link.suggestedName?.lowercased()
         else { throw AddItemIntentError.noWord }
         do {
-            try await SettingsStore().client().add(word: trigger, url: link.url, name: displayName, quantity: quantity)
+            try await SettingsStore().client().add(word: trigger, url: link.url, quantity: quantity)
         } catch {
             throw AddItemIntentError.failed(error.localizedDescription)
         }
-        return .result(dialog: "Added \(displayName ?? trigger).")
+        return .result(dialog: "Added \(trigger).")
     }
 }
 
@@ -47,7 +42,7 @@ enum AddItemIntentError: Error, CustomLocalizedStringResourceConvertible {
     var localizedStringResource: LocalizedStringResource {
         switch self {
         case .notAProduct: "That isn't a woolworths.com.au product link."
-        case .noWord: "Give a trigger word or name for the product."
+        case .noWord: "Give a trigger word for the product."
         case .failed(let message): "\(message)"
         }
     }

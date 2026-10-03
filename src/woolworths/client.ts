@@ -13,7 +13,14 @@ export interface CartClient {
   addToCart(stockcode: number, quantity: number): Promise<void>
 }
 
-export class WoolworthsClient implements CartClient {
+export interface ProductLookup {
+  /** The product's title as listed on woolworths.com.au, or `undefined` when there is none. */
+  listing(stockcode: number): Promise<string | undefined>
+}
+
+const LOOKUP_TIMEOUT_MS = 10_000
+
+export class WoolworthsClient implements CartClient, ProductLookup {
   constructor(private readonly sessions: SessionStore) {}
 
   async search(term: string): Promise<SearchResultProduct[]> {
@@ -26,6 +33,14 @@ export class WoolworthsClient implements CartClient {
       location: `/shop/search/products?searchTerm=${encodeURIComponent(term)}`,
     })
     return parseSearchResponse(response)
+  }
+
+  // `GET /apis/ui/product/detail/<stockcode>` is read-only and works with the
+  // session cookies (verified 2026-10); `Product.DisplayName` is the title the
+  // product page shows, e.g. `Maleny Dairies Full Cream 2L`.
+  async listing(stockcode: number): Promise<string | undefined> {
+    const response = await this.request(`/apis/ui/product/detail/${stockcode}`)
+    return parseListing(response)
   }
 
   async addToCart(stockcode: number, quantity: number): Promise<void> {
@@ -46,22 +61,23 @@ export class WoolworthsClient implements CartClient {
     })
   }
 
-  private async request(path: string, body: unknown): Promise<unknown> {
+  private async request(path: string, body?: unknown): Promise<unknown> {
     let session = await this.sessions.load()
     if (this.sessions.isExpired(session)) {
       session = await this.sessions.refresh(session)
     }
     const response = await fetch(`${BASE_URL}${path}`, {
-      method: 'POST',
+      method: body === undefined ? 'GET' : 'POST',
+      signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
       headers: {
         Accept: 'application/json, text/plain, */*',
-        'Content-Type': 'application/json',
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
         Origin: BASE_URL,
         'User-Agent':
           'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         Cookie: this.sessions.toCookieHeader(session),
       },
-      body: JSON.stringify(body),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
     if (!response.ok) {
       const errorBody = await response.text()
@@ -71,6 +87,12 @@ export class WoolworthsClient implements CartClient {
     }
     return response.json()
   }
+}
+
+function parseListing(response: unknown): string | undefined {
+  const product = (response as { Product?: Record<string, unknown> | null } | null)?.Product
+  const title = product?.DisplayName ?? product?.Name
+  return typeof title === 'string' && title.trim() ? title.trim() : undefined
 }
 
 // `POST /apis/ui/Search/products` returns a generic 400 against a real

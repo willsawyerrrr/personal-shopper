@@ -21,8 +21,15 @@ struct ItemsView: View {
                 ForEach(items) { item in
                     Button { editing = item } label: {
                         VStack(alignment: .leading) {
-                            Text(item.name ?? item.word)
-                            Text("\(item.word) · \(item.stockcode) · qty \(item.quantity)")
+                            Text(item.title)
+                                .font(.headline)
+                            if let subtitle = item.subtitle {
+                                Text(subtitle)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                            }
+                            Text(item.detail)
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }

@@ -3,8 +3,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { parse } from 'yaml'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildApp } from './app.ts'
+import type { ItemsConfig } from './items.ts'
 import type { AppConfig } from './config.ts'
 import { signInClient, signInWeb, testConfig } from './testing/app.ts'
 import { FakeGoogle } from './testing/google.ts'
@@ -149,7 +150,6 @@ describe('admin', () => {
       payload: {
         word: 'Bread',
         url: 'https://www.woolworths.com.au/shop/productdetails/888137/woolworths-full-cream-milk',
-        name: 'Full Cream Milk',
         quantity: '2',
       },
     })
@@ -157,7 +157,6 @@ describe('admin', () => {
     const items = await readFile(config.itemsPath, 'utf8')
     expect(items).toContain('bread:')
     expect(items).toContain('888137')
-    expect(items).toContain('Full Cream Milk')
     expect(items).toContain('quantity: 2')
   })
 
@@ -200,12 +199,12 @@ describe('admin', () => {
       method: 'POST',
       url: '/admin/items/milk/edit',
       headers: { ...authHeader, 'content-type': 'application/x-www-form-urlencoded' },
-      payload: 'word=Oat+Milk&url=654321&name=Oat+Milk+1L&quantity=3',
+      payload: 'word=Oat+Milk&url=654321&quantity=3',
     })
     expect(response.statusCode).toBe(302)
     expect(response.headers.location).toBe('/admin')
     expect(await readFile(config.itemsPath, 'utf8')).toBe(
-      'oat milk:\n  stockcode: 654321\n  quantity: 3\n  name: Oat Milk 1L\n',
+      'oat milk:\n  stockcode: 654321\n  quantity: 3\n',
     )
   })
 
@@ -281,7 +280,6 @@ describe('admin', () => {
         payload: {
           word: 'Bread',
           url: 'https://www.woolworths.com.au/shop/productdetails/888137/bread',
-          name: ' Bread ',
           quantity: 2,
         },
       })
@@ -290,7 +288,6 @@ describe('admin', () => {
         word: 'bread',
         stockcode: 888137,
         quantity: 2,
-        name: 'Bread',
       })
       expect(await readFile(config.itemsPath, 'utf8')).toContain('bread:')
     })
@@ -324,7 +321,7 @@ describe('admin', () => {
       beforeEach(async () => {
         await writeFile(
           config.itemsPath,
-          'milk:\n  stockcode: 1\n  quantity: 1\n  name: Milk\nbread:\n  stockcode: 2\n  quantity: 1\neggs:\n  stockcode: 3\n  quantity: 1\n',
+          'milk:\n  stockcode: 1\n  quantity: 1\n  listing: Milk 2L\nbread:\n  stockcode: 2\n  quantity: 1\neggs:\n  stockcode: 3\n  quantity: 1\n',
         )
       })
 
@@ -333,7 +330,7 @@ describe('admin', () => {
         expect(response.statusCode).toBe(200)
         expect(response.json()).toEqual({ word: 'bread', stockcode: 99, quantity: 4 })
         expect(parse(await readFile(config.itemsPath, 'utf8'))).toEqual({
-          milk: { stockcode: 1, quantity: 1, name: 'Milk' },
+          milk: { stockcode: 1, quantity: 1, listing: 'Milk 2L' },
           bread: { stockcode: 99, quantity: 4 },
           eggs: { stockcode: 3, quantity: 1 },
         })
@@ -368,12 +365,6 @@ describe('admin', () => {
         expect(response.json().stockcode).toBe(888137)
       })
 
-      it('sets and clears the name', async () => {
-        expect((await patch('bread', { name: ' Sourdough ' })).json().name).toBe('Sourdough')
-        const cleared = await patch('bread', { name: '' })
-        expect(cleared.json()).toEqual({ word: 'bread', stockcode: 2, quantity: 1 })
-      })
-
       it('looks the item up by normalised word', async () => {
         const response = await patch('MILK', { quantity: 2 })
         expect(response.statusCode).toBe(200)
@@ -402,7 +393,6 @@ describe('admin', () => {
         { url: 'nope' },
         { word: '   ' },
         { word: 5 },
-        { name: 5 },
       ])('rejects %j with 400 and writes nothing', async (payload) => {
         const before = await readFile(config.itemsPath, 'utf8')
         const response = await patch('bread', payload)
@@ -441,5 +431,102 @@ describe('admin', () => {
       expect(response.statusCode).toBe(204)
       expect(await readFile(config.itemsPath, 'utf8')).not.toContain('milk:')
     })
+  })
+})
+
+describe('admin listing text', () => {
+  let dir: string
+  let config: AppConfig
+  let google: FakeGoogle
+  let app: FastifyInstance
+  let json: { cookie: string; accept: string }
+  const listings: Record<number, string> = { 1: 'Milk 2L', 2: 'Bread 650g', 99: 'Rye 500g' }
+  const lookup = { listing: vi.fn(async (stockcode: number) => listings[stockcode]) }
+
+  const readItems = async () => parse(await readFile(config.itemsPath, 'utf8')) as ItemsConfig
+
+  beforeEach(async () => {
+    lookup.listing.mockClear()
+    dir = await mkdtemp(join(tmpdir(), 'personal-shopper-admin-'))
+    config = testConfig(dir)
+    await writeFile(config.itemsPath, 'milk:\n  stockcode: 1\n  quantity: 1\n  name: Guess\n')
+    google = await FakeGoogle.create()
+    app = buildApp(config, { fetch: google.fetch, lookup })
+    json = { cookie: await signInWeb(app, google), accept: 'application/json' }
+  })
+
+  afterEach(async () => {
+    await app.close()
+    await rm(dir, { recursive: true })
+  })
+
+  it('stores the listing of an added item and returns it', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/admin/items',
+      headers: json,
+      payload: { word: 'Bread', url: '2', quantity: 2 },
+    })
+    expect(response.json()).toEqual({
+      word: 'bread',
+      stockcode: 2,
+      quantity: 2,
+      listing: 'Bread 650g',
+    })
+    expect((await readItems()).bread).toEqual({
+      stockcode: 2,
+      quantity: 2,
+      listing: 'Bread 650g',
+    })
+  })
+
+  it('adds the item without a listing when the lookup fails', async () => {
+    lookup.listing.mockRejectedValueOnce(new Error('boom'))
+    const response = await app.inject({
+      method: 'POST',
+      url: '/admin/items',
+      headers: json,
+      payload: { word: 'bread', url: '2' },
+    })
+    expect(response.statusCode).toBe(201)
+    expect(response.json()).toEqual({ word: 'bread', stockcode: 2, quantity: 1 })
+  })
+
+  it('looks the listing up again when the stockcode changes', async () => {
+    await vi.waitFor(async () => expect((await readItems()).milk?.listing).toBe('Milk 2L'))
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/admin/items/milk',
+      headers: json,
+      payload: { stockcode: 99 },
+    })
+    expect(response.json().listing).toBe('Rye 500g')
+  })
+
+  it('keeps the listing when the stockcode is unchanged', async () => {
+    await vi.waitFor(async () => expect((await readItems()).milk?.listing).toBe('Milk 2L'))
+    lookup.listing.mockClear()
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/admin/items/milk',
+      headers: json,
+      payload: { url: '1', quantity: 3 },
+    })
+    expect(response.json()).toEqual({ word: 'milk', stockcode: 1, quantity: 3, listing: 'Milk 2L' })
+    expect(lookup.listing).not.toHaveBeenCalled()
+  })
+
+  it('backfills existing items in the background and lists them with their listing', async () => {
+    await vi.waitFor(async () => expect((await readItems()).milk?.listing).toBe('Milk 2L'))
+    const response = await app.inject({ method: 'GET', url: '/admin/items', headers: json })
+    expect(response.json().items).toEqual([
+      { word: 'milk', stockcode: 1, quantity: 1, listing: 'Milk 2L' },
+    ])
+  })
+
+  it('shows the listing under the phrase on the admin page', async () => {
+    await vi.waitFor(async () => expect((await readItems()).milk?.listing).toBe('Milk 2L'))
+    const response = await app.inject({ method: 'GET', url: '/admin', headers: json })
+    expect(response.body).toContain('<div class="listing">Milk 2L</div>')
   })
 })

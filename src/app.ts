@@ -8,7 +8,7 @@ import type { AppConfig } from './config.ts'
 import { GoogleOAuth } from './google.ts'
 import { registerLogin } from './login.ts'
 import { TokenStore } from './tokens.ts'
-import type { CartClient } from './woolworths/client.ts'
+import type { CartClient, ProductLookup } from './woolworths/client.ts'
 
 const HEALTH_CHECK_PATH = '/healthz'
 
@@ -21,6 +21,8 @@ export interface AppOptions {
   now?: () => number
   /** Enables `POST /cart/items`; without it the route does not exist. */
   cart?: CartClient
+  /** Looks up listing text for items; without it items are stored without one. */
+  lookup?: ProductLookup
 }
 
 export function buildApp(config: AppConfig, options: AppOptions = {}): FastifyInstance {
@@ -78,7 +80,7 @@ export function buildApp(config: AppConfig, options: AppOptions = {}): FastifyIn
   })
 
   void registerLogin(app, { config, tokens, google, now })
-  void registerAdmin(app, config, tokens)
+  void registerAdmin(app, config, tokens, options.lookup)
   if (options.cart) {
     void registerCart(app, config, tokens, options.cart)
   }

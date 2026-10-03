@@ -14,7 +14,6 @@ public final class AddItemModel {
 
     public var urlText: String
     public var word = ""
-    public var name = ""
     public var quantity = 1
     public private(set) var phase = Phase.editing
 
@@ -32,10 +31,9 @@ public final class AddItemModel {
         link != nil && !word.trimmingCharacters(in: .whitespaces).isEmpty && phase != .submitting
     }
 
-    /// Fills the name and trigger word from the URL for whichever the user hasn't typed.
+    /// Fills the trigger word from the URL if the user hasn't typed one.
     public func applySuggestions() {
         guard let suggested = link?.suggestedName else { return }
-        if name.isEmpty { name = suggested }
         if word.isEmpty { word = suggested.lowercased() }
     }
 
@@ -44,11 +42,9 @@ public final class AddItemModel {
         phase = .submitting
         do {
             let client = try makeClient()
-            let trimmedName = name.trimmingCharacters(in: .whitespaces)
             try await client.add(
                 word: word.trimmingCharacters(in: .whitespaces),
                 url: link.url,
-                name: trimmedName.isEmpty ? nil : trimmedName,
                 quantity: quantity
             )
             phase = .added

@@ -99,4 +99,40 @@ describe('WoolworthsClient', () => {
     const client = new WoolworthsClient(fakeSessionStore())
     await expect(client.addToCart(1, 1)).rejects.toThrow(/failed: 500/)
   })
+
+  describe('listing', () => {
+    const respond = (body: unknown, status = 200) => {
+      const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status }))
+      global.fetch = fetchMock
+      return fetchMock
+    }
+
+    it('reads the product title with a GET carrying the session cookie', async () => {
+      const fetchMock = respond({
+        Product: { Name: 'Maleny Dairies', DisplayName: ' Maleny Dairies Full Cream 2L ' },
+      })
+      const listing = await new WoolworthsClient(fakeSessionStore()).listing(248608)
+      expect(listing).toBe('Maleny Dairies Full Cream 2L')
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('https://www.woolworths.com.au/apis/ui/product/detail/248608')
+      expect(init.method).toBe('GET')
+      expect(init.body).toBeUndefined()
+      expect(init.headers).toMatchObject({ Cookie: 'wow-auth-token=abc' })
+    })
+
+    it('falls back to the product name', async () => {
+      respond({ Product: { Name: 'Milk' } })
+      await expect(new WoolworthsClient(fakeSessionStore()).listing(1)).resolves.toBe('Milk')
+    })
+
+    it('returns undefined when the product has no title', async () => {
+      respond({ Product: null })
+      await expect(new WoolworthsClient(fakeSessionStore()).listing(1)).resolves.toBeUndefined()
+    })
+
+    it('throws when Woolworths rejects the request', async () => {
+      respond({}, 403)
+      await expect(new WoolworthsClient(fakeSessionStore()).listing(1)).rejects.toThrow('403')
+    })
+  })
 })

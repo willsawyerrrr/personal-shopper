@@ -87,14 +87,14 @@ sends `Authorization: Bearer <access_token>` on every API call.
 Bearer tokens authorise the JSON API on `/admin/items`; send
 `Accept: application/json`:
 
-| Request                                                                  | Success                                               |
-| ------------------------------------------------------------------------ | ----------------------------------------------------- |
-| `GET /admin/items`                                                       | `200 {"items":[{word, stockcode, quantity, name?}]}`  |
-| `POST /admin/items` with `{word, url, name?, quantity?}`                 | `201` with the stored item; `400 {error}` if invalid  |
-| `PATCH /admin/items/:word` with any of the fields below                  | `200` with the stored item; `400`, `404`, `409` below |
-| `DELETE /admin/items/:word` (or `POST /admin/items/:word/delete`)        | `204`                                                 |
-| `GET /admin` (HTML), `POST /admin/sessions/:id/revoke` (`204` with JSON) | Browser UI and session revocation                     |
-| `POST /auth/logout`                                                      | `204`; revokes the presented token                    |
+| Request                                                                  | Success                                                 |
+| ------------------------------------------------------------------------ | ------------------------------------------------------- |
+| `GET /admin/items`                                                       | `200 {"items":[{word, stockcode, quantity, listing?}]}` |
+| `POST /admin/items` with `{word, url, quantity?}`                        | `201` with the stored item; `400 {error}` if invalid    |
+| `PATCH /admin/items/:word` with any of the fields below                  | `200` with the stored item; `400`, `404`, `409` below   |
+| `DELETE /admin/items/:word` (or `POST /admin/items/:word/delete`)        | `204`                                                   |
+| `GET /admin` (HTML), `POST /admin/sessions/:id/revoke` (`204` with JSON) | Browser UI and session revocation                       |
+| `POST /auth/logout`                                                      | `204`; revokes the presented token                      |
 
 `PATCH /admin/items/:word` (browser form: `POST /admin/items/:word/edit`)
 changes only the fields sent, keeps every other entry and the item's position
@@ -107,7 +107,14 @@ in `items.yml`, and writes the file atomically. `:word` is normalised like
 | `url`       | Product URL or stockcode, parsed like `POST`; takes precedence over `stockcode` |
 | `stockcode` | Positive integer                                                                |
 | `quantity`  | Positive integer                                                                |
-| `name`      | Display name; an empty string removes it                                        |
+
+`listing` is the product's title as shown on woolworths.com.au (for example
+`Maleny Dairies Full Cream 2L`), shown under the trigger phrase. It is
+read-only: the server looks it up when an item is added and when its
+stockcode changes, and clients cannot set it. It is absent when the lookup
+failed or has not run yet; a failed lookup never fails the request. Items
+stored without one are filled in by a background pass at startup and after
+any `GET /admin/items` or `GET /admin`, so a later list contains it.
 
 | Status | Body                                                            |
 | ------ | --------------------------------------------------------------- |
