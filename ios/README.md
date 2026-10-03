@@ -33,9 +33,20 @@ open PersonalShopper.xcodeproj
 ```
 
 Bundle IDs are `dev.willsawyerrrr.personalshopper` (app) and
-`dev.willsawyerrrr.personalshopper.share` (extension). `DEVELOPMENT_TEAM` is
-unset: for a device, pick your team under Signing & Capabilities for both
-targets, or set `DEVELOPMENT_TEAM` in `project.yml` and regenerate. The App
+`dev.willsawyerrrr.personalshopper.share` (extension).
+
+To run on a device, set your team in the gitignored `Config/Local.xcconfig`
+(read by `Config/Shared.xcconfig` for both targets; builds without it still
+work for the simulator and CI):
+
+```bash
+cp Config/Local.xcconfig.example Config/Local.xcconfig
+# set DEVELOPMENT_TEAM; find the ID in Xcode > Settings > Accounts > Manage
+# Certificates, or developer.apple.com > Membership details > Team ID
+xcodegen generate
+```
+
+The App
 Group `group.dev.willsawyerrrr.personalshopper` and Keychain group
 `dev.willsawyerrrr.personalshopper` are created by automatic signing.
 

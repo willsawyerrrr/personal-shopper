@@ -19,3 +19,6 @@ coverage/
 .idea/
 .vscode/
 *.swp
+
+# Local iOS signing config
+ios/Config/Local.xcconfig
