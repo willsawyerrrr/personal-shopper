@@ -1,25 +1,75 @@
 import Foundation
 
-/// Client for the server's `/admin/items` JSON API, authenticated with HTTP
-/// Basic auth (`admin:<shared secret>`).
+/// Client for the server's JSON API, authenticated with a bearer token.
 public struct AdminClient: Sendable {
     private let baseURL: URL
     private let authorization: String
     private let session: URLSession
+    private let onUnauthorized: @Sendable () -> Void
 
-    public init(serverURL: String, secret: String, session: URLSession = .shared) throws {
-        let trimmed = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let url = URL(string: trimmed), let scheme = url.scheme?.lowercased(),
-            scheme == "http" || scheme == "https", url.host() != nil
-        else { throw AdminError.invalidURL }
-        self.baseURL = url
-        self.authorization = "Basic " + Data("admin:\(secret)".utf8).base64EncodedString()
+    /// `onUnauthorized` runs when the server answers `401`, before the error is thrown.
+    public init(
+        serverURL: String, token: String, session: URLSession = .shared,
+        onUnauthorized: @escaping @Sendable () -> Void = {}
+    ) throws {
+        self.baseURL = try validatedServerURL(serverURL)
+        self.authorization = "Bearer " + token
         self.session = session
+        self.onUnauthorized = onUnauthorized
+    }
+
+    /// Redeems a sign-in code for an access token.
+    public static func exchange(
+        serverURL: String, code: String, verifier: String, session: URLSession = .shared
+    ) async throws -> String {
+        struct Body: Encodable {
+            let code: String
+            let codeVerifier: String
+            enum CodingKeys: String, CodingKey {
+                case code
+                case codeVerifier = "code_verifier"
+            }
+        }
+        struct Response: Decodable {
+            let accessToken: String
+            enum CodingKeys: String, CodingKey { case accessToken = "access_token" }
+        }
+        let client = try AdminClient(serverURL: serverURL, token: "", session: session)
+        do {
+            let data = try await client.send(
+                "POST", path: "/auth/token", body: JSONEncoder().encode(Body(code: code, codeVerifier: verifier)),
+                authorized: false)
+            return try client.decode(Response.self, from: data).accessToken
+        } catch AdminError.rejected {
+            throw AdminError.signInFailed("Google sign-in expired. Try again.")
+        }
+    }
+
+    /// Revokes the token on the server.
+    public func logout() async throws {
+        _ = try await send("POST", path: "/auth/logout")
+    }
+
+    /// Adds the item mapped to the spoken term `item` to the Woolworths cart.
+    public func addToCart(item: String) async throws -> CartAddition {
+        struct Body: Encodable { let item: String }
+        let data = try await send("POST", path: "/cart/items", body: JSONEncoder().encode(Body(item: item)))
+        return try decode(CartAddition.self, from: data)
+    }
+
+    /// The sentence to speak for `addToCart(item:)`: the addition, or the
+    /// server's message when no mapping exists for `item`.
+    public func addToCartDialog(item: String) async throws -> String {
+        do {
+            return try await addToCart(item: item).dialog
+        } catch AdminError.notFound(let message) {
+            return message
+        }
     }
 
     public func items() async throws -> [Item] {
         struct Response: Decodable { let items: [Item] }
-        let data = try await send("GET", path: "items")
+        let data = try await send("GET", path: "/admin/items")
         return try decode(Response.self, from: data).items
     }
 
@@ -33,27 +83,25 @@ public struct AdminClient: Sendable {
             let quantity: Int
         }
         let body = Body(word: word, url: url.absoluteString, name: name, quantity: quantity)
-        let data = try await send("POST", path: "items", body: JSONEncoder().encode(body))
+        let data = try await send("POST", path: "/admin/items", body: JSONEncoder().encode(body))
         return try decode(Item.self, from: data)
     }
 
     public func remove(word: String) async throws {
         let encoded = word.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? word
-        _ = try await send("POST", path: "items/\(encoded)/delete")
+        _ = try await send("POST", path: "/admin/items/\(encoded)/delete")
     }
 
-    private func send(_ method: String, path: String, body: Data? = nil) async throws -> Data {
+    private func send(_ method: String, path: String, body: Data? = nil, authorized: Bool = true) async throws -> Data {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             throw AdminError.invalidURL
         }
-        var basePath = components.percentEncodedPath
-        if basePath.hasSuffix("/") { basePath.removeLast() }
-        components.percentEncodedPath = basePath + "/admin/" + path
+        components.percentEncodedPath = trimmingTrailingSlash(components.percentEncodedPath) + path
         guard let url = components.url else { throw AdminError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue(authorization, forHTTPHeaderField: "Authorization")
+        if authorized { request.setValue(authorization, forHTTPHeaderField: "Authorization") }
         if let body {
             request.httpBody = body
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -68,11 +116,15 @@ public struct AdminClient: Sendable {
         guard let http = response as? HTTPURLResponse else { throw AdminError.badResponse }
         switch http.statusCode {
         case 200..<300: return data
-        case 401: throw AdminError.unauthorized
-        case 400:
+        case 401:
+            if authorized { onUnauthorized() }
+            throw AdminError.unauthorized
+        case 502: throw AdminError.woolworthsSessionExpired
+        case 400, 404:
             struct Failure: Decodable { let error: String }
-            throw (try? JSONDecoder().decode(Failure.self, from: data)).map { AdminError.rejected($0.error) }
-                ?? AdminError.server(status: 400)
+            let message = (try? JSONDecoder().decode(Failure.self, from: data))?.error
+            guard let message else { throw AdminError.server(status: http.statusCode) }
+            throw http.statusCode == 404 ? AdminError.notFound(message) : .rejected(message)
         default: throw AdminError.server(status: http.statusCode)
         }
     }

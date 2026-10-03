@@ -53,8 +53,40 @@ enum AddItemIntentError: Error, CustomLocalizedStringResourceConvertible {
     }
 }
 
+struct AddToCartIntent: AppIntent {
+    static let title: LocalizedStringResource = "Add to My Woolworths Cart"
+    static let description = IntentDescription("Adds an item you've mapped in Personal Shopper to your Woolworths cart.")
+    static let openAppWhenRun = false
+
+    @Parameter(title: "Item", requestValueDialog: "What do you want to add?")
+    var item: String
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Add \(\.$item) to my Woolworths cart")
+    }
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let spoken = item.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            let dialog = try await SettingsStore().client().addToCartDialog(item: spoken)
+            return .result(dialog: "\(dialog)")
+        } catch {
+            throw AddItemIntentError.failed(error.localizedDescription)
+        }
+    }
+}
+
 struct PersonalShopperShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
+        AppShortcut(
+            intent: AddToCartIntent(),
+            phrases: [
+                "Add to my Woolworths cart with \(.applicationName)",
+                "Add to my cart with \(.applicationName)",
+            ],
+            shortTitle: "Add to Cart",
+            systemImageName: "cart"
+        )
         AppShortcut(
             intent: AddItemIntent(),
             phrases: [

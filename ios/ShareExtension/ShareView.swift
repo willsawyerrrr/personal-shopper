@@ -4,13 +4,20 @@ import SwiftUI
 struct ShareView: View {
     @Bindable var model: AddItemModel
     let hasLink: Bool
+    let signedIn: Bool
     let finish: () -> Void
     let cancel: () -> Void
 
     var body: some View {
         NavigationStack {
             Group {
-                if hasLink {
+                if !signedIn {
+                    ContentUnavailableView(
+                        "Sign in required",
+                        systemImage: "person.crop.circle.badge.exclamationmark",
+                        description: Text("Open Personal Shopper to sign in.")
+                    )
+                } else if hasLink {
                     AddItemForm(model: model, showsURLField: false)
                 } else {
                     ContentUnavailableView(
@@ -24,7 +31,7 @@ struct ShareView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: cancel) }
-                if hasLink {
+                if signedIn, hasLink {
                     ToolbarItem(placement: .confirmationAction) {
                         Button(model.phase == .submitting ? "Adding…" : "Add") { Task { await submit() } }
                             .disabled(!model.canSubmit)

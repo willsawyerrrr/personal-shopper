@@ -6,7 +6,7 @@ public enum SharedConfig {
     public static let defaultServerURL = "https://personal-shopper.willsawyerrrr.dev"
 }
 
-/// The server URL (app-group defaults) and shared secret (Keychain) the app,
+/// The server URL (app-group defaults) and access token (Keychain) the app,
 /// share extension and App Intent all read.
 ///
 /// `@unchecked Sendable`: `UserDefaults` is documented as thread-safe but not annotated.
@@ -14,14 +14,14 @@ public struct SettingsStore: @unchecked Sendable {
     private static let serverURLKey = "serverURL"
 
     private let defaults: UserDefaults
-    private let secrets: any SecretStore
+    private let tokens: any TokenStore
 
     public init(
         defaults: UserDefaults = UserDefaults(suiteName: SharedConfig.appGroup) ?? .standard,
-        secrets: any SecretStore = KeychainSecretStore()
+        tokens: any TokenStore = KeychainTokenStore()
     ) {
         self.defaults = defaults
-        self.secrets = secrets
+        self.tokens = tokens
     }
 
     public var serverURL: String {
@@ -29,20 +29,28 @@ public struct SettingsStore: @unchecked Sendable {
         nonmutating set { defaults.set(newValue, forKey: Self.serverURLKey) }
     }
 
-    public func secret() throws -> String {
-        try secrets.read() ?? ""
-    }
+    public var isSignedIn: Bool { ((try? tokens.read()) ?? nil)?.isEmpty == false }
 
-    public func setSecret(_ secret: String) throws {
-        try secrets.write(secret.trimmingCharacters(in: .whitespacesAndNewlines))
-    }
-
-    /// A client for the saved settings.
+    /// A client for the saved settings. A `401` from the server clears the token.
     ///
-    /// - Throws: `AdminError.notConfigured` without a secret, `.invalidURL` for an unusable server URL.
+    /// - Throws: `AdminError.notSignedIn` without a token, `.invalidURL` for an unusable server URL.
     public func client(session: URLSession = .shared) throws -> AdminClient {
-        let secret = try secret()
-        guard !secret.isEmpty else { throw AdminError.notConfigured }
-        return try AdminClient(serverURL: serverURL, secret: secret, session: session)
+        guard let token = try tokens.read(), !token.isEmpty else { throw AdminError.notSignedIn }
+        let tokens = tokens
+        return try AdminClient(serverURL: serverURL, token: token, session: session) { try? tokens.write(nil) }
+    }
+
+    /// Redeems the code in `callback` and stores the access token.
+    public func completeSignIn(_ signIn: SignIn, callback: URL, session: URLSession = .shared) async throws {
+        let code = try signIn.code(from: callback)
+        let token = try await AdminClient.exchange(
+            serverURL: serverURL, code: code, verifier: signIn.verifier, session: session)
+        try tokens.write(token)
+    }
+
+    /// Revokes the token on the server, best effort, and forgets it.
+    public func signOut(session: URLSession = .shared) async throws {
+        try? await client(session: session).logout()
+        try tokens.write(nil)
     }
 }

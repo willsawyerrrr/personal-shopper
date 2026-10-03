@@ -39,6 +39,9 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.willsawyerrrr.personalshopper
+            CFBundleURLSchemes: [dev.willsawyerrrr.personalshopper]
     entitlements:
       path: App/PersonalShopper.entitlements
       properties:
