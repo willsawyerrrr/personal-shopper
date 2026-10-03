@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile, rename, writeFile } from 'node:fs/promises'
 import { parse, stringify } from 'yaml'
 
 export interface ItemMapping {
@@ -24,7 +24,9 @@ export async function loadItems(path: string): Promise<ItemsConfig> {
 }
 
 export async function saveItems(path: string, items: ItemsConfig): Promise<void> {
-  await writeFile(path, stringify(items), 'utf8')
+  const temporary = `${path}.${process.pid}.tmp`
+  await writeFile(temporary, stringify(items), 'utf8')
+  await rename(temporary, path)
 }
 
 export function resolveItem(items: ItemsConfig, spokenTerm: string): ItemMapping | undefined {

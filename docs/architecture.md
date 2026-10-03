@@ -7,8 +7,8 @@
    of Google, restricts sign-in to `ALLOWED_EMAILS`, and issues its own
    session cookie (browser) or opaque bearer token (clients). Endpoints,
    token lifetime and the client contract are in [`auth.md`](auth.md).
-2. **`/admin`** (`src/admin.ts`): lists, adds, and removes entries in
-   `items.yml` directly, no restart required. It is behind Google sign-in
+2. **`/admin`** (`src/admin.ts`): lists, adds, edits, and removes entries
+   in `items.yml` directly, no restart required. It is behind Google sign-in
    (`/admin/login` is a "Sign in with Google" button; routes in
    `src/login.ts`) and shows every active session with a revoke button. Since
    Woolworths' search is broken (see risks below), there's no in-app product
@@ -16,8 +16,9 @@
    in, and the stockcode is parsed out of `/shop/productdetails/<stockcode>/...`.
    Requests with `Accept: application/json` and a bearer token get JSON
    instead of the web UI's redirects: `GET /admin/items`,
-   `POST /admin/items`, `DELETE /admin/items/:word`, and `401 {error}` when
-   unauthenticated.
+   `POST /admin/items`, `PATCH /admin/items/:word`, `DELETE /admin/items/:word`,
+   and `401 {error}` when unauthenticated. Writes to `items.yml` go through a
+   temporary file and a rename, so a reader never sees a partial file.
 3. **The `extension/` Chrome extension** and **the `ios/` app** are clients of
    that JSON API: from the Woolworths product page (extension) or share sheet
    (iOS) they add a product with its URL and name prefilled. See

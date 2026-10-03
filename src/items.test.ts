@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -66,5 +66,13 @@ describe('saveItems', () => {
     const items: ItemsConfig = { milk: { stockcode: 123456, quantity: 1, name: 'Milk 2L' } }
     await saveItems(path, items)
     await expect(loadItems(path)).resolves.toEqual(items)
+  })
+
+  it('replaces the file without leaving a temporary file behind', async () => {
+    const path = join(dir, 'items.yml')
+    await saveItems(path, { milk: { stockcode: 1, quantity: 1 } })
+    await saveItems(path, { bread: { stockcode: 2, quantity: 1 } })
+    await expect(loadItems(path)).resolves.toEqual({ bread: { stockcode: 2, quantity: 1 } })
+    await expect(readdir(dir)).resolves.toEqual(['items.yml'])
   })
 })

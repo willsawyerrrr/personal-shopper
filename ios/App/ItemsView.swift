@@ -7,6 +7,7 @@ struct ItemsView: View {
     @State private var error: String?
     @State private var loaded = false
     @State private var adding = false
+    @State private var editing: Item?
 
     var body: some View {
         NavigationStack {
@@ -18,12 +19,15 @@ struct ItemsView: View {
                     }
                 }
                 ForEach(items) { item in
-                    VStack(alignment: .leading) {
-                        Text(item.name ?? item.word)
-                        Text("\(item.word) · \(item.stockcode) · qty \(item.quantity)")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                    Button { editing = item } label: {
+                        VStack(alignment: .leading) {
+                            Text(item.name ?? item.word)
+                            Text("\(item.word) · \(item.stockcode) · qty \(item.quantity)")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                     }
+                    .tint(.primary)
                 }
                 .onDelete { offsets in
                     let removed = offsets.map { items[$0] }
@@ -45,6 +49,9 @@ struct ItemsView: View {
             .task(id: session.signedIn) { await load() }
             .sheet(isPresented: $adding, onDismiss: { Task { await load() } }) {
                 AddItemSheet(store: session.store)
+            }
+            .sheet(item: $editing, onDismiss: { Task { await load() } }) { item in
+                EditItemSheet(item: item, store: session.store)
             }
         }
     }

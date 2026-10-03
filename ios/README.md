@@ -1,11 +1,12 @@
 # iOS admin app
 
-Native SwiftUI client for the server's admin API (`src/admin.ts`): list, add
-and remove items, plus a Share extension and an App Intent that add a
+Native SwiftUI client for the server's admin API (`src/admin.ts`): list, add,
+edit and remove items, plus a Share extension and an App Intent that add a
 Woolworths product without opening the web admin.
 
-- **App** (`App/`): Items tab (list, pull to refresh, swipe to delete, add by
-  pasted URL) and Settings tab (server URL, Sign in with Google / Sign out, test connection).
+- **App** (`App/`): Items tab (list, pull to refresh, tap an item to edit its
+  name, trigger phrase, quantity and product link or stockcode, swipe to
+  delete, add by pasted URL) and Settings tab (server URL, Sign in with Google / Sign out, test connection).
 - **Share extension** (`ShareExtension/`): appears in the iOS share sheet for
   URLs and text. Pulls the `woolworths.com.au/shop/productdetails/<stockcode>`
   link out of what was shared, shows name, trigger word and quantity, then
@@ -103,5 +104,5 @@ xcodebuild test -project PersonalShopper.xcodeproj -scheme PersonalShopper \
   -destination 'platform=iOS Simulator,name=iPhone 17'
 ```
 
-Covers URL parsing, settings, PKCE (against the RFC 7636 test vector), sign-in
+Covers URL parsing, the edit form's validation, settings, PKCE (against the RFC 7636 test vector), sign-in
 and the API client (against a stubbed `URLProtocol`).
