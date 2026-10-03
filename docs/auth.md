@@ -95,6 +95,31 @@ Bearer tokens authorise the JSON API on `/admin/items`; send
 | `GET /admin` (HTML), `POST /admin/sessions/:id/revoke` (`204` with JSON) | Browser UI and session revocation                    |
 | `POST /auth/logout`                                                      | `204`; revokes the presented token                   |
 
+### Adding to the cart
+
+`POST /cart/items` adds the product mapped to a spoken phrase to the
+Woolworths cart. It accepts a bearer token only (the web session cookie is
+rejected) and is rate limited to 30 requests per minute per client IP.
+
+```
+POST {PUBLIC_BASE_URL}/cart/items
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{"item": "milk"}
+```
+
+| Status | Body                                                                                        |
+| ------ | ------------------------------------------------------------------------------------------- |
+| `200`  | `{"item": "<phrase as sent>", "stockcode": 123456, "quantity": 1}`; the item is in the cart |
+| `400`  | `{"error":"item is required"}`: `item` is missing, not a string or blank                    |
+| `401`  | `{"error":"unauthorized"}`                                                                  |
+| `404`  | `{"error":"no mapping configured for \"<item>\""}`: no `items.yml` entry for the phrase     |
+| `502`  | `{"error":"<message>"}`: the Woolworths session is expired or rejected                      |
+
+The phrase is matched against `items.yml` like a reminder title: trimmed,
+lower-cased, exact.
+
 A missing, malformed, expired, revoked or no-longer-allowed token gets
 `401 {"error":"unauthorized"}`. On `401` the client discards the token and
 starts sign-in again.

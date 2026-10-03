@@ -24,8 +24,12 @@
    [`extension/README.md`](../extension/README.md) and
    [`ios/README.md`](../ios/README.md); both sign in with the client flow in
    [`auth.md`](auth.md#api-client-sign-in).
-4. **Reminders queue**: items reach the cart through an iCloud Reminders list
-   that the server syncs, below.
+4. **Two paths into the cart**: an iCloud Reminders list that the server
+   syncs (below), and `POST /cart/items` (`src/cart.ts`), which the iOS app's
+   App Intent calls with a bearer token and a spoken phrase. It resolves the
+   phrase against `items.yml` and calls `WoolworthsClient.addToCart`
+   directly; a rejected Woolworths session is a `502`. Contract in
+   [`auth.md`](auth.md#adding-to-the-cart).
 5. **`WoolworthsClient`** (`src/woolworths/client.ts`) calls Woolworths'
    unofficial API directly. `POST /api/v3/ui/trolley/update` for cart changes
    is confirmed working against a live cart. `POST /apis/ui/Search/products`

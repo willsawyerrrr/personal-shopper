@@ -18,7 +18,7 @@ const sessions = new SessionStore(
     : undefined,
 )
 const woolworths = new WoolworthsClient(sessions)
-const app = buildApp(config)
+const app = buildApp(config, { cart: woolworths })
 
 if (config.sessionKeepAliveIntervalMs > 0) {
   const keepAlive = async (): Promise<void> => {

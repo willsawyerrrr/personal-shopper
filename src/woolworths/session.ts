@@ -29,7 +29,7 @@ export interface StoredSession {
 export const SESSION_EXPIRED_MESSAGE =
   'Woolworths session expired — run `pnpm passkey-login` (or `pnpm capture-session`) to refresh it'
 
-class SessionRejectedError extends Error {}
+export class SessionRejectedError extends Error {}
 
 // wow-auth-token and prodwow-auth-token are short-lived JWTs (~1hr); treat
 // anything older as due for a refresh rather than let a cart call fail on an

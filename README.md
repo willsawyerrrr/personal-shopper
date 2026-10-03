@@ -29,7 +29,8 @@ Sign-in is Google only, restricted to `ALLOWED_EMAILS`: the admin UI at
 tokens.
 
 The `ios/` app (see [`ios/README.md`](ios/README.md)) manages items and adds a
-product from the iOS share sheet, Shortcuts or Siri.
+product from the iOS share sheet. Its Siri App Intent adds an item to the cart
+through `POST /cart/items`, authorised by the app's bearer token.
 
 ## Development
 

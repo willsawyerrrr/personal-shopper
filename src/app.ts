@@ -3,10 +3,12 @@ import rateLimit from '@fastify/rate-limit'
 import Fastify, { LogController, type FastifyInstance } from 'fastify'
 import { registerAdmin } from './admin.ts'
 import { requestPath } from './auth.ts'
+import { registerCart } from './cart.ts'
 import type { AppConfig } from './config.ts'
 import { GoogleOAuth } from './google.ts'
 import { registerLogin } from './login.ts'
 import { TokenStore } from './tokens.ts'
+import type { CartClient } from './woolworths/client.ts'
 
 const HEALTH_CHECK_PATH = '/healthz'
 
@@ -17,6 +19,8 @@ export interface AppOptions {
   fetch?: typeof fetch
   /** Replaces the clock (used by tests). */
   now?: () => number
+  /** Enables `POST /cart/items`; without it the route does not exist. */
+  cart?: CartClient
 }
 
 export function buildApp(config: AppConfig, options: AppOptions = {}): FastifyInstance {
@@ -75,6 +79,9 @@ export function buildApp(config: AppConfig, options: AppOptions = {}): FastifyIn
 
   void registerLogin(app, { config, tokens, google, now })
   void registerAdmin(app, config, tokens)
+  if (options.cart) {
+    void registerCart(app, config, tokens, options.cart)
+  }
 
   return app
 }
