@@ -1,5 +1,6 @@
 {
   "manifest_version": 3,
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4XsOuXs/ccpucIANY92G0kSchdoW6ML1tPdG307mXK6R+bIPi7StTPheoiHP9QqhQm6rj3lnEJpCMa6kbvAIZDfwSVIvaH/4ngl6Fik7m232GUwL2fo/QyM5tqD66RFCa9Qgt6DALCszy8ERhych6err9ghWx3/Wd+CQrmSqRDusVtcwlvrAUGvvCQGwvxtX7cfp7XLQarRZesU82t38TGP9arFI1kvxLz07edS50X+B7Hl6F/LXREihMY20wRH7BPalhtmJ1wWCV7r7qmd1T3ZisO7FI4+9J+zoNah+CPAsN44XDHnRISQglWniXRezegJ4ON1l5WYAsfPKCxkoDwIDAQAB",
   "name": "Personal Shopper — Add Item",
   "version": "1.0.0",
   "description": "Adds the current Woolworths product page to your personal-shopper items list.",
@@ -8,8 +9,8 @@
     "default_title": "Add to Personal Shopper"
   },
   "options_page": "options.html",
-  "permissions": ["activeTab", "scripting", "storage"],
-  "host_permissions": ["http://*/*"],
+  "permissions": ["activeTab", "identity", "scripting", "storage"],
+  "host_permissions": ["http://*/*", "https://*.willsawyerrrr.dev/*"],
   "commands": {
     "_execute_action": {
       "suggested_key": {

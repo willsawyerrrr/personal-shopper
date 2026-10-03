@@ -68,9 +68,9 @@ One-off setup in [Google Cloud Console](https://console.cloud.google.com/);
    ```
 
    Setting secrets restarts the machine. Add
-   `ALLOWED_CLIENT_REDIRECTS=dev.willsawyerrrr.personalshopper://auth,https://<extension-id>.chromiumapp.org/`
-   once the Chrome extension is installed (the default covers only the iOS
-   app).
+   `ALLOWED_CLIENT_REDIRECTS=dev.willsawyerrrr.personalshopper://auth,https://pclllencpcblooaannkgnkncliojdnce.chromiumapp.org/`
+   for the Chrome extension (the default covers only the iOS app; the
+   extension ID is pinned in `extension/manifest.json`).
 
 5. For local development put the same values in `.env` with
    `PUBLIC_BASE_URL=http://localhost:3000`, run `pnpm dev` and open

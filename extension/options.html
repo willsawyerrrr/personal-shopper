@@ -72,6 +72,34 @@
       button:hover {
         background: var(--color-accent-hover);
       }
+      button.secondary {
+        color: var(--color-accent);
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+      }
+      button.secondary:hover {
+        background: var(--color-bg);
+      }
+      #account {
+        margin-top: 1.5rem;
+        padding-top: 1.25rem;
+        border-top: 1px solid var(--color-border);
+      }
+      h2 {
+        font-size: 0.95rem;
+        font-weight: 600;
+        margin: 0 0 0.6rem;
+      }
+      #accountState {
+        margin: 0 0 0.85rem;
+        font-size: 0.85rem;
+        color: var(--color-text-muted);
+      }
+      #accountError {
+        margin: 0.6rem 0 0;
+        font-size: 0.85rem;
+        color: #b3261e;
+      }
       #status {
         margin-left: 0.6rem;
         font-size: 0.85rem;
@@ -86,13 +114,16 @@
         >Server URL
         <input id="serverUrl" placeholder="http://192.168.1.50:3000" required />
       </label>
-      <label
-        >Shared secret
-        <input id="sharedSecret" type="password" required />
-      </label>
       <button type="submit">Save</button>
       <span id="status"></span>
     </form>
-    <script src="options.js"></script>
+    <section id="account">
+      <h2>Account</h2>
+      <p id="accountState"></p>
+      <button id="signIn" type="button">Sign in with Google</button>
+      <button id="signOut" type="button" class="secondary" hidden>Sign out</button>
+      <p id="accountError" class="error"></p>
+    </section>
+    <script type="module" src="options.js"></script>
   </body>
 </html>
