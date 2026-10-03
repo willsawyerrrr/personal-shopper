@@ -123,6 +123,36 @@ export async function registerAdmin(
       }
       return reply.redirect('/admin')
     }
+    const editItem = async (
+      request: FastifyRequest<{ Params: { word: string }; Body: Record<string, unknown> | null }>,
+      reply: FastifyReply,
+    ) => {
+      const items = await loadItems(config.itemsPath)
+      const result = applyEdit(items, normalizeWord(request.params.word), request.body ?? {})
+      if (!result.ok) {
+        if (wantsJson(request)) {
+          return reply.code(result.status).send({ error: result.error })
+        }
+        const sessions = await tokens.list()
+        return reply
+          .code(result.status)
+          .type('text/html')
+          .send(renderPage(items, sessions, current.get(request)?.id, result.error))
+      }
+      await saveItems(config.itemsPath, result.items)
+      if (wantsJson(request)) {
+        return reply.send({ word: result.word, ...result.items[result.word] })
+      }
+      return reply.redirect('/admin')
+    }
+    admin.patch<{ Params: { word: string }; Body: Record<string, unknown> | null }>(
+      '/admin/items/:word',
+      editItem,
+    )
+    admin.post<{ Params: { word: string }; Body: Record<string, unknown> | null }>(
+      '/admin/items/:word/edit',
+      editItem,
+    )
     admin.post<{ Params: { word: string } }>('/admin/items/:word/delete', removeItem)
     admin.delete<{ Params: { word: string } }>('/admin/items/:word', removeItem)
   })
@@ -132,6 +162,83 @@ export async function registerAdmin(
 // JSON bodies and status codes instead of the browser flow's redirects.
 function wantsJson(request: FastifyRequest): boolean {
   return request.headers.accept?.includes('application/json') ?? false
+}
+
+type EditResult =
+  | { ok: true; items: ItemsConfig; word: string }
+  | { ok: false; status: 400 | 404 | 409; error: string }
+
+const blank = (value: unknown) => value === undefined || value === null || value === ''
+
+function positiveInteger(value: unknown): number | undefined {
+  const number = typeof value === 'string' && /^\d+$/.test(value.trim()) ? Number(value) : value
+  return typeof number === 'number' && Number.isSafeInteger(number) && number > 0
+    ? number
+    : undefined
+}
+
+// Applies the editable fields in `fields` to the item for `word`, leaving every other entry in
+// place and in order. Blank `url`, `stockcode` and `quantity` mean "unchanged"; a blank `name`
+// removes the stored name. `url` takes precedence over `stockcode`.
+function applyEdit(items: ItemsConfig, word: string, fields: Record<string, unknown>): EditResult {
+  const existing = items[word]
+  if (!existing) {
+    return { ok: false, status: 404, error: `No item for "${word}".` }
+  }
+  const invalid = (error: string): EditResult => ({ ok: false, status: 400, error })
+  const mapping: ItemMapping = { ...existing }
+
+  let newWord = word
+  if (fields.word !== undefined) {
+    newWord = typeof fields.word === 'string' ? normalizeWord(fields.word) : ''
+    if (!newWord) {
+      return invalid('A trigger word is required.')
+    }
+    if (newWord !== word && items[newWord]) {
+      return { ok: false, status: 409, error: `"${newWord}" is already used by another item.` }
+    }
+  }
+
+  if (!blank(fields.url)) {
+    const stockcode = typeof fields.url === 'string' ? parseStockcode(fields.url) : undefined
+    if (!stockcode) {
+      return invalid(
+        'Could not find a stockcode in that URL — paste a link like /shop/productdetails/123456/product-name, or the stockcode itself.',
+      )
+    }
+    mapping.stockcode = stockcode
+  } else if (!blank(fields.stockcode)) {
+    const stockcode = positiveInteger(fields.stockcode)
+    if (!stockcode) {
+      return invalid('The stockcode must be a positive integer.')
+    }
+    mapping.stockcode = stockcode
+  }
+
+  if (!blank(fields.quantity)) {
+    const quantity = positiveInteger(fields.quantity)
+    if (!quantity) {
+      return invalid('The quantity must be a positive integer.')
+    }
+    mapping.quantity = quantity
+  }
+
+  if (fields.name !== undefined && fields.name !== null) {
+    if (typeof fields.name !== 'string') {
+      return invalid('The name must be text.')
+    }
+    const name = fields.name.trim()
+    if (name) {
+      mapping.name = name
+    } else {
+      delete mapping.name
+    }
+  }
+
+  const edited = Object.fromEntries(
+    Object.entries(items).map(([key, value]) => (key === word ? [newWord, mapping] : [key, value])),
+  )
+  return { ok: true, items: edited, word: newWord }
 }
 
 function parseStockcode(input: string): number | undefined {
@@ -214,6 +321,13 @@ const PAGE_STYLES = `
     border: 1px solid var(--color-border);
   }
   table button:hover { background: var(--color-bg); }
+  details.edit { margin-bottom: 0.4rem; }
+  details.edit summary {
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: var(--color-accent);
+  }
+  details.edit form { min-width: 14rem; margin-top: 0.6rem; }
   .error { color: var(--color-danger); margin: 0 0 1rem; font-size: 0.9rem; }
   .hint { color: var(--color-text-muted); font-size: 0.85rem; margin: 0 0 1rem; }
   .top-bar { display: flex; align-items: center; justify-content: space-between; }
@@ -275,6 +389,24 @@ function renderPage(
           <td>${mapping.stockcode}</td>
           <td>${mapping.quantity}</td>
           <td>
+            <details class="edit">
+              <summary>Edit</summary>
+              <form method="post" action="/admin/items/${encodeURIComponent(word)}/edit">
+                <label>Trigger word
+                  <input name="word" required value="${escapeHtml(word)}">
+                </label>
+                <label>Woolworths product URL or stockcode
+                  <input name="url" required value="${mapping.stockcode}">
+                </label>
+                <label>Display name
+                  <input name="name" value="${escapeHtml(mapping.name ?? '')}">
+                </label>
+                <label>Quantity
+                  <input name="quantity" type="number" min="1" value="${mapping.quantity}">
+                </label>
+                <button type="submit">Save</button>
+              </form>
+            </details>
             <form method="post" action="/admin/items/${encodeURIComponent(word)}/delete">
               <button type="submit">Remove</button>
             </form>

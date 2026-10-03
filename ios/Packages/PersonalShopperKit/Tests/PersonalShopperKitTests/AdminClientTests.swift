@@ -279,3 +279,142 @@ struct SettingsStoreTests {
         #expect(!configured.isSignedIn)
     }
 }
+
+extension AdminClientTests {
+    private func body(of request: URLRequest) throws -> [String: Any] {
+        let data = try #require(request.httpBody)
+        return try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    @Test func updatesItemWithPatch() async throws {
+        StubURLProtocol.stub(body: #"{"word":"oat milk","stockcode":654321,"quantity":3,"name":"Oat"}"#)
+        let item = try await client.update(
+            word: "ice cream/2", newWord: "oat milk", product: "654321", name: "Oat", quantity: 3)
+        #expect(item == Item(word: "oat milk", stockcode: 654321, quantity: 3, name: "Oat"))
+        let request = try #require(StubURLProtocol.requests.withLock { $0.first })
+        #expect(request.httpMethod == "PATCH")
+        #expect(request.url?.absoluteString == "https://example.test/admin/items/ice%20cream%2F2")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer ps_tok")
+        let sent = try body(of: request)
+        #expect(sent["word"] as? String == "oat milk")
+        #expect(sent["url"] as? String == "654321")
+        #expect(sent["name"] as? String == "Oat")
+        #expect(sent["quantity"] as? Int == 3)
+    }
+
+    @Test func updateSendsOnlyGivenFields() async throws {
+        StubURLProtocol.stub(body: #"{"word":"milk","stockcode":1,"quantity":2}"#)
+        try await client.update(word: "milk", quantity: 2)
+        let sent = try body(of: try #require(StubURLProtocol.requests.withLock { $0.first }))
+        #expect(Set(sent.keys) == ["quantity"])
+    }
+
+    @Test func updateSurfacesCollisionAndValidationMessages() async {
+        StubURLProtocol.stub(status: 409, body: #"{"error":"\"bread\" is already used by another item."}"#)
+        await #expect(throws: AdminError.rejected("\"bread\" is already used by another item.")) {
+            try await client.update(word: "milk", newWord: "bread")
+        }
+        StubURLProtocol.stub(status: 400, body: #"{"error":"The quantity must be a positive integer."}"#)
+        await #expect(throws: AdminError.rejected("The quantity must be a positive integer.")) {
+            try await client.update(word: "milk", quantity: 0)
+        }
+        StubURLProtocol.stub(status: 404, body: #"{"error":"No item for \"milk\"."}"#)
+        await #expect(throws: AdminError.notFound("No item for \"milk\".")) {
+            try await client.update(word: "milk", quantity: 1)
+        }
+        StubURLProtocol.stub(status: 401)
+        await #expect(throws: AdminError.unauthorized) { try await client.update(word: "milk", quantity: 1) }
+    }
+
+    @MainActor
+    private func editModel(
+        _ item: Item = Item(word: "milk", stockcode: 123, quantity: 2, name: "Milk"),
+        onUnauthorized: @escaping @Sendable () -> Void = {}
+    ) throws -> EditItemModel {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubURLProtocol.self]
+        let client = try AdminClient(
+            serverURL: "https://example.test", token: "t", session: URLSession(configuration: configuration),
+            onUnauthorized: onUnauthorized)
+        return EditItemModel(item: item) { client }
+    }
+
+    @MainActor @Test func editFormStartsFromTheItem() throws {
+        let model = try editModel()
+        #expect(model.word == "milk")
+        #expect(model.name == "Milk")
+        #expect(model.product == "123")
+        #expect(model.quantity == 2)
+        #expect(model.canSubmit)
+    }
+
+    @MainActor @Test func editFormValidatesFields() throws {
+        let model = try editModel()
+        model.word = "  "
+        #expect(model.wordError != nil)
+        #expect(!model.canSubmit)
+        model.word = "milk"
+        for invalid in ["", "abc", "0", "-5", "https://example.com/shop/productdetails/1/x"] {
+            model.product = invalid
+            #expect(model.productError != nil, "\(invalid)")
+            #expect(!model.canSubmit)
+        }
+        for valid in ["456", " 456 ", "https://www.woolworths.com.au/shop/productdetails/456/milk"] {
+            model.product = valid
+            #expect(model.productError == nil, "\(valid)")
+            #expect(model.canSubmit)
+        }
+        model.quantity = 0
+        #expect(!model.canSubmit)
+        model.quantity = 100
+        #expect(!model.canSubmit)
+    }
+
+    @MainActor @Test func editFormSavesTrimmedFields() async throws {
+        StubURLProtocol.stub(body: #"{"word":"oat milk","stockcode":456,"quantity":3}"#)
+        let model = try editModel()
+        model.word = " Oat milk "
+        model.name = "  "
+        model.product = "https://www.woolworths.com.au/shop/productdetails/456/oat-milk"
+        model.quantity = 3
+        await model.submit()
+        #expect(model.phase == .saved)
+        let request = try #require(StubURLProtocol.requests.withLock { $0.first })
+        #expect(request.url?.path == "/admin/items/milk")
+        let sent = try body(of: request)
+        #expect(sent["word"] as? String == "Oat milk")
+        #expect(sent["name"] as? String == "")
+        #expect(sent["url"] as? String == "https://www.woolworths.com.au/shop/productdetails/456/oat-milk")
+        #expect(sent["quantity"] as? Int == 3)
+    }
+
+    @MainActor @Test func editFormShowsServerErrorAndAllowsRetry() async throws {
+        StubURLProtocol.stub(status: 409, body: #"{"error":"\"bread\" is already used by another item."}"#)
+        let model = try editModel()
+        model.word = "bread"
+        await model.submit()
+        #expect(model.phase == .failed("\"bread\" is already used by another item."))
+        #expect(!model.signedOut)
+        model.dismissFailure()
+        #expect(model.phase == .editing)
+    }
+
+    @MainActor @Test func editFormReportsSignedOutOnUnauthorized() async throws {
+        let cleared = Mutex(false)
+        StubURLProtocol.stub(status: 401)
+        let model = try editModel { cleared.withLock { $0 = true } }
+        await model.submit()
+        #expect(model.signedOut)
+        #expect(cleared.withLock { $0 })
+        #expect(model.phase == .failed(AdminError.unauthorized.localizedDescription))
+    }
+
+    @MainActor @Test func editFormDoesNotSubmitWhenInvalid() async throws {
+        StubURLProtocol.stub()
+        let model = try editModel()
+        model.quantity = 0
+        await model.submit()
+        #expect(model.phase == .editing)
+        #expect(StubURLProtocol.requests.withLock { $0.isEmpty })
+    }
+}

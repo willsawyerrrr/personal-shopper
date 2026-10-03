@@ -87,13 +87,37 @@ sends `Authorization: Bearer <access_token>` on every API call.
 Bearer tokens authorise the JSON API on `/admin/items`; send
 `Accept: application/json`:
 
-| Request                                                                  | Success                                              |
-| ------------------------------------------------------------------------ | ---------------------------------------------------- |
-| `GET /admin/items`                                                       | `200 {"items":[{word, stockcode, quantity, name?}]}` |
-| `POST /admin/items` with `{word, url, name?, quantity?}`                 | `201` with the stored item; `400 {error}` if invalid |
-| `DELETE /admin/items/:word` (or `POST /admin/items/:word/delete`)        | `204`                                                |
-| `GET /admin` (HTML), `POST /admin/sessions/:id/revoke` (`204` with JSON) | Browser UI and session revocation                    |
-| `POST /auth/logout`                                                      | `204`; revokes the presented token                   |
+| Request                                                                  | Success                                               |
+| ------------------------------------------------------------------------ | ----------------------------------------------------- |
+| `GET /admin/items`                                                       | `200 {"items":[{word, stockcode, quantity, name?}]}`  |
+| `POST /admin/items` with `{word, url, name?, quantity?}`                 | `201` with the stored item; `400 {error}` if invalid  |
+| `PATCH /admin/items/:word` with any of the fields below                  | `200` with the stored item; `400`, `404`, `409` below |
+| `DELETE /admin/items/:word` (or `POST /admin/items/:word/delete`)        | `204`                                                 |
+| `GET /admin` (HTML), `POST /admin/sessions/:id/revoke` (`204` with JSON) | Browser UI and session revocation                     |
+| `POST /auth/logout`                                                      | `204`; revokes the presented token                    |
+
+`PATCH /admin/items/:word` (browser form: `POST /admin/items/:word/edit`)
+changes only the fields sent, keeps every other entry and the item's position
+in `items.yml`, and writes the file atomically. `:word` is normalised like
+`word` on `POST`.
+
+| Field       | Meaning                                                                         |
+| ----------- | ------------------------------------------------------------------------------- |
+| `word`      | New trigger phrase, trimmed and lower-cased                                     |
+| `url`       | Product URL or stockcode, parsed like `POST`; takes precedence over `stockcode` |
+| `stockcode` | Positive integer                                                                |
+| `quantity`  | Positive integer                                                                |
+| `name`      | Display name; an empty string removes it                                        |
+
+| Status | Body                                                            |
+| ------ | --------------------------------------------------------------- |
+| `400`  | `{"error":"<message>"}`: a field is invalid; nothing is written |
+| `404`  | `{"error":"<message>"}`: no item for `:word`                    |
+| `409`  | `{"error":"<message>"}`: `word` is already used by another item |
+
+Browser form edits answer the same statuses by re-rendering `/admin` with the
+message, and redirect to `/admin` on success. They rely on the session
+cookie's `SameSite=Lax`, like the other form posts.
 
 ### Adding to the cart
 

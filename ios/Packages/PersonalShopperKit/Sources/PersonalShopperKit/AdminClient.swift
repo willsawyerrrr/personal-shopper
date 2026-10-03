@@ -87,6 +87,25 @@ public struct AdminClient: Sendable {
         return try decode(Item.self, from: data)
     }
 
+    /// Changes the item for `word` and returns the stored item. Only the
+    /// arguments given change: `newWord` renames the trigger phrase, `product`
+    /// is a product URL or stockcode, and an empty `name` removes the name.
+    @discardableResult
+    public func update(
+        word: String, newWord: String? = nil, product: String? = nil, name: String? = nil, quantity: Int? = nil
+    ) async throws -> Item {
+        struct Body: Encodable {
+            let word: String?
+            let url: String?
+            let name: String?
+            let quantity: Int?
+        }
+        let encoded = word.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? word
+        let body = Body(word: newWord, url: product, name: name, quantity: quantity)
+        let data = try await send("PATCH", path: "/admin/items/\(encoded)", body: JSONEncoder().encode(body))
+        return try decode(Item.self, from: data)
+    }
+
     public func remove(word: String) async throws {
         let encoded = word.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? word
         _ = try await send("POST", path: "/admin/items/\(encoded)/delete")
@@ -120,7 +139,7 @@ public struct AdminClient: Sendable {
             if authorized { onUnauthorized() }
             throw AdminError.unauthorized
         case 502: throw AdminError.woolworthsSessionExpired
-        case 400, 404:
+        case 400, 404, 409:
             struct Failure: Decodable { let error: String }
             let message = (try? JSONDecoder().decode(Failure.self, from: data))?.error
             guard let message else { throw AdminError.server(status: http.statusCode) }

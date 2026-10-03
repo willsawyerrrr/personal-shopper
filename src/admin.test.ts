@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
+import { parse } from 'yaml'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { buildApp } from './app.ts'
 import type { AppConfig } from './config.ts'
@@ -186,6 +187,55 @@ describe('admin', () => {
     expect(items).not.toContain('bread:')
   })
 
+  it('offers an edit form per item, prefilled', async () => {
+    const response = await app.inject({ method: 'GET', url: '/admin', headers: authHeader })
+    expect(response.body).toContain('action="/admin/items/milk/edit"')
+    expect(response.body).toContain('name="word" required value="milk"')
+    expect(response.body).toContain('name="url" required value="123456"')
+    expect(response.body).toContain('name="quantity" type="number" min="1" value="1"')
+  })
+
+  it('edits an item from the web form and redirects', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/admin/items/milk/edit',
+      headers: { ...authHeader, 'content-type': 'application/x-www-form-urlencoded' },
+      payload: 'word=Oat+Milk&url=654321&name=Oat+Milk+1L&quantity=3',
+    })
+    expect(response.statusCode).toBe(302)
+    expect(response.headers.location).toBe('/admin')
+    expect(await readFile(config.itemsPath, 'utf8')).toBe(
+      'oat milk:\n  stockcode: 654321\n  quantity: 3\n  name: Oat Milk 1L\n',
+    )
+  })
+
+  it('re-renders the page with the error when a web edit collides', async () => {
+    await writeFile(
+      config.itemsPath,
+      'milk:\n  stockcode: 1\n  quantity: 1\nbread:\n  stockcode: 2\n  quantity: 1\n',
+    )
+    const response = await app.inject({
+      method: 'POST',
+      url: '/admin/items/milk/edit',
+      headers: { ...authHeader, 'content-type': 'application/x-www-form-urlencoded' },
+      payload: 'word=bread&url=1&quantity=1',
+    })
+    expect(response.statusCode).toBe(409)
+    expect(response.body).toContain('already used by another item')
+    expect(await readFile(config.itemsPath, 'utf8')).toContain('milk:')
+  })
+
+  it('answers unauthenticated web edits with 401', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/admin/items/milk/edit',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      payload: 'word=oat&url=1',
+    })
+    expect(response.statusCode).toBe(401)
+    expect(await readFile(config.itemsPath, 'utf8')).toContain('milk:')
+  })
+
   it('removes an item', async () => {
     const response = await app.inject({
       method: 'POST',
@@ -265,6 +315,111 @@ describe('admin', () => {
       })
       expect(response.statusCode).toBe(400)
       expect(response.json()).toEqual({ error: 'A trigger word is required.' })
+    })
+
+    describe('PATCH /admin/items/:word', () => {
+      const patch = async (word: string, payload: Record<string, unknown>) =>
+        await app.inject({ method: 'PATCH', url: `/admin/items/${word}`, headers: json, payload })
+
+      beforeEach(async () => {
+        await writeFile(
+          config.itemsPath,
+          'milk:\n  stockcode: 1\n  quantity: 1\n  name: Milk\nbread:\n  stockcode: 2\n  quantity: 1\neggs:\n  stockcode: 3\n  quantity: 1\n',
+        )
+      })
+
+      it('changes quantity and stockcode, keeping other entries and order', async () => {
+        const response = await patch('bread', { quantity: 4, stockcode: 99 })
+        expect(response.statusCode).toBe(200)
+        expect(response.json()).toEqual({ word: 'bread', stockcode: 99, quantity: 4 })
+        expect(parse(await readFile(config.itemsPath, 'utf8'))).toEqual({
+          milk: { stockcode: 1, quantity: 1, name: 'Milk' },
+          bread: { stockcode: 99, quantity: 4 },
+          eggs: { stockcode: 3, quantity: 1 },
+        })
+        expect(Object.keys(parse(await readFile(config.itemsPath, 'utf8')))).toEqual([
+          'milk',
+          'bread',
+          'eggs',
+        ])
+      })
+
+      it('renames the phrase in place, normalised', async () => {
+        const response = await patch('bread', { word: '  Sourdough ' })
+        expect(response.statusCode).toBe(200)
+        expect(response.json().word).toBe('sourdough')
+        expect(Object.keys(parse(await readFile(config.itemsPath, 'utf8')))).toEqual([
+          'milk',
+          'sourdough',
+          'eggs',
+        ])
+      })
+
+      it('accepts a rename that only changes case', async () => {
+        const response = await patch('bread', { word: 'BREAD', quantity: 2 })
+        expect(response.statusCode).toBe(200)
+        expect(response.json()).toEqual({ word: 'bread', stockcode: 2, quantity: 2 })
+      })
+
+      it('parses a url to a stockcode', async () => {
+        const response = await patch('bread', {
+          url: 'https://www.woolworths.com.au/shop/productdetails/888137/bread',
+        })
+        expect(response.json().stockcode).toBe(888137)
+      })
+
+      it('sets and clears the name', async () => {
+        expect((await patch('bread', { name: ' Sourdough ' })).json().name).toBe('Sourdough')
+        const cleared = await patch('bread', { name: '' })
+        expect(cleared.json()).toEqual({ word: 'bread', stockcode: 2, quantity: 1 })
+      })
+
+      it('looks the item up by normalised word', async () => {
+        const response = await patch('MILK', { quantity: 2 })
+        expect(response.statusCode).toBe(200)
+      })
+
+      it('rejects a rename onto another item with 409', async () => {
+        const response = await patch('bread', { word: 'Milk' })
+        expect(response.statusCode).toBe(409)
+        expect(response.json().error).toContain('already used')
+        expect(parse(await readFile(config.itemsPath, 'utf8')).bread).toBeDefined()
+      })
+
+      it('answers an unknown word with 404', async () => {
+        const response = await patch('cheese', { quantity: 2 })
+        expect(response.statusCode).toBe(404)
+        expect(response.json().error).toContain('cheese')
+      })
+
+      it.each([
+        { quantity: 0 },
+        { quantity: -1 },
+        { quantity: 1.5 },
+        { quantity: 'many' },
+        { stockcode: 0 },
+        { stockcode: 'abc' },
+        { url: 'nope' },
+        { word: '   ' },
+        { word: 5 },
+        { name: 5 },
+      ])('rejects %j with 400 and writes nothing', async (payload) => {
+        const before = await readFile(config.itemsPath, 'utf8')
+        const response = await patch('bread', payload)
+        expect(response.statusCode).toBe(400)
+        expect(response.json().error).toEqual(expect.any(String))
+        expect(await readFile(config.itemsPath, 'utf8')).toBe(before)
+      })
+
+      it('answers unauthenticated requests with 401', async () => {
+        const response = await app.inject({
+          method: 'PATCH',
+          url: '/admin/items/bread',
+          headers: { accept: 'application/json' },
+          payload: { quantity: 2 },
+        })
+        expect(response.statusCode).toBe(401)
+      })
     })
 
     it('removes an item with DELETE and 204', async () => {
