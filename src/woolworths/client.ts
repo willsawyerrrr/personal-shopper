@@ -47,9 +47,9 @@ export class WoolworthsClient implements CartClient {
   }
 
   private async request(path: string, body: unknown): Promise<unknown> {
-    const session = await this.sessions.load()
+    let session = await this.sessions.load()
     if (this.sessions.isExpired(session)) {
-      throw new Error('Woolworths session expired — run `pnpm capture-session` to refresh it')
+      session = await this.sessions.refresh(session)
     }
     const response = await fetch(`${BASE_URL}${path}`, {
       method: 'POST',

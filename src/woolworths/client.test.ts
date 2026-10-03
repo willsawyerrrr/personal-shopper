@@ -10,6 +10,7 @@ function fakeSessionStore(overrides: Partial<SessionStore> = {}): SessionStore {
   return {
     load: vi.fn().mockResolvedValue(session),
     save: vi.fn(),
+    refresh: vi.fn(),
     isExpired: vi.fn().mockReturnValue(false),
     toCookieHeader: vi.fn().mockReturnValue('wow-auth-token=abc'),
     ...overrides,
@@ -46,6 +47,37 @@ describe('WoolworthsClient', () => {
     expect(body.items[0]).toMatchObject({ stockcode: 123456, quantity: 2 })
   })
 
+  it('refreshes an expiring session and uses the refreshed cookies', async () => {
+    const refreshed: StoredSession = {
+      cookies: [{ name: 'wow-auth-token', value: 'new' }],
+      capturedAt: new Date().toISOString(),
+    }
+    const sessions = fakeSessionStore({
+      isExpired: vi.fn().mockReturnValue(true),
+      refresh: vi.fn().mockResolvedValue(refreshed),
+      toCookieHeader: vi.fn().mockReturnValue('wow-auth-token=new'),
+    })
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }))
+    global.fetch = fetchMock
+
+    await new WoolworthsClient(sessions).addToCart(1, 1)
+
+    expect(sessions.toCookieHeader).toHaveBeenCalledWith(refreshed)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('fails without calling Woolworths when the refresh is rejected', async () => {
+    const sessions = fakeSessionStore({
+      isExpired: vi.fn().mockReturnValue(true),
+      refresh: vi.fn().mockRejectedValue(new Error('Woolworths session expired')),
+    })
+    const fetchMock = vi.fn()
+    global.fetch = fetchMock
+
+    await expect(new WoolworthsClient(sessions).addToCart(1, 1)).rejects.toThrow('session expired')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('parses search results from the Products array', async () => {
     global.fetch = vi.fn().mockResolvedValue(
       new Response(
@@ -60,13 +92,6 @@ describe('WoolworthsClient', () => {
     await expect(client.search('milk')).resolves.toEqual([
       { stockcode: 1, name: 'Milk 2L', price: 3.5, isAvailable: true },
     ])
-  })
-
-  it('refuses to call the API with an expired session', async () => {
-    const client = new WoolworthsClient(
-      fakeSessionStore({ isExpired: vi.fn().mockReturnValue(true) }),
-    )
-    await expect(client.addToCart(1, 1)).rejects.toThrow(/session expired/)
   })
 
   it('throws when the API responds with an error status', async () => {

@@ -1,9 +1,14 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile, rename, writeFile } from 'node:fs/promises'
+
+const BASE_URL = 'https://www.woolworths.com.au'
+
+export const REFRESH_COOKIE = 'w-aref'
 
 export const REQUIRED_COOKIES = [
   'w-rctx',
   'wow-auth-token',
   'prodwow-auth-token',
+  REFRESH_COOKIE,
   'bm_sv',
   '_abck',
   'ak_bmsc',
@@ -19,11 +24,17 @@ export interface StoredSession {
   capturedAt: string
 }
 
+export const SESSION_EXPIRED_MESSAGE =
+  'Woolworths session expired — run `pnpm capture-session` to refresh it'
+
 // wow-auth-token and prodwow-auth-token are short-lived JWTs (~1hr); treat
-// anything older as stale rather than let a cart call fail on an expired token.
+// anything older as due for a refresh rather than let a cart call fail on an
+// expired token.
 const SESSION_LIFETIME_MS = 55 * 60 * 1000
 
 export class SessionStore {
+  private refreshing: Promise<StoredSession> | undefined
+
   constructor(private readonly path: string) {}
 
   async load(): Promise<StoredSession> {
@@ -31,8 +42,11 @@ export class SessionStore {
     return JSON.parse(raw) as StoredSession
   }
 
+  /** Writes via a temp file and rename so a crash never leaves a truncated jar. */
   async save(session: StoredSession): Promise<void> {
-    await writeFile(this.path, JSON.stringify(session, null, 2), 'utf8')
+    const tempPath = `${this.path}.tmp`
+    await writeFile(tempPath, JSON.stringify(session, null, 2), 'utf8')
+    await rename(tempPath, this.path)
   }
 
   isExpired(session: StoredSession): boolean {
@@ -42,4 +56,82 @@ export class SessionStore {
   toCookieHeader(session: StoredSession): string {
     return session.cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('; ')
   }
+
+  /**
+   * Calls `GET /auth/heartbeat` with the stored cookies and persists every
+   * re-issued cookie, including the rotated `w-aref`. Concurrent calls share
+   * one request, since each call rotates `w-aref`. Throws the session-expired
+   * error on a non-200, `refreshed: false`, or a response without a new
+   * `w-aref`.
+   */
+  refresh(session: StoredSession): Promise<StoredSession> {
+    this.refreshing ??= this.heartbeat(session).finally(() => {
+      this.refreshing = undefined
+    })
+    return this.refreshing
+  }
+
+  private async heartbeat(session: StoredSession): Promise<StoredSession> {
+    const response = await fetch(`${BASE_URL}/auth/heartbeat`, {
+      headers: {
+        Accept: 'application/json, text/plain, */*',
+        Referer: `${BASE_URL}/`,
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Cookie: this.toCookieHeader(session),
+      },
+    })
+    if (!response.ok) {
+      throw new Error(SESSION_EXPIRED_MESSAGE)
+    }
+    const body = (await response.json().catch(() => undefined)) as
+      { refreshed?: boolean } | undefined
+    const issued = parseSetCookies(response.headers.getSetCookie())
+    if (body?.refreshed !== true || !issued.some((cookie) => cookie.name === REFRESH_COOKIE)) {
+      throw new Error(SESSION_EXPIRED_MESSAGE)
+    }
+    const refreshed: StoredSession = {
+      cookies: mergeCookies(session.cookies, issued),
+      capturedAt: new Date().toISOString(),
+    }
+    await this.save(refreshed)
+    return refreshed
+  }
+}
+
+interface IssuedCookie extends StoredCookie {
+  remove: boolean
+}
+
+function parseSetCookies(headers: string[]): IssuedCookie[] {
+  return headers.flatMap((header) => {
+    const [pair = '', ...attributes] = header.split(';')
+    const separator = pair.indexOf('=')
+    if (separator <= 0) {
+      return []
+    }
+    const maxAge = attributes
+      .map((attribute) => /^\s*max-age\s*=\s*(-?\d+)/i.exec(attribute)?.[1])
+      .find((value) => value !== undefined)
+    const value = pair.slice(separator + 1).trim()
+    return [
+      {
+        name: pair.slice(0, separator).trim(),
+        value,
+        remove: value === '' || (maxAge !== undefined && Number(maxAge) <= 0),
+      },
+    ]
+  })
+}
+
+function mergeCookies(existing: StoredCookie[], issued: IssuedCookie[]): StoredCookie[] {
+  const jar = new Map(existing.map((cookie) => [cookie.name, cookie.value]))
+  for (const { name, value, remove } of issued) {
+    if (remove) {
+      jar.delete(name)
+    } else {
+      jar.set(name, value)
+    }
+  }
+  return [...jar].map(([name, value]) => ({ name, value }))
 }

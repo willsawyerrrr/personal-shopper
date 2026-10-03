@@ -11,6 +11,16 @@ const sessions = new SessionStore(config.sessionPath)
 const woolworths = new WoolworthsClient(sessions)
 const app = buildApp(config, woolworths)
 
+if (config.sessionKeepAliveIntervalMs > 0) {
+  const keepAlive = async (): Promise<void> => {
+    await sessions.refresh(await sessions.load())
+  }
+  setInterval(
+    () => void keepAlive().catch((error: unknown) => app.log.error(error)),
+    config.sessionKeepAliveIntervalMs,
+  )
+}
+
 if (config.remindersSync) {
   const { icloudUsername, icloudAppSpecificPassword, listName, intervalMs } = config.remindersSync
   const reminders = new ICloudRemindersClient(icloudUsername, icloudAppSpecificPassword, listName)
