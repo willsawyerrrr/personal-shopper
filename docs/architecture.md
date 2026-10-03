@@ -40,6 +40,16 @@
    than the admin UI's session cookie, since it's a background `fetch` call
    with no browser chrome to show a login form in. See
    [`extension/README.md`](../extension/README.md).
+7. **The `ios/` app** is a SwiftUI client of the same routes. Requests with
+   `Accept: application/json` and Basic auth get JSON instead of the web
+   UI's redirects and login page: `GET /admin/items` returns
+   `{items: [{word, stockcode, quantity, name?}]}`, `POST /admin/items`
+   (JSON body `word`, `url`, `name?`, `quantity?`) returns 201 with the
+   stored item or 400 `{error}`, `POST /admin/items/:word/delete` returns
+   204, and a missing or wrong secret returns 401 `{error}`. The app's Share
+   extension (iOS share sheet) and `AddItemIntent` (Shortcuts/Siri) share one
+   Swift package for the client, Keychain-stored secret and URL parsing. See
+   [`ios/README.md`](../ios/README.md).
 
 ## Reminders offline queue
 

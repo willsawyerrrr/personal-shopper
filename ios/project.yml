@@ -1,0 +1,82 @@
+name: PersonalShopper
+options:
+  bundleIdPrefix: dev.willsawyerrrr.personalshopper
+  deploymentTarget:
+    iOS: '18.0'
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: '6.0'
+    # Set to your team ID (or in Xcode: Signing & Capabilities) to run on a device.
+    DEVELOPMENT_TEAM: ''
+    CODE_SIGN_STYLE: Automatic
+    GENERATE_INFOPLIST_FILE: NO
+packages:
+  PersonalShopperKit:
+    path: Packages/PersonalShopperKit
+targets:
+  PersonalShopper:
+    type: application
+    platform: iOS
+    sources: [App]
+    dependencies:
+      - package: PersonalShopperKit
+      - target: ShareExtension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.willsawyerrrr.personalshopper
+        TARGETED_DEVICE_FAMILY: '1,2'
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Personal Shopper
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    entitlements:
+      path: App/PersonalShopper.entitlements
+      properties:
+        com.apple.security.application-groups: [group.dev.willsawyerrrr.personalshopper]
+        keychain-access-groups: [$(AppIdentifierPrefix)dev.willsawyerrrr.personalshopper]
+  ShareExtension:
+    type: app-extension
+    platform: iOS
+    sources: [ShareExtension]
+    dependencies:
+      - package: PersonalShopperKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.willsawyerrrr.personalshopper.share
+        TARGETED_DEVICE_FAMILY: '1,2'
+    info:
+      path: ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Personal Shopper
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationSupportsWebURLWithMaxCount: 1
+            NSExtensionActivationSupportsText: true
+    entitlements:
+      path: ShareExtension/ShareExtension.entitlements
+      properties:
+        com.apple.security.application-groups: [group.dev.willsawyerrrr.personalshopper]
+        keychain-access-groups: [$(AppIdentifierPrefix)dev.willsawyerrrr.personalshopper]
+schemes:
+  PersonalShopper:
+    build:
+      targets:
+        PersonalShopper: all
+    run:
+      config: Debug
+    test:
+      targets:
+        - package: PersonalShopperKit/PersonalShopperKitTests
