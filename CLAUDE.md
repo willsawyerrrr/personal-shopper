@@ -15,7 +15,10 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   spoken term → stockcode + quantity), not fuzzy search or NLU. If the
   household wants a different brand, they edit the file.
 - Session auth is manual-login-then-cookie-replay
-  (`scripts/capture-session.ts`), not automated credential login — Woolworths'
+  (`scripts/capture-session.ts`), kept alive by `GET /auth/heartbeat`
+  refreshes (on demand near token expiry, plus an opt-out timer) that
+  persist the rotating `w-aref` cookie. It is not automated credential
+  login — Woolworths'
   login requires approving a passkey (synced through 1Password, or an SMS
   code) in a real browser and sits behind Akamai Bot Manager, neither of
   which a script or RPA can satisfy unattended without undermining the point
@@ -42,7 +45,7 @@ pnpm run lint
 pnpm run typecheck
 pnpm run coverage
 pnpm run build
-pnpm run capture-session      # manual Woolworths login, refreshes session.json
+pnpm run capture-session      # manual Woolworths login, writes session.json (only needed when the heartbeat refresh is rejected)
 pnpm run search-product <term>  # find a stockcode for items.yml
 ```
 

@@ -21,7 +21,8 @@
    is confirmed working against a live cart. `POST /apis/ui/Search/products`
    for search is confirmed broken or deprecated — see the risks below.
 4. **`SessionStore`** (`src/woolworths/session.ts`) holds the cookie jar
-   (`session.json`, gitignored) those calls authenticate with.
+   (`session.json`, gitignored) those calls authenticate with and refreshes
+   it through `GET /auth/heartbeat`.
 5. **`GET /admin`** (`src/admin.ts`), gated by a login form at
    `/admin/login` (password field is `SHARED_SECRET`, autofillable from a
    password manager) that sets an in-memory session cookie — not
@@ -57,7 +58,7 @@ an interval (`REMINDERS_SYNC_INTERVAL_MS`, default 5 minutes) from
 `items.yml` exactly like `POST /items` does, calls
 `WoolworthsClient.addToCart` directly (no HTTP hop), and deletes the
 reminder once it lands in the cart. A reminder with no mapping, or one that
-fails because the Woolworths session is expired, is left queued and retried
+fails because the Woolworths session is expired (heartbeat refresh rejected), is left queued and retried
 on the next interval. This is opt-in — deployments that don't set both
 iCloud env vars skip it entirely.
 
@@ -75,13 +76,31 @@ drops the SMS-code step. Driving the approval via RPA (e.g. scripting
 clicks through the 1Password extension) doesn't change that either: it
 would need the vault unlocked non-interactively — undermining the point
 of gating login behind a passkey — and running login through Playwright
-repeatedly (session lifetime is 55 minutes, see below) is exactly the
+repeatedly is exactly the
 scripted-browser pattern Akamai Bot Manager is positioned to catch.
 
 `pnpm capture-session` (`scripts/capture-session.ts`) opens a real,
 non-headless browser via Playwright, waits for you to log in and set your
 Click & Collect store/pickup slot by hand, then extracts the required cookies
-into `session.json`.
+(including the httpOnly, `/auth`-scoped `w-aref` refresh cookie) into
+`session.json`.
+
+### Heartbeat refresh
+
+`GET /auth/heartbeat`, sent with the cookie jar, returns
+`{"refreshed":true}` and re-issues `w-rctx`, `wow-auth-token`,
+`prodwow-auth-token` and `w-loggedin` (1 hour lifetime) plus `w-aref` (30
+day lifetime, re-issued on every call, so it rotates). `SessionStore.refresh`
+calls it with browser-like headers and writes every re-issued cookie back to
+`session.json` atomically (temp file plus rename). It runs:
+
+- on demand, when a request finds the tokens older than 55 minutes;
+- on a timer (`SESSION_KEEPALIVE_INTERVAL_MS`, default 6 hours, `0`
+  disables) so the 30 day `w-aref` window keeps rolling while idle.
+
+A non-200, `refreshed:false`, or a response without a new `w-aref` is an
+expired session: the request fails with the same error (and the Reminders
+sync leaves items queued) until `pnpm capture-session` is run again.
 
 ## Deployment
 
@@ -94,13 +113,17 @@ LAN reachability. See [`deployment.md`](deployment.md).
 ## Risks / open questions
 
 - **Session lifetime**: `wow-auth-token` and `prodwow-auth-token` are
-  short-lived JWTs (treated as expired after 55 minutes in `SessionStore`).
-  This is manual-recapture automation, not fire-and-forget — expect to run
-  `pnpm capture-session` regularly, not once.
+  short-lived JWTs (refreshed after 55 minutes in `SessionStore`). The
+  heartbeat keeps the login alive for as long as `w-aref` (30 days, rotated
+  on each refresh) stays valid. Run `pnpm capture-session` again when the
+  server is down or idle past that window, or Woolworths rejects the
+  refresh.
 - **Anti-bot**: Akamai Bot Manager cookies (`bm_sv`, `_abck`, `ak_bmsc`) are
   present on woolworths.com.au. Plain HTTP requests without a real browser's
   fingerprint risk being challenged or blocked; that's why session capture
-  goes through an actual browser rather than a scripted login.
+  goes through an actual browser rather than a scripted login. The
+  heartbeat refresh, sent as plain HTTP with the captured cookies and
+  browser-like headers, was not blocked when checked against the live site.
 - **Click & Collect store/slot persistence is confirmed working.** Picking
   the store by hand in `pnpm capture-session`'s real browser, then replaying
   the captured cookies through `WoolworthsClient.addToCart`, successfully
@@ -120,7 +143,7 @@ LAN reachability. See [`deployment.md`](deployment.md).
   URL (`/shop/productdetails/<stockcode>/...`). `addToCart` is unaffected.
 - **No Shortcut-only path into the Woolworths app exists.** Its
   `apple-app-site-association` file (`https://www.woolworths.com.au/.well-
-  known/apple-app-site-association`) confirms `/shop/productdetails/*` is a
+known/apple-app-site-association`) confirms `/shop/productdetails/*` is a
   registered universal link, so a Shortcut's "Open URL" does deep-link into
   the app's product page — but there's no documented URL parameter, App
   Intent, or Siri Shortcut donation that adds to cart from there, so it

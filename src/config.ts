@@ -10,6 +10,7 @@ export interface AppConfig {
   sharedSecret: string
   itemsPath: string
   sessionPath: string
+  sessionKeepAliveIntervalMs: number
   remindersSync: RemindersSyncConfig | undefined
 }
 
@@ -23,6 +24,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     sharedSecret,
     itemsPath: env.ITEMS_PATH ?? 'items.yml',
     sessionPath: env.SESSION_PATH ?? 'session.json',
+    // 0 disables the timer; the session then only refreshes on demand.
+    sessionKeepAliveIntervalMs: Number(env.SESSION_KEEPALIVE_INTERVAL_MS ?? 6 * 60 * 60 * 1000),
     remindersSync: loadRemindersSyncConfig(env),
   }
 }

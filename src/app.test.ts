@@ -20,6 +20,7 @@ describe('buildApp', () => {
       sharedSecret: 'secret',
       itemsPath,
       sessionPath: join(dir, 'session.json'),
+      sessionKeepAliveIntervalMs: 0,
       remindersSync: undefined,
     }
     cart = { addToCart: vi.fn() }
