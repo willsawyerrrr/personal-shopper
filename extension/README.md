@@ -5,8 +5,9 @@ product page you're currently looking at to `items.yml` via the same
 `POST /admin/items` endpoint the web admin UI (`src/admin.ts`) already
 exposes, without switching tabs to copy the URL across by hand.
 
-Not covered by `pnpm run lint`, `typecheck`, or `coverage` — plain
-browser-extension JS, no build step, nothing under `src/`.
+Plain browser-extension JS, no build step, nothing under `src/`. `pnpm lint`
+and `pnpm test` cover it (`auth.test.js`: PKCE vector, redirect `state`
+check, token exchange); `typecheck` and `coverage` do not.
 
 ## Load it
 
@@ -17,31 +18,58 @@ this small and single-user.
 1. `chrome://extensions` → enable Developer Mode → Load unpacked → this
    folder.
 2. Click the extension icon → "Options" (or right-click the icon → Options)
-   → set your server URL (`http://localhost:3000` for local dev, or the
-   production PC's LAN IP, e.g. `http://192.168.1.50:3000`) and
-   `SHARED_SECRET`. Stored in `chrome.storage.local` — this browser only,
-   never synced to Google.
+   → set your server URL (`https://personal-shopper.willsawyerrrr.dev`, or
+   `http://localhost:3000` for local dev), Save, then "Sign in with Google".
+   The server URL and the access token are stored in `chrome.storage.local` —
+   this browser only, never synced to Google. "Sign out" revokes the token on
+   the server and discards it.
 3. On any `woolworths.com.au/shop/productdetails/...` page, click the icon
    (or press `Ctrl+Shift+Y` / `Cmd+Shift+Y` on Mac — reassign at
    `chrome://extensions/shortcuts` if it clashes with something else). The
    product URL and a name (from the page's `<title>`) are prefilled; type a
-   trigger word and quantity, then submit.
+   trigger word and quantity, then submit. Signed out, the popup shows a
+   "Sign in with Google" button instead; a `401` from the server signs you
+   out.
 4. "Manage items" at the bottom of the popup opens `/admin` on your
    configured server in a new tab, once a server URL is set.
+
+## Sign-in
+
+The extension uses the server's API client flow ([`docs/auth.md`](../docs/auth.md#api-client-sign-in)):
+`chrome.identity.launchWebAuthFlow` opens `/auth/start` with a PKCE S256
+challenge and a random `state` (both generated with WebCrypto and checked on
+return), then `POST /auth/token` redeems the code for a bearer token sent as
+`Authorization: Bearer <token>` on `POST /admin/items`. The options page shows
+when the session expires.
+
+### Extension ID and redirect URI
+
+The server only redirects to URIs in `ALLOWED_CLIENT_REDIRECTS`, so the
+unpacked extension's ID must not change. `manifest.json` carries a `key`
+(public key) that pins it to `pclllencpcblooaannkgnkncliojdnce`; the redirect URI is
+`https://pclllencpcblooaannkgnkncliojdnce.chromiumapp.org/`. Set on Fly:
+
+```
+ALLOWED_CLIENT_REDIRECTS=dev.willsawyerrrr.personalshopper://auth,https://pclllencpcblooaannkgnkncliojdnce.chromiumapp.org/
+```
+
+The matching private key was discarded; it is not needed to load or run the
+extension. Re-pinning means generating a new key pair, putting the new public
+key in `manifest.json`, and updating `ALLOWED_CLIENT_REDIRECTS` with the new
+ID (the first 32 hex characters of the SHA-256 of the DER public key, each
+digit mapped `0-9a-f` to `a-p`).
 
 ## Permissions
 
 - `activeTab` / `scripting` — read the current tab's URL and title only when
   you open the popup, to prefill the form. No `tabs`, no broad host access
   to browse tabs you haven't opened the popup on.
-- `storage` — save your server URL and secret locally.
-- `host_permissions: ["http://*/*"]` — required for the popup's `fetch` to
-  reach the server at all; extension pages aren't otherwise exempt from the
-  target needing to allow cross-origin requests, and this server sets no
-  CORS headers. Scoped to plain HTTP rather than `<all_urls>` since the
-  server is only ever reachable over HTTP on the home LAN (`localhost` for
-  dev, a LAN IP in production) — a specific hostname pattern isn't possible
-  here since that LAN IP isn't known ahead of time.
+- `identity` — `chrome.identity.launchWebAuthFlow` and `getRedirectURL` for
+  Google sign-in through the server.
+- `storage` — save your server URL and access token locally.
+- `host_permissions` — required for the popup's and options page's `fetch` to
+  reach the server; this server sets no CORS headers. `https://*.willsawyerrrr.dev/*`
+  covers the deployed server and `http://*/*` a local dev server.
 
 ## What this doesn't cover
 

@@ -25,8 +25,8 @@ The server refuses to start when a required variable is missing.
 - iOS app: `dev.willsawyerrrr.personalshopper://auth` (a custom URL scheme).
 - Chrome extension: `https://<extension-id>.chromiumapp.org/` (what
   `chrome.identity.getRedirectURL()` returns; add a path argument to it and
-  list that exact URL instead). The extension ID comes from
-  `chrome://extensions`.
+  list that exact URL instead). The extension ID is pinned
+  by the `key` in `extension/manifest.json`: `pclllencpcblooaannkgnkncliojdnce`.
 
 ## Browser sign-in
 
