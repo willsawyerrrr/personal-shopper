@@ -3,14 +3,19 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { authenticate, logAuthFailure, requestPath, sessionCookie } from './auth.ts'
 import type { AppConfig } from './config.ts'
 import { loadItems, normalizeWord, saveItems, type ItemMapping, type ItemsConfig } from './items.ts'
+import { createListingBackfill, lookupListing } from './listings.ts'
 import type { SessionSummary, TokenStore } from './tokens.ts'
+import type { ProductLookup } from './woolworths/client.ts'
 
 export async function registerAdmin(
   app: FastifyInstance,
   config: AppConfig,
   tokens: TokenStore,
+  lookup?: ProductLookup,
 ): Promise<void> {
   const secureCookie = config.publicBaseUrl.startsWith('https:')
+  const backfill = createListingBackfill(config.itemsPath, lookup, app.log)
+  app.addHook('onReady', () => void backfill())
 
   await app.register(async (admin) => {
     await admin.register(formbody)
@@ -63,12 +68,14 @@ export async function registerAdmin(
 
     admin.get('/admin', async (request, reply) => {
       const items = await loadItems(config.itemsPath)
+      void backfill()
       const sessions = await tokens.list()
       reply.type('text/html').send(renderPage(items, sessions, current.get(request)?.id))
     })
 
     admin.get('/admin/items', async () => {
       const items = await loadItems(config.itemsPath)
+      void backfill()
       return {
         items: Object.entries(items)
           .sort(([a], [b]) => a.localeCompare(b))
@@ -77,9 +84,9 @@ export async function registerAdmin(
     })
 
     admin.post<{
-      Body: { word?: string; url?: string; name?: string; quantity?: string | number }
+      Body: { word?: string; url?: string; quantity?: string | number }
     }>('/admin/items', async (request, reply) => {
-      const { word, url, name, quantity } = request.body
+      const { word, url, quantity } = request.body
       const items = await loadItems(config.itemsPath)
       const stockcode = parseStockcode(url ?? '')
       const error = !word?.trim()
@@ -97,11 +104,11 @@ export async function registerAdmin(
           .type('text/html')
           .send(renderPage(items, sessions, current.get(request)?.id, error))
       }
-      const trimmedName = name?.trim()
+      const listing = await lookupListing(lookup, stockcode, request.log)
       const mapping: ItemMapping = {
         stockcode,
         quantity: Math.max(1, Number(quantity) || 1),
-        ...(trimmedName ? { name: trimmedName } : {}),
+        ...(listing ? { listing } : {}),
       }
       items[normalizeWord(word)] = mapping
       await saveItems(config.itemsPath, items)
@@ -138,6 +145,13 @@ export async function registerAdmin(
           .code(result.status)
           .type('text/html')
           .send(renderPage(items, sessions, current.get(request)?.id, result.error))
+      }
+      const edited = result.items[result.word]
+      if (edited && edited.stockcode !== items[normalizeWord(request.params.word)]?.stockcode) {
+        const listing = await lookupListing(lookup, edited.stockcode, request.log)
+        if (listing) {
+          edited.listing = listing
+        }
       }
       await saveItems(config.itemsPath, result.items)
       if (wantsJson(request)) {
@@ -178,8 +192,9 @@ function positiveInteger(value: unknown): number | undefined {
 }
 
 // Applies the editable fields in `fields` to the item for `word`, leaving every other entry in
-// place and in order. Blank `url`, `stockcode` and `quantity` mean "unchanged"; a blank `name`
-// removes the stored name. `url` takes precedence over `stockcode`.
+// place and in order. Blank `url`, `stockcode` and `quantity` mean "unchanged". `url` takes
+// precedence over `stockcode`. A changed stockcode drops the stored listing, which the caller
+// looks up again.
 function applyEdit(items: ItemsConfig, word: string, fields: Record<string, unknown>): EditResult {
   const existing = items[word]
   if (!existing) {
@@ -206,11 +221,17 @@ function applyEdit(items: ItemsConfig, word: string, fields: Record<string, unkn
         'Could not find a stockcode in that URL — paste a link like /shop/productdetails/123456/product-name, or the stockcode itself.',
       )
     }
+    if (stockcode !== mapping.stockcode) {
+      delete mapping.listing
+    }
     mapping.stockcode = stockcode
   } else if (!blank(fields.stockcode)) {
     const stockcode = positiveInteger(fields.stockcode)
     if (!stockcode) {
       return invalid('The stockcode must be a positive integer.')
+    }
+    if (stockcode !== mapping.stockcode) {
+      delete mapping.listing
     }
     mapping.stockcode = stockcode
   }
@@ -221,18 +242,6 @@ function applyEdit(items: ItemsConfig, word: string, fields: Record<string, unkn
       return invalid('The quantity must be a positive integer.')
     }
     mapping.quantity = quantity
-  }
-
-  if (fields.name !== undefined && fields.name !== null) {
-    if (typeof fields.name !== 'string') {
-      return invalid('The name must be text.')
-    }
-    const name = fields.name.trim()
-    if (name) {
-      mapping.name = name
-    } else {
-      delete mapping.name
-    }
   }
 
   const edited = Object.fromEntries(
@@ -328,6 +337,7 @@ const PAGE_STYLES = `
     color: var(--color-accent);
   }
   details.edit form { min-width: 14rem; margin-top: 0.6rem; }
+  .listing { color: var(--color-text-muted); font-size: 0.8rem; margin-top: 0.15rem; }
   .error { color: var(--color-danger); margin: 0 0 1rem; font-size: 0.9rem; }
   .hint { color: var(--color-text-muted); font-size: 0.85rem; margin: 0 0 1rem; }
   .top-bar { display: flex; align-items: center; justify-content: space-between; }
@@ -384,8 +394,10 @@ function renderPage(
     .map(
       ([word, mapping]) => `
         <tr>
-          <td>${escapeHtml(word)}</td>
-          <td>${escapeHtml(mapping.name ?? '')}</td>
+          <td>
+            <strong>${escapeHtml(word)}</strong>
+            ${mapping.listing ? `<div class="listing">${escapeHtml(mapping.listing)}</div>` : ''}
+          </td>
           <td>${mapping.stockcode}</td>
           <td>${mapping.quantity}</td>
           <td>
@@ -397,9 +409,6 @@ function renderPage(
                 </label>
                 <label>Woolworths product URL or stockcode
                   <input name="url" required value="${mapping.stockcode}">
-                </label>
-                <label>Display name
-                  <input name="name" value="${escapeHtml(mapping.name ?? '')}">
                 </label>
                 <label>Quantity
                   <input name="quantity" type="number" min="1" value="${mapping.quantity}">
@@ -449,8 +458,8 @@ function renderPage(
   ${error ? `<p class="error">${escapeHtml(error)}</p>` : ''}
   <div class="card">
     <table>
-      <thead><tr><th>Word</th><th>Name</th><th>Stockcode</th><th>Qty</th><th></th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="5">No items configured yet.</td></tr>'}</tbody>
+      <thead><tr><th>Phrase</th><th>Stockcode</th><th>Qty</th><th></th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="4">No items configured yet.</td></tr>'}</tbody>
     </table>
   </div>
   <div class="card">
@@ -462,9 +471,6 @@ function renderPage(
       </label>
       <label>Woolworths product URL or stockcode
         <input name="url" required placeholder="https://www.woolworths.com.au/shop/productdetails/888137/...">
-      </label>
-      <label>Display name (optional)
-        <input name="name" placeholder="Woolworths Full Cream Milk 2L">
       </label>
       <label>Quantity
         <input name="quantity" type="number" min="1" value="1">

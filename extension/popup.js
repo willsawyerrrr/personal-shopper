@@ -3,21 +3,9 @@ import { clearSession, getSession, isExpired, normalizeServerUrl, signIn } from 
 const PRODUCT_PATTERN = /woolworths\.com\.au\/shop\/productdetails\/(\d+)/
 const WOOLWORTHS_URL = 'https://www.woolworths.com.au/'
 
-function cleanTitle(title) {
-  return (title || '').split('|')[0].trim()
-}
-
 async function getActiveTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
   return tab
-}
-
-async function getPageTitle(tabId) {
-  const [{ result }] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: () => document.title,
-  })
-  return result
 }
 
 function setStatus(status, text, variant) {
@@ -84,7 +72,6 @@ async function init() {
   }
 
   document.getElementById('url').value = tab.url
-  document.getElementById('name').value = cleanTitle(await getPageTitle(tab.id))
   document.getElementById('word').focus()
 
   form.addEventListener('submit', async (event) => {
@@ -93,7 +80,6 @@ async function init() {
     const body = JSON.stringify({
       word: document.getElementById('word').value,
       url: tab.url,
-      name: document.getElementById('name').value,
       quantity: Number(document.getElementById('quantity').value) || 1,
     })
     try {

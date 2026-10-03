@@ -75,33 +75,31 @@ public struct AdminClient: Sendable {
 
     /// Adds or replaces the item for `word` and returns the stored item.
     @discardableResult
-    public func add(word: String, url: URL, name: String?, quantity: Int) async throws -> Item {
+    public func add(word: String, url: URL, quantity: Int) async throws -> Item {
         struct Body: Encodable {
             let word: String
             let url: String
-            let name: String?
             let quantity: Int
         }
-        let body = Body(word: word, url: url.absoluteString, name: name, quantity: quantity)
+        let body = Body(word: word, url: url.absoluteString, quantity: quantity)
         let data = try await send("POST", path: "/admin/items", body: JSONEncoder().encode(body))
         return try decode(Item.self, from: data)
     }
 
     /// Changes the item for `word` and returns the stored item. Only the
     /// arguments given change: `newWord` renames the trigger phrase, `product`
-    /// is a product URL or stockcode, and an empty `name` removes the name.
+    /// is a product URL or stockcode.
     @discardableResult
     public func update(
-        word: String, newWord: String? = nil, product: String? = nil, name: String? = nil, quantity: Int? = nil
+        word: String, newWord: String? = nil, product: String? = nil, quantity: Int? = nil
     ) async throws -> Item {
         struct Body: Encodable {
             let word: String?
             let url: String?
-            let name: String?
             let quantity: Int?
         }
         let encoded = word.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? word
-        let body = Body(word: newWord, url: product, name: name, quantity: quantity)
+        let body = Body(word: newWord, url: product, quantity: quantity)
         let data = try await send("PATCH", path: "/admin/items/\(encoded)", body: JSONEncoder().encode(body))
         return try decode(Item.self, from: data)
     }

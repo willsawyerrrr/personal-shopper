@@ -4,17 +4,18 @@ Native SwiftUI client for the server's admin API (`src/admin.ts`): list, add,
 edit and remove items, plus a Share extension and an App Intent that add a
 Woolworths product without opening the web admin.
 
-- **App** (`App/`): Items tab (list, pull to refresh, tap an item to edit its
-  name, trigger phrase, quantity and product link or stockcode, swipe to
-  delete, add by pasted URL) and Settings tab (server URL, Sign in with Google / Sign out, test connection).
+- **App** (`App/`): Items tab (list with each trigger phrase as the title and
+  the product's Woolworths listing text beneath it, pull to refresh, tap an
+  item to edit its trigger phrase, quantity and product link or stockcode,
+  swipe to delete, add by pasted URL) and Settings tab (server URL, Sign in
+  with Google / Sign out, test connection).
 - **Share extension** (`ShareExtension/`): appears in the iOS share sheet for
   URLs and text. Pulls the `woolworths.com.au/shop/productdetails/<stockcode>`
-  link out of what was shared, shows name, trigger word and quantity, then
+  link out of what was shared, shows trigger word and quantity, then
   calls the API.
 - **App Intent** (`App/AddItemIntent.swift`): `AddItemIntent` for Shortcuts
-  and Siri, taking a product URL plus optional trigger word, name and
-  quantity. The word defaults to the lower-cased name, the name to the one in
-  the link.
+  and Siri, taking a product URL plus optional trigger word and quantity. The
+  word defaults to the lower-cased product name in the link.
 - **`AddToCartIntent`** (`App/AddItemIntent.swift`): the voice path. Takes a
   required `item` ("What do you want to add?"), calls `POST /cart/items` and
   speaks the result, e.g. "Added 2 × Milk" or the server's "no mapping
@@ -78,7 +79,7 @@ Plain-HTTP servers work only on the local network.
 
 In the Woolworths app or Safari, open a product, tap Share, then Personal
 Shopper (enable it under "More" in the share sheet's app row the first time).
-Check the name, set a trigger word, and tap Add. Signed out, the extension
+Set a trigger word, and tap Add. Signed out, the extension
 says "Open Personal Shopper to sign in."
 
 If Personal Shopper is missing, scroll the share sheet's app row, tap More,

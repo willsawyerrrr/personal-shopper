@@ -63,9 +63,9 @@ struct AdminClientTests {
     }
 
     @Test func listsItems() async throws {
-        StubURLProtocol.stub(body: #"{"items":[{"word":"milk","stockcode":1,"quantity":2,"name":"Milk"},{"word":"eggs","stockcode":3,"quantity":1}]}"#)
+        StubURLProtocol.stub(body: #"{"items":[{"word":"milk","stockcode":1,"quantity":2,"listing":"Maleny Dairies Full Cream 2L"},{"word":"eggs","stockcode":3,"quantity":1}]}"#)
         let items = try await client.items()
-        #expect(items == [Item(word: "milk", stockcode: 1, quantity: 2, name: "Milk"), Item(word: "eggs", stockcode: 3, quantity: 1)])
+        #expect(items == [Item(word: "milk", stockcode: 1, quantity: 2, listing: "Maleny Dairies Full Cream 2L"), Item(word: "eggs", stockcode: 3, quantity: 1)])
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
         #expect(request.httpMethod == "GET")
         #expect(request.url?.absoluteString == "https://example.test/admin/items")
@@ -74,9 +74,9 @@ struct AdminClientTests {
     }
 
     @Test func addsItem() async throws {
-        StubURLProtocol.stub(status: 201, body: #"{"word":"milk","stockcode":888137,"quantity":2,"name":"Milk"}"#)
+        StubURLProtocol.stub(status: 201, body: #"{"word":"milk","stockcode":888137,"quantity":2,"listing":"Milk 2L"}"#)
         let url = try #require(URL(string: "https://www.woolworths.com.au/shop/productdetails/888137/milk"))
-        let item = try await client.add(word: "milk", url: url, name: "Milk", quantity: 2)
+        let item = try await client.add(word: "milk", url: url, quantity: 2)
         #expect(item.stockcode == 888137)
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
         #expect(request.httpMethod == "POST")
@@ -105,7 +105,7 @@ struct AdminClientTests {
         StubURLProtocol.stub(status: 400, body: #"{"error":"A trigger word is required."}"#)
         let url = try #require(URL(string: "https://www.woolworths.com.au/shop/productdetails/1/x"))
         await #expect(throws: AdminError.rejected("A trigger word is required.")) {
-            try await client.add(word: "", url: url, name: nil, quantity: 1)
+            try await client.add(word: "", url: url, quantity: 1)
         }
     }
 
@@ -281,16 +281,29 @@ struct SettingsStoreTests {
 }
 
 extension AdminClientTests {
+    @Test func rowTextShowsPhraseThenListing() {
+        let item = Item(word: "milk", stockcode: 248608, quantity: 2, listing: "Maleny Dairies Full Cream 2L")
+        #expect(item.title == "milk")
+        #expect(item.subtitle == "Maleny Dairies Full Cream 2L")
+        #expect(item.detail == "248608 · qty 2")
+    }
+
+    @Test func rowTextOmitsSubtitleWithoutListing() throws {
+        let item = try JSONDecoder().decode(Item.self, from: Data(#"{"word":"eggs","stockcode":3,"quantity":1}"#.utf8))
+        #expect(item.title == "eggs")
+        #expect(item.subtitle == nil)
+    }
+
     private func body(of request: URLRequest) throws -> [String: Any] {
         let data = try #require(request.httpBody)
         return try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
     @Test func updatesItemWithPatch() async throws {
-        StubURLProtocol.stub(body: #"{"word":"oat milk","stockcode":654321,"quantity":3,"name":"Oat"}"#)
+        StubURLProtocol.stub(body: #"{"word":"oat milk","stockcode":654321,"quantity":3,"listing":"Oat 1L"}"#)
         let item = try await client.update(
-            word: "ice cream/2", newWord: "oat milk", product: "654321", name: "Oat", quantity: 3)
-        #expect(item == Item(word: "oat milk", stockcode: 654321, quantity: 3, name: "Oat"))
+            word: "ice cream/2", newWord: "oat milk", product: "654321", quantity: 3)
+        #expect(item == Item(word: "oat milk", stockcode: 654321, quantity: 3, listing: "Oat 1L"))
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
         #expect(request.httpMethod == "PATCH")
         #expect(request.url?.absoluteString == "https://example.test/admin/items/ice%20cream%2F2")
@@ -298,7 +311,6 @@ extension AdminClientTests {
         let sent = try body(of: request)
         #expect(sent["word"] as? String == "oat milk")
         #expect(sent["url"] as? String == "654321")
-        #expect(sent["name"] as? String == "Oat")
         #expect(sent["quantity"] as? Int == 3)
     }
 
@@ -328,7 +340,7 @@ extension AdminClientTests {
 
     @MainActor
     private func editModel(
-        _ item: Item = Item(word: "milk", stockcode: 123, quantity: 2, name: "Milk"),
+        _ item: Item = Item(word: "milk", stockcode: 123, quantity: 2, listing: "Milk 2L"),
         onUnauthorized: @escaping @Sendable () -> Void = {}
     ) throws -> EditItemModel {
         let configuration = URLSessionConfiguration.ephemeral
@@ -342,7 +354,7 @@ extension AdminClientTests {
     @MainActor @Test func editFormStartsFromTheItem() throws {
         let model = try editModel()
         #expect(model.word == "milk")
-        #expect(model.name == "Milk")
+        #expect(model.item.listing == "Milk 2L")
         #expect(model.product == "123")
         #expect(model.quantity == 2)
         #expect(model.canSubmit)
@@ -374,7 +386,6 @@ extension AdminClientTests {
         StubURLProtocol.stub(body: #"{"word":"oat milk","stockcode":456,"quantity":3}"#)
         let model = try editModel()
         model.word = " Oat milk "
-        model.name = "  "
         model.product = "https://www.woolworths.com.au/shop/productdetails/456/oat-milk"
         model.quantity = 3
         await model.submit()
@@ -383,7 +394,7 @@ extension AdminClientTests {
         #expect(request.url?.path == "/admin/items/milk")
         let sent = try body(of: request)
         #expect(sent["word"] as? String == "Oat milk")
-        #expect(sent["name"] as? String == "")
+        #expect(sent["name"] == nil)
         #expect(sent["url"] as? String == "https://www.woolworths.com.au/shop/productdetails/456/oat-milk")
         #expect(sent["quantity"] as? Int == 3)
     }

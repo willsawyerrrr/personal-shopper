@@ -13,7 +13,6 @@ struct EditItemSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Name", text: $model.name)
                     TextField("Trigger phrase, e.g. milk", text: $model.word)
                         .textInputAutocapitalization(.never)
                     if model.wordError != nil {
@@ -22,6 +21,9 @@ struct EditItemSheet: View {
                     Stepper("Quantity: \(model.quantity)", value: $model.quantity, in: EditItemModel.quantityRange)
                 }
                 Section("Product") {
+                    if let listing = model.item.listing {
+                        Text(listing).foregroundStyle(.secondary)
+                    }
                     TextField("Woolworths product URL or stockcode", text: $model.product)
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)

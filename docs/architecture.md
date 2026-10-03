@@ -18,10 +18,14 @@
    instead of the web UI's redirects: `GET /admin/items`,
    `POST /admin/items`, `PATCH /admin/items/:word`, `DELETE /admin/items/:word`,
    and `401 {error}` when unauthenticated. Writes to `items.yml` go through a
-   temporary file and a rename, so a reader never sees a partial file.
+   temporary file and a rename, so a reader never sees a partial file. Each
+   item also stores its `listing`, the product's title on woolworths.com.au,
+   looked up with `WoolworthsClient.listing` (below) when the item is added or
+   its stockcode changes, and backfilled in the background for items without
+   one. A failed lookup is logged and never fails the request.
 3. **The `extension/` Chrome extension** and **the `ios/` app** are clients of
    that JSON API: from the Woolworths product page (extension) or share sheet
-   (iOS) they add a product with its URL and name prefilled. See
+   (iOS) they add a product from its URL. See
    [`extension/README.md`](../extension/README.md) and
    [`ios/README.md`](../ios/README.md); both sign in with the client flow in
    [`auth.md`](auth.md#api-client-sign-in).
@@ -33,7 +37,9 @@
    [`auth.md`](auth.md#adding-to-the-cart).
 5. **`WoolworthsClient`** (`src/woolworths/client.ts`) calls Woolworths'
    unofficial API directly. `POST /api/v3/ui/trolley/update` for cart changes
-   is confirmed working against a live cart. `POST /apis/ui/Search/products`
+   is confirmed working against a live cart. `GET /apis/ui/product/detail/<stockcode>`
+   is read-only and works with the same session cookies (and fails without
+   them); `Product.DisplayName` is the listing text. `POST /apis/ui/Search/products`
    for search is confirmed broken or deprecated; see the risks below.
 6. **`SessionStore`** (`src/woolworths/session.ts`) holds the cookie jar
    (`session.json`, gitignored) those calls authenticate with and refreshes

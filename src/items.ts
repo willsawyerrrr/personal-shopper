@@ -4,7 +4,8 @@ import { parse, stringify } from 'yaml'
 export interface ItemMapping {
   stockcode: number
   quantity: number
-  name?: string
+  /** The product's title on woolworths.com.au, looked up by the server. */
+  listing?: string
 }
 
 export type ItemsConfig = Record<string, ItemMapping>
@@ -20,7 +21,13 @@ export async function loadItems(path: string): Promise<ItemsConfig> {
     }
     throw error
   }
-  return (parse(raw) as ItemsConfig) ?? {}
+  const parsed = (parse(raw) as Record<string, ItemMapping & Record<string, unknown>> | null) ?? {}
+  return Object.fromEntries(
+    Object.entries(parsed).map(([word, { stockcode, quantity, listing }]) => [
+      word,
+      { stockcode, quantity, ...(listing ? { listing } : {}) },
+    ]),
+  )
 }
 
 export async function saveItems(path: string, items: ItemsConfig): Promise<void> {

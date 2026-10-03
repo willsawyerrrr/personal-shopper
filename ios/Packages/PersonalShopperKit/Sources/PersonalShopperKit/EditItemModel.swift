@@ -16,7 +16,6 @@ public final class EditItemModel {
 
     public let item: Item
     public var word: String
-    public var name: String
     /// A Woolworths product URL or a stockcode.
     public var product: String
     public var quantity: Int
@@ -29,7 +28,6 @@ public final class EditItemModel {
     public init(item: Item, makeClient: @escaping @MainActor () throws -> AdminClient) {
         self.item = item
         self.word = item.word
-        self.name = item.name ?? ""
         self.product = String(item.stockcode)
         self.quantity = item.quantity
         self.makeClient = makeClient
@@ -62,7 +60,6 @@ public final class EditItemModel {
                 word: item.word,
                 newWord: word.trimmingCharacters(in: .whitespacesAndNewlines),
                 product: productReference,
-                name: name.trimmingCharacters(in: .whitespacesAndNewlines),
                 quantity: quantity
             )
             phase = .saved
