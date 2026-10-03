@@ -9,9 +9,14 @@ See [`docs/architecture.md`](docs/architecture.md) for how it fits together,
 and [`docs/deployment.md`](docs/deployment.md) for running the webhook.
 
 The Woolworths login is captured once with `pnpm capture-session` and then
-kept alive by the server through Woolworths' `/auth/heartbeat` refresh;
-re-run the capture only if the refresh is rejected. Set
+kept alive by the server through Woolworths' `/auth/heartbeat` refresh. Set
 `SESSION_KEEPALIVE_INTERVAL_MS=0` to refresh only on demand.
+
+If the refresh is rejected, the server signs in again headlessly with a
+passkey registered once via `pnpm register-passkey` (saved to
+`PASSKEY_CREDENTIALS_PATH`, gitignored; Chrome must be installed).
+`pnpm passkey-login` does the same login by hand. Without a registered
+passkey, re-run `pnpm capture-session`.
 
 ## Development
 

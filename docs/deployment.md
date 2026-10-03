@@ -7,10 +7,9 @@ and testing (`pnpm dev`, then `POST /items` and `/admin` against
 your home network — no public internet exposure, no tunnel, no DNS.
 
 This is a deliberate choice, not a limitation worked around: Woolworths'
-login requires a real, visible browser you can approve with a passkey or
-SMS code, so `pnpm capture-session` needs to run somewhere you're physically
-present anyway. Running natively on Windows (rather than inside WSL) means
-that browser gets real Windows Hello / passkey support directly, and the
+login runs in a real Chrome, which the server drives headlessly with a
+registered passkey, so Chrome must be installed on the PC. Running natively
+on Windows (rather than inside WSL) keeps that simple, and the
 service is trivially reachable from your phone's Shortcuts automation over
 LAN — no Cloudflare account, no subdomain delegation, no WSL2
 port-forwarding workarounds.
@@ -47,8 +46,15 @@ pnpm capture-session                # opens a real Chrome window — log in
                                      # with your passkey and set your Direct
                                      # to boot store, then press Enter in
                                      # this terminal
+pnpm register-passkey               # optional, one-off: log in and accept the
+                                     # passkey prompt so the server can sign
+                                     # itself back in when the session lapses
 pnpm build
 ```
+
+Chrome must be installed for `pnpm register-passkey`, `pnpm passkey-login`
+and the server's automatic passkey login. `passkey-credentials.json` (path
+via `PASSKEY_CREDENTIALS_PATH`) is a secret: restrict it to your user.
 
 Add items via `/admin` or the Chrome extension once the service is running
 below, rather than hand-editing `items.yml`.

@@ -4,6 +4,7 @@
 !.env.example
 items.yml
 session.json
+passkey-credentials.json
 
 # Dependencies
 node_modules/

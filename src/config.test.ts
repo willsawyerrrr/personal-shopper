@@ -14,6 +14,7 @@ describe('loadConfig', () => {
       itemsPath: 'items.yml',
       sessionPath: 'session.json',
       sessionKeepAliveIntervalMs: 6 * 60 * 60 * 1000,
+      passkeyCredentialsPath: 'passkey-credentials.json',
       remindersSync: undefined,
     })
   })
@@ -25,11 +26,13 @@ describe('loadConfig', () => {
       ITEMS_PATH: '/tmp/items.yml',
       SESSION_PATH: '/tmp/session.json',
       SESSION_KEEPALIVE_INTERVAL_MS: '0',
+      PASSKEY_CREDENTIALS_PATH: '/tmp/passkey.json',
     })
     expect(config.port).toBe(4000)
     expect(config.itemsPath).toBe('/tmp/items.yml')
     expect(config.sessionPath).toBe('/tmp/session.json')
     expect(config.sessionKeepAliveIntervalMs).toBe(0)
+    expect(config.passkeyCredentialsPath).toBe('/tmp/passkey.json')
   })
 
   it('leaves reminders sync disabled unless both iCloud credentials are set', () => {

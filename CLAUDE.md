@@ -14,16 +14,15 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
 - Item matching is exact, hand-maintained mapping (`items.yml`:
   spoken term → stockcode + quantity), not fuzzy search or NLU. If the
   household wants a different brand, they edit the file.
-- Session auth is manual-login-then-cookie-replay
-  (`scripts/capture-session.ts`), kept alive by `GET /auth/heartbeat`
-  refreshes (on demand near token expiry, plus an opt-out timer) that
-  persist the rotating `w-aref` cookie. It is not automated credential
-  login — Woolworths'
-  login requires approving a passkey (synced through 1Password, or an SMS
-  code) in a real browser and sits behind Akamai Bot Manager, neither of
-  which a script or RPA can satisfy unattended without undermining the point
-  of the passkey or tripping bot detection. See
-  [`docs/architecture.md`](docs/architecture.md#risks--open-questions).
+- Session auth is cookie replay, kept alive by `GET /auth/heartbeat`
+  refreshes (on demand near token expiry, plus an opt-out timer) that persist
+  the rotating `w-aref` cookie. When the refresh is rejected the server signs
+  in headlessly with a stored passkey credential held by a CDP virtual
+  authenticator (`src/woolworths/passkey.ts`; needs Chrome installed), which
+  `pnpm register-passkey` registers once by hand. Without a registered
+  credential, `pnpm capture-session` (manual login) is the only recovery. No
+  password or SMS-code login is automated. See
+  [`docs/architecture.md`](docs/architecture.md#session-capture).
 - Voice capture uses a fixed-phrase Shortcut with a follow-up Dictate Text
   prompt, not a custom Siri phrase with an embedded free-text slot — that's
   only available to apps built with Apple's App Intents framework. A shared
@@ -45,6 +44,8 @@ pnpm run lint
 pnpm run typecheck
 pnpm run coverage
 pnpm run build
+pnpm run register-passkey     # one-off: register the passkey the server logs in with
+pnpm run passkey-login        # headless passkey login, writes session.json
 pnpm run capture-session      # manual Woolworths login, writes session.json (only needed when the heartbeat refresh is rejected)
 pnpm run search-product <term>  # find a stockcode for items.yml
 ```

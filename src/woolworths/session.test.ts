@@ -134,5 +134,59 @@ describe('SessionStore', () => {
       await Promise.all([store.refresh(stale), store.refresh(stale)])
       expect(fetchMock).toHaveBeenCalledTimes(1)
     })
+
+    describe('with a passkey login', () => {
+      const loggedIn: StoredSession = {
+        cookies: [{ name: 'w-aref', value: 'login-aref' }],
+        capturedAt: new Date().toISOString(),
+      }
+
+      it('logs in and persists the session when the heartbeat is rejected', async () => {
+        const login = vi.fn().mockResolvedValue(loggedIn)
+        const withLogin = new SessionStore(join(dir, 'session.json'), login)
+        global.fetch = vi.fn().mockResolvedValue(heartbeat({}, [], 401))
+
+        await expect(withLogin.refresh(stale)).resolves.toEqual(loggedIn)
+        expect(login).toHaveBeenCalledTimes(1)
+        await expect(withLogin.load()).resolves.toEqual(loggedIn)
+      })
+
+      it('does not log in when the heartbeat succeeds', async () => {
+        const login = vi.fn()
+        const withLogin = new SessionStore(join(dir, 'session.json'), login)
+        global.fetch = vi
+          .fn()
+          .mockResolvedValue(heartbeat({ refreshed: true }, ['w-aref=n; Path=/auth']))
+        await withLogin.refresh(stale)
+        expect(login).not.toHaveBeenCalled()
+      })
+
+      it('does not log in on a network failure', async () => {
+        const login = vi.fn()
+        const withLogin = new SessionStore(join(dir, 'session.json'), login)
+        global.fetch = vi.fn().mockRejectedValue(new Error('offline'))
+        await expect(withLogin.refresh(stale)).rejects.toThrow('offline')
+        expect(login).not.toHaveBeenCalled()
+      })
+
+      it('shares one login between concurrent refreshes', async () => {
+        const login = vi.fn().mockResolvedValue(loggedIn)
+        const withLogin = new SessionStore(join(dir, 'session.json'), login)
+        global.fetch = vi.fn().mockImplementation(async () => heartbeat({}, [], 401))
+        await Promise.all([withLogin.refresh(stale), withLogin.refresh(stale)])
+        expect(login).toHaveBeenCalledTimes(1)
+      })
+
+      it('surfaces a failed login and allows a later retry', async () => {
+        const login = vi
+          .fn()
+          .mockRejectedValueOnce(new Error('passkey rejected'))
+          .mockResolvedValueOnce(loggedIn)
+        const withLogin = new SessionStore(join(dir, 'session.json'), login)
+        global.fetch = vi.fn().mockImplementation(async () => heartbeat({}, [], 401))
+        await expect(withLogin.refresh(stale)).rejects.toThrow('passkey rejected')
+        await expect(withLogin.refresh(stale)).resolves.toEqual(loggedIn)
+      })
+    })
   })
 })

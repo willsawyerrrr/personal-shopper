@@ -1,13 +1,22 @@
+import { existsSync } from 'node:fs'
 import { buildApp } from './app.ts'
 import { loadConfig } from './config.ts'
 import { loadItems } from './items.ts'
 import { ICloudRemindersClient } from './reminders/client.ts'
 import { syncReminders } from './reminders/sync.ts'
 import { WoolworthsClient } from './woolworths/client.ts'
+import { passkeyLogin } from './woolworths/passkey.ts'
 import { SessionStore } from './woolworths/session.ts'
 
 const config = loadConfig()
-const sessions = new SessionStore(config.sessionPath)
+// The passkey fallback is opt-in: without a registered credential an
+// expired session just fails until it is re-captured by hand.
+const sessions = new SessionStore(
+  config.sessionPath,
+  existsSync(config.passkeyCredentialsPath)
+    ? () => passkeyLogin(config.passkeyCredentialsPath)
+    : undefined,
+)
 const woolworths = new WoolworthsClient(sessions)
 const app = buildApp(config, woolworths)
 

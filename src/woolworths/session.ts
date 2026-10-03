@@ -25,7 +25,9 @@ export interface StoredSession {
 }
 
 export const SESSION_EXPIRED_MESSAGE =
-  'Woolworths session expired — run `pnpm capture-session` to refresh it'
+  'Woolworths session expired — run `pnpm passkey-login` (or `pnpm capture-session`) to refresh it'
+
+class SessionRejectedError extends Error {}
 
 // wow-auth-token and prodwow-auth-token are short-lived JWTs (~1hr); treat
 // anything older as due for a refresh rather than let a cart call fail on an
@@ -35,7 +37,14 @@ const SESSION_LIFETIME_MS = 55 * 60 * 1000
 export class SessionStore {
   private refreshing: Promise<StoredSession> | undefined
 
-  constructor(private readonly path: string) {}
+  /**
+   * `login`, when given, runs whenever the heartbeat refresh is rejected and
+   * must resolve to a fresh session.
+   */
+  constructor(
+    private readonly path: string,
+    private readonly login?: () => Promise<StoredSession>,
+  ) {}
 
   async load(): Promise<StoredSession> {
     const raw = await readFile(this.path, 'utf8')
@@ -60,15 +69,29 @@ export class SessionStore {
   /**
    * Calls `GET /auth/heartbeat` with the stored cookies and persists every
    * re-issued cookie, including the rotated `w-aref`. Concurrent calls share
-   * one request, since each call rotates `w-aref`. Throws the session-expired
-   * error on a non-200, `refreshed: false`, or a response without a new
-   * `w-aref`.
+   * one request (and one fallback login), since each call rotates `w-aref`.
+   * A non-200, `refreshed: false`, or a response without a new `w-aref` is a
+   * rejection: with a `login` configured it signs in again and persists the
+   * result, otherwise it throws the session-expired error.
    */
   refresh(session: StoredSession): Promise<StoredSession> {
-    this.refreshing ??= this.heartbeat(session).finally(() => {
+    this.refreshing ??= this.heartbeatOrLogin(session).finally(() => {
       this.refreshing = undefined
     })
     return this.refreshing
+  }
+
+  private async heartbeatOrLogin(session: StoredSession): Promise<StoredSession> {
+    try {
+      return await this.heartbeat(session)
+    } catch (error) {
+      if (!(error instanceof SessionRejectedError) || !this.login) {
+        throw error
+      }
+      const fresh = await this.login()
+      await this.save(fresh)
+      return fresh
+    }
   }
 
   private async heartbeat(session: StoredSession): Promise<StoredSession> {
@@ -82,13 +105,13 @@ export class SessionStore {
       },
     })
     if (!response.ok) {
-      throw new Error(SESSION_EXPIRED_MESSAGE)
+      throw new SessionRejectedError(SESSION_EXPIRED_MESSAGE)
     }
     const body = (await response.json().catch(() => undefined)) as
       { refreshed?: boolean } | undefined
     const issued = parseSetCookies(response.headers.getSetCookie())
     if (body?.refreshed !== true || !issued.some((cookie) => cookie.name === REFRESH_COOKIE)) {
-      throw new Error(SESSION_EXPIRED_MESSAGE)
+      throw new SessionRejectedError(SESSION_EXPIRED_MESSAGE)
     }
     const refreshed: StoredSession = {
       cookies: mergeCookies(session.cookies, issued),
