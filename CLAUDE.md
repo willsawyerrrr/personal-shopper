@@ -49,7 +49,7 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
 `src/admin.ts` the admin UI and JSON API, `src/cart.ts` the cart route, and `src/tokens.ts` the token store; `scripts/` are one-off CLIs run
 by hand (session capture, product lookup); `extension/` is the Chrome
 extension and `ios/` the SwiftUI admin app with its Share extension and App
-Intent, both clients of `/admin/items`. See
+Intents (clients of `/admin/items` and `/cart/items`). See
 [`docs/architecture.md`](docs/architecture.md) for how the pieces fit and the
 open risks.
 

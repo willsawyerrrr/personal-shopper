@@ -1,9 +1,9 @@
 import Foundation
 import Security
 
-public protocol SecretStore: Sendable {
+public protocol TokenStore: Sendable {
     func read() throws -> String?
-    func write(_ secret: String?) throws
+    func write(_ token: String?) throws
 }
 
 public struct KeychainError: Error, LocalizedError {
@@ -14,13 +14,13 @@ public struct KeychainError: Error, LocalizedError {
     }
 }
 
-/// Stores the shared secret as a generic-password item. With no explicit
+/// Stores the access token as a generic-password item. With no explicit
 /// access group the item lands in the first `keychain-access-groups` entry of
 /// the signing entitlements, which the app and the share extension both
 /// declare, so they read the same item.
-public struct KeychainSecretStore: SecretStore {
+public struct KeychainTokenStore: TokenStore {
     private let service: String
-    private let account = "shared-secret"
+    private let account = "access-token"
     private let accessGroup: String?
 
     public init(service: String = SharedConfig.keychainService, accessGroup: String? = nil) {
@@ -44,14 +44,14 @@ public struct KeychainSecretStore: SecretStore {
         }
     }
 
-    public func write(_ secret: String?) throws {
+    public func write(_ token: String?) throws {
         let delete = SecItemDelete(baseQuery() as CFDictionary)
         guard delete == errSecSuccess || delete == errSecItemNotFound else {
             throw KeychainError(status: delete)
         }
-        guard let secret, !secret.isEmpty else { return }
+        guard let token, !token.isEmpty else { return }
         var attributes = baseQuery()
-        attributes[kSecValueData] = Data(secret.utf8)
+        attributes[kSecValueData] = Data(token.utf8)
         // Readable while the device is locked so Shortcuts and Siri can add items.
         attributes[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlock
         let status = SecItemAdd(attributes as CFDictionary, nil)

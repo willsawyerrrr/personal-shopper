@@ -1,10 +1,11 @@
+import AuthenticationServices
 import PersonalShopperKit
 import SwiftUI
 
 struct SettingsView: View {
-    private let store = SettingsStore()
+    let session: Session
+    @Environment(\.webAuthenticationSession) private var webAuthenticationSession
     @State private var serverURL = ""
-    @State private var secret = ""
     @State private var message: String?
 
     var body: some View {
@@ -15,41 +16,63 @@ struct SettingsView: View {
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)
                         .autocorrectionDisabled()
-                    SecureField("Shared secret", text: $secret)
+                        .onSubmit(save)
                 } footer: {
-                    Text("The secret is kept in the Keychain and shared with the Share extension.")
+                    Text("The access token is kept in the Keychain and shared with the Share extension.")
                 }
                 Section {
-                    Button("Save", action: save)
-                    Button("Test connection") { Task { await test() } }
+                    if session.signedIn {
+                        Button("Test connection") { Task { await test() } }
+                        Button("Sign out", role: .destructive) { Task { await signOut() } }
+                    } else {
+                        Button("Sign in with Google") { Task { await signIn() } }
+                    }
                 }
                 if let message { Section { Text(message) } }
             }
             .navigationTitle("Settings")
-            .onAppear {
-                serverURL = store.serverURL
-                secret = (try? store.secret()) ?? ""
-            }
+            .onAppear { serverURL = session.store.serverURL }
         }
     }
 
     private func save() {
+        session.store.serverURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func signIn() async {
+        save()
         do {
-            store.serverURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
-            try store.setSecret(secret)
-            message = "Saved."
+            let attempt = try SignIn(serverURL: session.store.serverURL)
+            let callback = try await webAuthenticationSession.authenticate(
+                using: attempt.startURL, callbackURLScheme: SignIn.callbackScheme)
+            try await session.store.completeSignIn(attempt, callback: callback)
+            message = "Signed in."
+        } catch ASWebAuthenticationSessionError.canceledLogin {
+            message = nil
         } catch {
             message = error.localizedDescription
         }
+        session.refresh()
+    }
+
+    private func signOut() async {
+        do {
+            try await session.store.signOut()
+            message = "Signed out."
+        } catch {
+            message = error.localizedDescription
+        }
+        session.refresh()
     }
 
     private func test() async {
         save()
         do {
-            let count = try await store.client().items().count
+            let count = try await session.store.client().items().count
             message = "Connected. \(count) item\(count == 1 ? "" : "s") on the server."
         } catch {
             message = error.localizedDescription
         }
+        session.refresh()
     }
 }

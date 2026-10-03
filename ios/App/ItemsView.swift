@@ -2,7 +2,7 @@ import PersonalShopperKit
 import SwiftUI
 
 struct ItemsView: View {
-    private let store = SettingsStore()
+    let session: Session
     @State private var items: [Item] = []
     @State private var error: String?
     @State private var loaded = false
@@ -31,7 +31,9 @@ struct ItemsView: View {
                 }
             }
             .overlay {
-                if loaded, items.isEmpty, error == nil {
+                if !session.signedIn {
+                    ContentUnavailableView("Signed out", systemImage: "person.crop.circle.badge.exclamationmark", description: Text("Sign in with Google in Settings."))
+                } else if loaded, items.isEmpty, error == nil {
                     ContentUnavailableView("No items", systemImage: "cart", description: Text("Tap + or share a Woolworths product to this app."))
                 }
             }
@@ -40,31 +42,39 @@ struct ItemsView: View {
                 Button("Add", systemImage: "plus") { adding = true }
             }
             .refreshable { await load() }
-            .task { await load() }
+            .task(id: session.signedIn) { await load() }
             .sheet(isPresented: $adding, onDismiss: { Task { await load() } }) {
-                AddItemSheet(store: store)
+                AddItemSheet(store: session.store)
             }
         }
     }
 
     private func load() async {
+        defer {
+            loaded = true
+            session.refresh()
+        }
+        guard session.signedIn else {
+            items = []
+            return
+        }
         do {
-            items = try await store.client().items()
+            items = try await session.store.client().items()
             error = nil
         } catch {
             self.error = error.localizedDescription
         }
-        loaded = true
     }
 
     private func remove(_ removed: [Item]) async {
         do {
-            let client = try store.client()
+            let client = try session.store.client()
             for item in removed { try await client.remove(word: item.word) }
             error = nil
         } catch {
             self.error = error.localizedDescription
         }
+        session.refresh()
         await load()
     }
 }

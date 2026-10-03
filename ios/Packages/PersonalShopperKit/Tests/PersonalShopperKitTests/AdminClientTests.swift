@@ -59,7 +59,7 @@ struct AdminClientTests {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubURLProtocol.self]
         client = try AdminClient(
-            serverURL: "https://example.test/", secret: "s3cret", session: URLSession(configuration: configuration))
+            serverURL: "https://example.test/", token: "ps_tok", session: URLSession(configuration: configuration))
     }
 
     @Test func listsItems() async throws {
@@ -70,7 +70,7 @@ struct AdminClientTests {
         #expect(request.httpMethod == "GET")
         #expect(request.url?.absoluteString == "https://example.test/admin/items")
         #expect(request.value(forHTTPHeaderField: "Accept") == "application/json")
-        #expect(request.value(forHTTPHeaderField: "Authorization") == "Basic " + Data("admin:s3cret".utf8).base64EncodedString())
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer ps_tok")
     }
 
     @Test func addsItem() async throws {
@@ -122,31 +122,160 @@ struct AdminClientTests {
     }
 
     @Test func rejectsInvalidServerURL() {
-        #expect(throws: AdminError.invalidURL) { try AdminClient(serverURL: "not a url", secret: "x") }
-        #expect(throws: AdminError.invalidURL) { try AdminClient(serverURL: "ftp://example.test", secret: "x") }
+        #expect(throws: AdminError.invalidURL) { try AdminClient(serverURL: "not a url", token: "x") }
+        #expect(throws: AdminError.invalidURL) { try AdminClient(serverURL: "ftp://example.test", token: "x") }
     }
 }
 
+extension AdminClientTests {
+    @Test func unauthorizedRunsHandlerAndKeepsErrorMapping() async throws {
+        let cleared = Mutex(false)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubURLProtocol.self]
+        let client = try AdminClient(
+            serverURL: "https://example.test", token: "t", session: URLSession(configuration: configuration)
+        ) { cleared.withLock { $0 = true } }
+        StubURLProtocol.stub(status: 401, body: #"{"error":"unauthorized"}"#)
+        await #expect(throws: AdminError.unauthorized) { try await client.items() }
+        #expect(cleared.withLock { $0 })
+    }
+
+    @Test func logoutPostsWithBearer() async throws {
+        StubURLProtocol.stub(status: 204)
+        try await client.logout()
+        let request = try #require(StubURLProtocol.requests.withLock { $0.first })
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://example.test/auth/logout")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer ps_tok")
+    }
+
+    @Test func exchangeSendsCodeAndVerifierWithoutAuthorization() async throws {
+        StubURLProtocol.stub(body: #"{"access_token":"ps_new","expires_at":"2027-01-01T00:00:00Z"}"#)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubURLProtocol.self]
+        let token = try await AdminClient.exchange(
+            serverURL: "https://example.test", code: "c0de", verifier: "v3rifier",
+            session: URLSession(configuration: configuration))
+        #expect(token == "ps_new")
+        let request = try #require(StubURLProtocol.requests.withLock { $0.first })
+        #expect(request.url?.absoluteString == "https://example.test/auth/token")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+        let body = try JSONSerialization.jsonObject(with: try #require(request.httpBody)) as? [String: String]
+        #expect(body == ["code": "c0de", "code_verifier": "v3rifier"])
+    }
+
+    @Test func exchangeRejectionIsSignInFailure() async throws {
+        StubURLProtocol.stub(status: 400, body: #"{"error":"invalid_grant"}"#)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubURLProtocol.self]
+        await #expect(throws: AdminError.signInFailed("Google sign-in expired. Try again.")) {
+            try await AdminClient.exchange(
+                serverURL: "https://example.test", code: "x", verifier: "y",
+                session: URLSession(configuration: configuration))
+        }
+    }
+
+    @Test func addToCartMapsSuccessToDialog() async throws {
+        StubURLProtocol.stub(body: #"{"item":"milk","stockcode":888137,"quantity":2}"#)
+        #expect(try await client.addToCartDialog(item: "milk") == "Added 2 × Milk")
+        let request = try #require(StubURLProtocol.requests.withLock { $0.first })
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.path == "/cart/items")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer ps_tok")
+        let body = try JSONSerialization.jsonObject(with: try #require(request.httpBody)) as? [String: String]
+        #expect(body == ["item": "milk"])
+    }
+
+    @Test func addToCartSpeaksNotFoundMessage() async throws {
+        let message = #"no mapping configured for "kale""#
+        StubURLProtocol.stub(status: 404, body: #"{"error":"no mapping configured for \"kale\""}"#)
+        #expect(try await client.addToCartDialog(item: "kale") == message)
+    }
+
+    @Test func addToCartMapsFailures() async {
+        StubURLProtocol.stub(status: 502, body: #"{"error":"session expired"}"#)
+        await #expect(throws: AdminError.woolworthsSessionExpired) { try await client.addToCartDialog(item: "milk") }
+        StubURLProtocol.stub(status: 401)
+        await #expect(throws: AdminError.unauthorized) { try await client.addToCartDialog(item: "milk") }
+    }
+}
+
+struct PKCETests {
+    @Test func challengeMatchesRFC7636Vector() {
+        #expect(
+            PKCE.challenge(for: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")
+                == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
+    }
+
+    @Test func randomStringsAreValidVerifiers() {
+        let a = PKCE.randomString()
+        #expect(a.count == 43)
+        #expect(a.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") })
+        #expect(a != PKCE.randomString())
+    }
+}
+
+struct SignInTests {
+    func attempt() throws -> SignIn { try SignIn(serverURL: "https://example.test/", verifier: "ver", state: "st4te") }
+
+    @Test func buildsStartURL() throws {
+        let items = URLComponents(url: try attempt().startURL, resolvingAgainstBaseURL: false)
+        #expect(items?.path == "/auth/start")
+        let query = Dictionary(uniqueKeysWithValues: (items?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+        #expect(query == [
+            "client": "ios", "redirect_uri": "dev.willsawyerrrr.personalshopper://auth",
+            "code_challenge": PKCE.challenge(for: "ver"), "code_challenge_method": "S256", "state": "st4te",
+        ])
+    }
+
+    @Test func acceptsMatchingState() throws {
+        let url = try #require(URL(string: "dev.willsawyerrrr.personalshopper://auth?code=abc&state=st4te"))
+        #expect(try attempt().code(from: url) == "abc")
+    }
+
+    @Test func rejectsWrongStateAndServerErrors() throws {
+        let wrong = try #require(URL(string: "dev.willsawyerrrr.personalshopper://auth?code=abc&state=evil"))
+        #expect(throws: AdminError.self) { try attempt().code(from: wrong) }
+        let denied = try #require(URL(string: "dev.willsawyerrrr.personalshopper://auth?error=email_not_allowed&state=st4te"))
+        #expect(throws: AdminError.signInFailed("That Google account isn't allowed.")) { try attempt().code(from: denied) }
+    }
+}
+
+@Suite(.serialized)
 struct SettingsStoreTests {
-    final class MemorySecrets: SecretStore {
+    final class MemoryTokens: TokenStore {
         let value = Mutex<String?>(nil)
         func read() throws -> String? { value.withLock { $0 } }
-        func write(_ secret: String?) throws { value.withLock { $0 = secret } }
+        func write(_ token: String?) throws { value.withLock { $0 = token } }
     }
 
     func store() -> SettingsStore {
-        SettingsStore(defaults: UserDefaults(suiteName: UUID().uuidString)!, secrets: MemorySecrets())
+        SettingsStore(defaults: UserDefaults(suiteName: UUID().uuidString)!, tokens: MemoryTokens())
     }
 
     @Test func defaultsToProductionServer() {
         #expect(store().serverURL == "https://personal-shopper.willsawyerrrr.dev")
     }
 
-    @Test func requiresSecret() throws {
-        #expect(throws: AdminError.notConfigured) { try store().client() }
-        let configured = store()
-        try configured.setSecret("  s3cret \n")
-        #expect(try configured.secret() == "s3cret")
+    @Test func requiresSignIn() throws {
+        #expect(throws: AdminError.notSignedIn) { try store().client() }
+        let tokens = MemoryTokens()
+        let configured = SettingsStore(defaults: UserDefaults(suiteName: UUID().uuidString)!, tokens: tokens)
+        try tokens.write("ps_tok")
+        #expect(configured.isSignedIn)
         _ = try configured.client()
+    }
+
+    @Test func unauthorizedClearsToken() async throws {
+        let tokens = MemoryTokens()
+        try tokens.write("ps_tok")
+        let configured = SettingsStore(defaults: UserDefaults(suiteName: UUID().uuidString)!, tokens: tokens)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubURLProtocol.self]
+        StubURLProtocol.stub(status: 401)
+        await #expect(throws: AdminError.unauthorized) {
+            try await configured.client(session: URLSession(configuration: configuration)).items()
+        }
+        #expect(!configured.isSignedIn)
     }
 }
