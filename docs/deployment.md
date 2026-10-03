@@ -93,12 +93,12 @@ fly certs add personal-shopper.willsawyerrrr.dev
 ```
 
 The zone is on Vercel DNS, whose wildcard `ALIAS` record would otherwise
-answer for the subdomain, so add explicit `A` and `AAAA` records using the
-addresses from the `fly certs add` output (or `fly ips list`):
+answer for the subdomain. An explicit record for the subdomain takes
+precedence over the wildcard, and a `CNAME` follows Fly's address if it
+changes:
 
 ```bash
-vercel dns add willsawyerrrr.dev personal-shopper A <ipv4>
-vercel dns add willsawyerrrr.dev personal-shopper AAAA <ipv6>
+vercel dns add willsawyerrrr.dev personal-shopper CNAME willsawyerrrr-personal-shopper.fly.dev
 ```
 
 Check `fly certs show personal-shopper.willsawyerrrr.dev` until the
