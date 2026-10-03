@@ -39,7 +39,9 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
 
 `src/woolworths` is everything that talks to Woolworths' unofficial API;
 `src/app.ts` is the webhook Fastify wires up; `scripts/` are one-off CLIs run
-by hand (session capture, product lookup). See
+by hand (session capture, product lookup); `extension/` is the Chrome
+extension and `ios/` the SwiftUI admin app with its Share extension and App
+Intent, both clients of `/admin/items`. See
 [`docs/architecture.md`](docs/architecture.md) for how the pieces fit and the
 open risks.
 
@@ -52,6 +54,8 @@ pnpm run register-passkey     # one-off: register the passkey the server logs in
 pnpm run passkey-login        # HTTP passkey login, writes session.json
 pnpm run capture-session      # manual Woolworths login, writes session.json (only needed when the heartbeat refresh is rejected)
 pnpm run search-product <term>  # find a stockcode for items.yml
+cd ios && xcodegen generate     # writes the gitignored Xcode project from project.yml
+xcodebuild test -project ios/PersonalShopper.xcodeproj -scheme PersonalShopper -destination 'platform=iOS Simulator,name=iPhone 17'
 ```
 
 ## Conventions

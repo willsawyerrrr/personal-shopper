@@ -208,4 +208,84 @@ describe('admin', () => {
     const items = await readFile(config.itemsPath, 'utf8')
     expect(items).not.toContain('milk:')
   })
+
+  describe('JSON API', () => {
+    const json = { ...authHeader, accept: 'application/json' }
+
+    it('lists items as JSON', async () => {
+      const app = buildApp(config, cart)
+      const response = await app.inject({ method: 'GET', url: '/admin/items', headers: json })
+      expect(response.statusCode).toBe(200)
+      expect(response.json()).toEqual({ items: [{ word: 'milk', stockcode: 123456, quantity: 1 }] })
+    })
+
+    it('answers unauthenticated JSON requests with 401 instead of a redirect', async () => {
+      const app = buildApp(config, cart)
+      const response = await app.inject({
+        method: 'GET',
+        url: '/admin/items',
+        headers: { accept: 'application/json' },
+      })
+      expect(response.statusCode).toBe(401)
+      expect(response.json()).toEqual({ error: 'unauthorized' })
+    })
+
+    it('adds an item from a JSON body and returns it', async () => {
+      const app = buildApp(config, cart)
+      const response = await app.inject({
+        method: 'POST',
+        url: '/admin/items',
+        headers: json,
+        payload: {
+          word: 'Bread',
+          url: 'https://www.woolworths.com.au/shop/productdetails/888137/bread',
+          name: ' Bread ',
+          quantity: 2,
+        },
+      })
+      expect(response.statusCode).toBe(201)
+      expect(response.json()).toEqual({
+        word: 'bread',
+        stockcode: 888137,
+        quantity: 2,
+        name: 'Bread',
+      })
+      expect(await readFile(config.itemsPath, 'utf8')).toContain('bread:')
+    })
+
+    it('rejects a URL without a stockcode', async () => {
+      const app = buildApp(config, cart)
+      const response = await app.inject({
+        method: 'POST',
+        url: '/admin/items',
+        headers: json,
+        payload: { word: 'bread', url: 'nope' },
+      })
+      expect(response.statusCode).toBe(400)
+      expect(response.json().error).toContain('Could not find a stockcode')
+    })
+
+    it('rejects a missing trigger word', async () => {
+      const app = buildApp(config, cart)
+      const response = await app.inject({
+        method: 'POST',
+        url: '/admin/items',
+        headers: json,
+        payload: { url: '654321' },
+      })
+      expect(response.statusCode).toBe(400)
+      expect(response.json()).toEqual({ error: 'A trigger word is required.' })
+    })
+
+    it('removes an item with 204', async () => {
+      const app = buildApp(config, cart)
+      const response = await app.inject({
+        method: 'POST',
+        url: '/admin/items/milk/delete',
+        headers: json,
+      })
+      expect(response.statusCode).toBe(204)
+      expect(await readFile(config.itemsPath, 'utf8')).not.toContain('milk:')
+    })
+  })
 })

@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import formbody from '@fastify/formbody'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import type { AppConfig } from './config.ts'
-import { loadItems, normalizeWord, saveItems, type ItemsConfig } from './items.ts'
+import { loadItems, normalizeWord, saveItems, type ItemMapping, type ItemsConfig } from './items.ts'
 
 const SESSION_COOKIE = 'ps_admin_session'
 const LOGIN_RATE_LIMIT_MAX = 10
@@ -24,6 +24,9 @@ export async function registerAdmin(app: FastifyInstance, config: AppConfig): Pr
       }
       if (isAuthorized(request, config.sharedSecret, sessionToken)) {
         return
+      }
+      if (wantsJson(request)) {
+        return reply.code(401).send({ error: 'unauthorized' })
       }
       if (request.method === 'GET') {
         return reply.redirect('/admin/login')
@@ -64,35 +67,45 @@ export async function registerAdmin(app: FastifyInstance, config: AppConfig): Pr
       reply.type('text/html').send(renderPage(items))
     })
 
-    admin.post<{ Body: { word: string; url: string; name?: string; quantity?: string } }>(
-      '/admin/items',
-      async (request, reply) => {
-        const { word, url, name, quantity } = request.body
-        const stockcode = parseStockcode(url)
-        if (!stockcode) {
-          const items = await loadItems(config.itemsPath)
-          reply
-            .code(400)
-            .type('text/html')
-            .send(
-              renderPage(
-                items,
-                'Could not find a stockcode in that URL — paste a link like /shop/productdetails/123456/product-name, or the stockcode itself.',
-              ),
-            )
-          return
+    admin.get('/admin/items', async () => {
+      const items = await loadItems(config.itemsPath)
+      return {
+        items: Object.entries(items)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([word, mapping]) => ({ word, ...mapping })),
+      }
+    })
+
+    admin.post<{
+      Body: { word?: string; url?: string; name?: string; quantity?: string | number }
+    }>('/admin/items', async (request, reply) => {
+      const { word, url, name, quantity } = request.body
+      const items = await loadItems(config.itemsPath)
+      const stockcode = parseStockcode(url ?? '')
+      const error = !word?.trim()
+        ? 'A trigger word is required.'
+        : !stockcode
+          ? 'Could not find a stockcode in that URL — paste a link like /shop/productdetails/123456/product-name, or the stockcode itself.'
+          : undefined
+      if (error || !word || !stockcode) {
+        if (wantsJson(request)) {
+          return reply.code(400).send({ error })
         }
-        const items = await loadItems(config.itemsPath)
-        const trimmedName = name?.trim()
-        items[normalizeWord(word)] = {
-          stockcode,
-          quantity: Math.max(1, Number(quantity) || 1),
-          ...(trimmedName ? { name: trimmedName } : {}),
-        }
-        await saveItems(config.itemsPath, items)
-        return reply.redirect('/admin')
-      },
-    )
+        return reply.code(400).type('text/html').send(renderPage(items, error))
+      }
+      const trimmedName = name?.trim()
+      const mapping: ItemMapping = {
+        stockcode,
+        quantity: Math.max(1, Number(quantity) || 1),
+        ...(trimmedName ? { name: trimmedName } : {}),
+      }
+      items[normalizeWord(word)] = mapping
+      await saveItems(config.itemsPath, items)
+      if (wantsJson(request)) {
+        return reply.code(201).send({ word: normalizeWord(word), ...mapping })
+      }
+      return reply.redirect('/admin')
+    })
 
     admin.post<{ Params: { word: string } }>(
       '/admin/items/:word/delete',
@@ -100,6 +113,9 @@ export async function registerAdmin(app: FastifyInstance, config: AppConfig): Pr
         const items = await loadItems(config.itemsPath)
         delete items[normalizeWord(request.params.word)]
         await saveItems(config.itemsPath, items)
+        if (wantsJson(request)) {
+          return reply.code(204).send()
+        }
         return reply.redirect('/admin')
       },
     )
@@ -116,6 +132,12 @@ function isAuthorized(
     return true
   }
   return readCookie(request.headers.cookie, SESSION_COOKIE) === sessionToken
+}
+
+// API clients (the iOS app) opt in with `Accept: application/json` and get
+// JSON bodies and status codes instead of the browser flow's redirects.
+function wantsJson(request: FastifyRequest): boolean {
+  return request.headers.accept?.includes('application/json') ?? false
 }
 
 function readCookie(header: string | undefined, name: string): string | undefined {

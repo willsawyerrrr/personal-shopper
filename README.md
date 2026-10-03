@@ -22,6 +22,9 @@ The server runs on Fly.io (`fly.toml`, `Dockerfile`) with its data on a
 volume; `GET /healthz` is the unauthenticated health check, and `/items` and
 `/admin/login` are rate limited per client IP.
 
+The `ios/` app (see [`ios/README.md`](ios/README.md)) manages items and adds a
+product from the iOS share sheet, Shortcuts or Siri.
+
 ## Development
 
 ```bash
