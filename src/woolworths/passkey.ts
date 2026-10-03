@@ -1,43 +1,28 @@
+import { createHash, createPrivateKey, sign, type KeyObject } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
-import { chromium, type BrowserContext, type CDPSession, type Page } from 'playwright'
-import { REQUIRED_COOKIES, type StoredSession } from './session.ts'
+import {
+  mergeCookies,
+  parseSetCookies,
+  REQUIRED_COOKIES,
+  SESSION_COOKIES,
+  type StoredCookie,
+  type StoredSession,
+} from './session.ts'
 
-const LOGIN_URL = 'https://www.woolworths.com.au/shop/securelogin'
-const AUTH_HOST = 'auth.woolworths.com.au'
+const WOOLWORTHS_URL = 'https://www.woolworths.com.au'
+const AUTH_URL = 'https://auth.woolworths.com.au'
+const LOGIN_URL = `${WOOLWORTHS_URL}/auth/login?redirect_uri=${WOOLWORTHS_URL}/auth/callback&path=/`
+const ACUL_SDK = '@auth0/auth0-acul-react@1.8.0'
 const LOGIN_TIMEOUT_MS = 60_000
-
-// Akamai Bot Manager answers "Access Denied" to default headless Chrome; it
-// accepts the installed Chrome channel with the automation flag hidden and a
-// desktop user agent.
-export const BROWSER_USER_AGENT =
+const MAX_REDIRECTS = 15
+const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36'
-export const BROWSER_ARGS = ['--disable-blink-features=AutomationControlled']
+
+export const PASSKEY_REJECTED_MESSAGE =
+  'Woolworths passkey login was rejected — the stored credential may have been removed; run `pnpm register-passkey` again'
 
 /** A credential as returned by CDP `WebAuthn.getCredentials`. */
 export type PasskeyCredential = Record<string, unknown>
-
-/**
- * Attaches a CDP virtual authenticator (ctap2, internal, resident key, user
- * verified) to `page` and returns its session and id.
- */
-export async function addVirtualAuthenticator(
-  context: BrowserContext,
-  page: Page,
-): Promise<{ cdp: CDPSession; authenticatorId: string }> {
-  const cdp = await context.newCDPSession(page)
-  await cdp.send('WebAuthn.enable')
-  const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
-    options: {
-      protocol: 'ctap2',
-      transport: 'internal',
-      hasResidentKey: true,
-      hasUserVerification: true,
-      isUserVerified: true,
-      automaticPresenceSimulation: true,
-    },
-  })
-  return { cdp, authenticatorId }
-}
 
 export async function loadCredentials(path: string): Promise<PasskeyCredential[]> {
   let parsed: unknown
@@ -56,93 +41,185 @@ export async function loadCredentials(path: string): Promise<PasskeyCredential[]
 }
 
 /**
- * Signs in to Woolworths in a headless Chrome whose virtual authenticator
- * holds the stored passkey, and returns the resulting cookie jar (every
- * `REQUIRED_COOKIES` entry, including `w-aref`). Requires Chrome installed.
- * Throws a descriptive error if Akamai blocks the browser, the passkey is
- * rejected, or login completes without the required cookies.
+ * Signs in to Woolworths over plain HTTP with the stored passkey and returns
+ * the resulting cookies (every `REQUIRED_COOKIES` entry, including `w-aref`,
+ * plus any Akamai cookies the responses set). It walks the Auth0 login
+ * redirects, signs the WebAuthn challenge embedded in the identifier page with
+ * the credential's private key (Ed25519, ES256 or RS256) and posts the
+ * assertion. Throws a descriptive error if Akamai blocks a request, the
+ * passkey is rejected, or login completes without the required cookies.
  */
 export async function passkeyLogin(
   credentialsPath: string,
   timeoutMs = LOGIN_TIMEOUT_MS,
 ): Promise<StoredSession> {
-  const credentials = await loadCredentials(credentialsPath)
-  const browser = await chromium.launch({
-    headless: true,
-    channel: 'chrome',
-    args: BROWSER_ARGS,
+  const [credential] = await loadCredentials(credentialsPath)
+  const http = new CookieClient(timeoutMs)
+
+  const identifier = await http.follow(LOGIN_URL)
+  const html = await identifier.response.text()
+  assertNotBlocked(identifier.response, html)
+  const challenge = parseChallenge(html)
+  const state = new URL(identifier.url).searchParams.get('state')
+  if (!state) {
+    throw new Error('Woolworths login page did not carry a state parameter')
+  }
+
+  const passkey = buildAssertion(credential!, challenge)
+  const submitted = await http.request(identifier.url, {
+    method: 'POST',
+    body: new URLSearchParams({ passkey, state, 'acul-sdk': ACUL_SDK }),
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Origin: AUTH_URL,
+      Referer: identifier.url,
+    },
   })
-  try {
-    const context = await browser.newContext({
-      viewport: { width: 1280, height: 900 },
-      userAgent: BROWSER_USER_AGENT,
+  if (submitted.status < 300 || submitted.status >= 400) {
+    assertNotBlocked(submitted, await submitted.text())
+    throw new Error(PASSKEY_REJECTED_MESSAGE)
+  }
+  const final = await http.follow(submitted.headers.get('location')!, identifier.url)
+  assertNotBlocked(final.response, await final.response.text())
+
+  const cookies = http.cookies.filter((cookie) => SESSION_COOKIES.includes(cookie.name))
+  const missing = REQUIRED_COOKIES.filter((name) => !cookies.some((cookie) => cookie.name === name))
+  if (missing.length > 0) {
+    throw new Error(`Missing cookies after passkey login: ${missing.join(', ')}`)
+  }
+  return { cookies, capturedAt: new Date().toISOString() }
+}
+
+class CookieClient {
+  cookies: StoredCookie[] = []
+
+  constructor(private readonly timeoutMs: number) {}
+
+  async request(url: string, init: RequestInit = {}): Promise<Response> {
+    const response = await fetch(url, {
+      redirect: 'manual',
+      signal: AbortSignal.timeout(this.timeoutMs),
+      ...init,
+      headers: {
+        Accept: 'text/html',
+        'Accept-Language': 'en-AU,en;q=0.9',
+        'User-Agent': USER_AGENT,
+        Cookie: this.cookies.map(({ name, value }) => `${name}=${value}`).join('; '),
+        ...init.headers,
+      },
     })
-    const page = await context.newPage()
-    const { cdp, authenticatorId } = await addVirtualAuthenticator(context, page)
-    for (const credential of credentials) {
-      await cdp.send('WebAuthn.addCredential', { authenticatorId, credential } as never)
-    }
-
-    await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: timeoutMs })
-    await assertNotBlocked(page)
-    await clickLoginUntilRedirected(page, timeoutMs)
-
-    try {
-      await page.waitForURL(/postSuccessLogin/, { timeout: timeoutMs })
-    } catch (error) {
-      await assertNotBlocked(page)
-      throw new Error(
-        new URL(page.url()).hostname === AUTH_HOST
-          ? 'Woolworths passkey login was rejected — the stored credential may have been removed; run `pnpm register-passkey` again'
-          : `Woolworths passkey login did not complete (stopped at ${new URL(page.url()).pathname})`,
-        { cause: error },
-      )
-    }
-    return await collectSession(context, timeoutMs)
-  } finally {
-    await browser.close()
+    this.cookies = mergeCookies(this.cookies, parseSetCookies(response.headers.getSetCookie()))
+    return response
   }
-}
 
-// The Login button exists before the page's handler is attached, so a click
-// that lands too early is lost; re-dispatch it until the auth redirect starts.
-// A plain `click()` hangs on this page; dispatching the event does not.
-async function clickLoginUntilRedirected(page: Page, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (new URL(page.url()).hostname !== AUTH_HOST && Date.now() < deadline) {
-    await page
-      .getByText('Login', { exact: true })
-      .last()
-      .dispatchEvent('click', undefined, { timeout: 5000 })
-    await page.waitForURL((url) => url.hostname === AUTH_HOST, { timeout: 3000 }).catch(() => {})
-  }
-}
-
-async function assertNotBlocked(page: Page): Promise<void> {
-  const title = await page.title().catch(() => '')
-  if (/access denied/i.test(title)) {
-    throw new Error(
-      'Akamai blocked the headless browser ("Access Denied") — check that Chrome is installed and up to date',
-    )
-  }
-}
-
-async function collectSession(context: BrowserContext, timeoutMs: number): Promise<StoredSession> {
-  const deadline = Date.now() + timeoutMs
-  for (;;) {
-    const cookies = (await context.cookies()).filter((cookie) =>
-      (REQUIRED_COOKIES as readonly string[]).includes(cookie.name),
-    )
-    const missing = REQUIRED_COOKIES.filter((name) => !cookies.some((c) => c.name === name))
-    if (missing.length === 0) {
-      return {
-        cookies: cookies.map(({ name, value }) => ({ name, value })),
-        capturedAt: new Date().toISOString(),
+  /** Follows redirects to the final non-redirect response and its URL. */
+  async follow(url: string, base?: string): Promise<{ response: Response; url: string }> {
+    let current = new URL(url, base).toString()
+    for (let hops = 0; hops <= MAX_REDIRECTS; hops++) {
+      const response = await this.request(current)
+      const location = response.headers.get('location')
+      if (response.status < 300 || response.status >= 400 || !location) {
+        return { response, url: current }
       }
+      await response.body?.cancel()
+      current = new URL(location, current).toString()
     }
-    if (Date.now() > deadline) {
-      throw new Error(`Missing cookies after passkey login: ${missing.join(', ')}`)
+    throw new Error('Woolworths login redirected too many times')
+  }
+}
+
+function assertNotBlocked(response: Response, body: string): void {
+  const html = response.headers.get('content-type')?.includes('text/html') ?? false
+  if (response.status === 403 || !html || /access denied/i.test(body)) {
+    throw new Error(
+      `Akamai blocked the login request (${response.status}${html ? ' "Access Denied"' : ', non-HTML response'}) — the request fingerprint was refused`,
+    )
+  }
+}
+
+// The identifier page embeds its Auth0 context as `JSON.parse(… atob("<base64>") …)`.
+function parseChallenge(html: string): string {
+  const encoded = /atob\("([A-Za-z0-9+/=]+)"/.exec(html)?.[1]
+  try {
+    const context = JSON.parse(Buffer.from(encoded!, 'base64').toString())
+    const challenge = context.screen.data.passkey.public_key.challenge
+    if (typeof challenge === 'string') {
+      return challenge
     }
-    await new Promise((resolve) => setTimeout(resolve, 250))
+  } catch {
+    // fall through
+  }
+  throw new Error(
+    'Woolworths login page carried no passkey challenge — passkey login may no longer be offered',
+  )
+}
+
+const base64Url = (data: Buffer): string => data.toString('base64url')
+
+/** Builds the JSON WebAuthn assertion the Auth0 identifier form posts. */
+function buildAssertion(credential: PasskeyCredential, challenge: string): string {
+  const clientDataJSON = Buffer.from(
+    JSON.stringify({
+      type: 'webauthn.get',
+      challenge,
+      origin: AUTH_URL,
+      crossOrigin: false,
+    }),
+  )
+  // rpIdHash, flags (user present + verified), sign count (a Unix timestamp
+  // always increases).
+  const authenticatorData = Buffer.concat([
+    createHash('sha256').update(new URL(AUTH_URL).hostname).digest(),
+    Buffer.from([0x05]),
+    Buffer.alloc(4),
+  ])
+  authenticatorData.writeUInt32BE(Math.floor(Date.now() / 1000), 33)
+  const signed = Buffer.concat([
+    authenticatorData,
+    createHash('sha256').update(clientDataJSON).digest(),
+  ])
+
+  const id = Buffer.from(String(credential.credentialId), 'base64')
+  return JSON.stringify({
+    authenticatorAttachment: 'platform',
+    clientExtensionResults: {},
+    id: base64Url(id),
+    rawId: base64Url(id),
+    response: {
+      authenticatorData: base64Url(authenticatorData),
+      clientDataJSON: base64Url(clientDataJSON),
+      signature: base64Url(signAssertion(privateKey(credential), signed)),
+      userHandle: base64Url(Buffer.from(String(credential.userHandle), 'base64')),
+    },
+    type: 'public-key',
+  })
+}
+
+function privateKey(credential: PasskeyCredential): KeyObject {
+  try {
+    return createPrivateKey({
+      key: Buffer.from(String(credential.privateKey), 'base64'),
+      format: 'der',
+      type: 'pkcs8',
+    })
+  } catch (error) {
+    throw new Error(
+      'Stored passkey has no usable private key — run `pnpm register-passkey` again',
+      { cause: error },
+    )
+  }
+}
+
+// Ed25519 signatures are raw; ES256 must be DER (not IEEE P1363) in WebAuthn.
+function signAssertion(key: KeyObject, data: Buffer): Buffer {
+  switch (key.asymmetricKeyType) {
+    case 'ed25519':
+      return sign(null, data, key)
+    case 'ec':
+      return sign('sha256', data, { key, dsaEncoding: 'der' })
+    case 'rsa':
+      return sign('sha256', data, key)
+    default:
+      throw new Error(`Unsupported passkey key type: ${key.asymmetricKeyType}`)
   }
 }

@@ -1,10 +1,35 @@
 import { chmod, writeFile } from 'node:fs/promises'
-import { chromium } from 'playwright'
-import {
-  addVirtualAuthenticator,
-  BROWSER_ARGS,
-  BROWSER_USER_AGENT,
-} from '../src/woolworths/passkey.ts'
+import { chromium, type BrowserContext, type CDPSession, type Page } from 'playwright'
+
+// Akamai Bot Manager answers "Access Denied" to default headless Chrome; it
+// accepts the installed Chrome channel with the automation flag hidden and a
+// desktop user agent.
+const BROWSER_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36'
+const BROWSER_ARGS = ['--disable-blink-features=AutomationControlled']
+
+/**
+ * Attaches a CDP virtual authenticator (ctap2, internal, resident key, user
+ * verified) to `page` and returns its session and id.
+ */
+async function addVirtualAuthenticator(
+  context: BrowserContext,
+  page: Page,
+): Promise<{ cdp: CDPSession; authenticatorId: string }> {
+  const cdp = await context.newCDPSession(page)
+  await cdp.send('WebAuthn.enable')
+  const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
+    options: {
+      protocol: 'ctap2',
+      transport: 'internal',
+      hasResidentKey: true,
+      hasUserVerification: true,
+      isUserVerified: true,
+      automaticPresenceSimulation: true,
+    },
+  })
+  return { cdp, authenticatorId }
+}
 
 const credentialsPath = process.env.PASSKEY_CREDENTIALS_PATH ?? 'passkey-credentials.json'
 const TIMEOUT_MS = 10 * 60 * 1000

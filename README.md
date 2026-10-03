@@ -12,9 +12,9 @@ The Woolworths login is captured once with `pnpm capture-session` and then
 kept alive by the server through Woolworths' `/auth/heartbeat` refresh. Set
 `SESSION_KEEPALIVE_INTERVAL_MS=0` to refresh only on demand.
 
-If the refresh is rejected, the server signs in again headlessly with a
+If the refresh is rejected, the server signs in again over plain HTTP with a
 passkey registered once via `pnpm register-passkey` (saved to
-`PASSKEY_CREDENTIALS_PATH`, gitignored; Chrome must be installed).
+`PASSKEY_CREDENTIALS_PATH`, gitignored; Chrome is needed only to register it).
 `pnpm passkey-login` does the same login by hand. Without a registered
 passkey, re-run `pnpm capture-session`.
 
