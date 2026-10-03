@@ -37,7 +37,8 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   [`docs/deployment.md`](docs/deployment.md).
 - Voice capture: a shared iCloud Reminders list is the queue the server
   syncs into the cart (Siri's built-in "add X to my Shopping List"); the iOS
-  app's App Intent is the other Siri path. See
+  app's App Intent is the other Siri path, calling `POST /cart/items`
+  (`src/cart.ts`, bearer token only, rate limited). See
   [`docs/siri-setup.md`](docs/siri-setup.md) and
   [`docs/architecture.md`](docs/architecture.md#reminders-queue).
 
@@ -45,7 +46,7 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
 
 `src/woolworths` is everything that talks to Woolworths' unofficial API;
 `src/app.ts` wires up Fastify, `src/login.ts` the Google sign-in routes,
-`src/admin.ts` the admin UI and JSON API, and `src/tokens.ts` the token store; `scripts/` are one-off CLIs run
+`src/admin.ts` the admin UI and JSON API, `src/cart.ts` the cart route, and `src/tokens.ts` the token store; `scripts/` are one-off CLIs run
 by hand (session capture, product lookup); `extension/` is the Chrome
 extension and `ios/` the SwiftUI admin app with its Share extension and App
 Intent, both clients of `/admin/items`. See

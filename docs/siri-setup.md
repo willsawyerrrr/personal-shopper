@@ -25,8 +25,11 @@ Requirements:
 
 ## iOS app App Intent
 
-The iOS app ([`ios/README.md`](../ios/README.md)) exposes the "Add Woolworths
-Product" App Intent to Shortcuts and Siri ("Add a product to Personal
-Shopper"). It adds a trigger word to `items.yml` from a product link; it does
-not add to the cart. Voice cart additions through the app's App Intent come with
-the iOS app's Google sign-in ([`auth.md`](auth.md#api-client-sign-in)).
+Siri calls the iOS app's App Intent
+([`ios/README.md`](../ios/README.md)), which sends the spoken phrase to the
+server as `POST /cart/items` with the app's bearer token
+([`auth.md`](auth.md#adding-to-the-cart)). The server resolves the phrase
+against `items.yml` and adds the mapped product to the cart immediately, with
+no sync delay. The phrase needs a mapping in `items.yml`, and the app must be
+signed in ([`auth.md`](auth.md#api-client-sign-in)). An unmapped phrase is a
+`404` and an expired Woolworths session a `502`; nothing is queued.

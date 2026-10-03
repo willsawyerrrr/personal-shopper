@@ -34,6 +34,15 @@ describe('buildApp', () => {
     expect(response.statusCode).toBe(404)
   })
 
+  it('has no cart route without a cart client', async () => {
+    const response = await buildApp(config).inject({
+      method: 'POST',
+      url: '/cart/items',
+      payload: { item: 'milk' },
+    })
+    expect(response.statusCode).toBe(404)
+  })
+
   it('keys rate limits on X-Forwarded-For when the proxy is trusted', async () => {
     const app = buildApp({ ...config, trustProxy: true })
     const send = (ip: string) =>
