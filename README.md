@@ -6,7 +6,7 @@ with the household's usual milk in the cart.
 
 See [`docs/architecture.md`](docs/architecture.md) for how it fits together,
 [`docs/siri-setup.md`](docs/siri-setup.md) for the Shortcuts/Reminders setup,
-and [`docs/deployment.md`](docs/deployment.md) for running the webhook.
+and [`docs/deployment.md`](docs/deployment.md) for deploying the webhook to Fly.io.
 
 The Woolworths login is captured once with `pnpm capture-session` and then
 kept alive by the server through Woolworths' `/auth/heartbeat` refresh. Set
@@ -17,6 +17,10 @@ passkey registered once via `pnpm register-passkey` (saved to
 `PASSKEY_CREDENTIALS_PATH`, gitignored; Chrome is needed only to register it).
 `pnpm passkey-login` does the same login by hand. Without a registered
 passkey, re-run `pnpm capture-session`.
+
+The server runs on Fly.io (`fly.toml`, `Dockerfile`) with its data on a
+volume; `GET /healthz` is the unauthenticated health check, and `/items` and
+`/admin/login` are rate limited per client IP.
 
 ## Development
 

@@ -39,6 +39,10 @@ describe('loadItems', () => {
     await expect(loadItems(path)).resolves.toEqual({ milk: { stockcode: 123456, quantity: 1 } })
   })
 
+  it('treats a missing file as no items', async () => {
+    await expect(loadItems(join(dir, 'missing.yml'))).resolves.toEqual({})
+  })
+
   it('treats an empty file as no items', async () => {
     const path = join(dir, 'items.yml')
     await writeFile(path, '')

@@ -10,7 +10,16 @@ export interface ItemMapping {
 export type ItemsConfig = Record<string, ItemMapping>
 
 export async function loadItems(path: string): Promise<ItemsConfig> {
-  const raw = await readFile(path, 'utf8')
+  let raw: string
+  try {
+    raw = await readFile(path, 'utf8')
+  } catch (error) {
+    // A fresh deployment has no mappings until the first one is added.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return {}
+    }
+    throw error
+  }
   return (parse(raw) as ItemsConfig) ?? {}
 }
 

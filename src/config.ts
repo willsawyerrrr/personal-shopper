@@ -7,6 +7,7 @@ export interface RemindersSyncConfig {
 
 export interface AppConfig {
   port: number
+  trustProxy: boolean
   sharedSecret: string
   itemsPath: string
   sessionPath: string
@@ -22,6 +23,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   }
   return {
     port: Number(env.PORT ?? 3000),
+    // Behind a reverse proxy (Fly) the client IP, which rate limiting keys on,
+    // is only in `X-Forwarded-For`; trusting it when exposed directly would
+    // let clients spoof it.
+    trustProxy: env.TRUST_PROXY === 'true',
     sharedSecret,
     itemsPath: env.ITEMS_PATH ?? 'items.yml',
     sessionPath: env.SESSION_PATH ?? 'session.json',

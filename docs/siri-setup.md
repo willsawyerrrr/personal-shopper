@@ -17,9 +17,9 @@ for when that direct call can't reach the server.
 1. Shortcuts app → **+** → New Shortcut.
 2. Add action **Dictate Text**.
 3. Add action **Get Contents of URL**:
-   - URL: the PC's LAN IP, e.g. `http://192.168.1.50:3000/items` (see
-     [`deployment.md`](deployment.md) for reserving a static DHCP lease so
-     this doesn't change)
+   - URL: the public URL, e.g.
+     `https://personal-shopper.willsawyerrrr.dev/items` (see
+     [`deployment.md`](deployment.md))
    - Method: `POST`
    - Headers: `Authorization: Bearer <SHARED_SECRET>`, `Content-Type: application/json`
    - Request Body (JSON): `{ "item": [Dictated Text] }` — use Dictate Text's
@@ -33,7 +33,7 @@ prompt just doubles it up.
 
 ## 1a. Queue additions the webhook can't reach
 
-The webhook is only reachable from home WiFi (see below), so wrap **Get
+The webhook can be unreachable (see below), so wrap **Get
 Contents of URL** in an **If** action that falls back to a Reminders list
 when the call fails, rather than losing the item silently:
 
@@ -61,11 +61,10 @@ free-text — it just moves the "what did you say" matching from a custom
 phrase per item to whatever you say after Siri's prompt, checked against
 `items.yml`'s keys.
 
-## Home-network only
+## Away from home
 
-Only works while the triggering device is on home WiFi — the LAN IP isn't
-reachable from cellular/away from home. Outside that (or whenever the
-webhook call otherwise fails), the fallback in step 1a queues the item to
-the "Shopping List" Reminders list instead of losing it, and it lands in the
-cart once the server syncs that list — see
-[`architecture.md`](architecture.md#reminders-offline-queue).
+The webhook is on the public internet, so the Shortcut works on cellular and
+away from home WiFi. When the call still fails (server down, no signal), the
+fallback in step 1a queues the item to the "Shopping List" Reminders list
+instead of losing it, and it lands in the cart once the server syncs that
+list — see [`architecture.md`](architecture.md#reminders-offline-queue).

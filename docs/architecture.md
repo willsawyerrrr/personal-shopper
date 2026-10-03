@@ -43,7 +43,7 @@
 
 ## Reminders offline queue
 
-Step 1's webhook call only succeeds on home WiFi (see
+Step 1's webhook call can fail when the server is unreachable (see
 [`deployment.md`](deployment.md)); a Shortcut fallback (`siri-setup.md`
 step 1a) queues anything it can't deliver by adding a reminder to a shared
 iCloud Reminders list ("Shopping List" by default) instead of losing it.
@@ -120,11 +120,16 @@ passkey login surfaces its own error; the next call retries it.
 
 ## Deployment
 
-Runs natively on an always-on Windows PC, reachable only over the home
-network — no public exposure, deliberately. The server needs no browser;
-Chrome is only used by the one-off `pnpm register-passkey` and `pnpm
-capture-session`. Running natively sidesteps WSL2's port-forwarding
-limitations for LAN reachability. See [`deployment.md`](deployment.md).
+Runs as one always-on Fly.io machine in `syd`, publicly reachable over HTTPS
+so the Shortcut works from any network. The image is a multi-stage Node
+build with production dependencies only and no browser; Chrome is only used
+by the one-off `pnpm register-passkey` and `pnpm capture-session` on a
+developer machine. A Fly volume at `/data` holds `items.yml`, `session.json`
+and `passkey-credentials.json`. Because the server is on the internet,
+`/items` and `/admin/login` are rate limited per client IP (keyed on
+`X-Forwarded-For` when `TRUST_PROXY=true`), the admin session cookie is
+`Secure` over HTTPS, and `GET /healthz` is the unauthenticated health check.
+See [`deployment.md`](deployment.md).
 
 ## Risks / open questions
 
