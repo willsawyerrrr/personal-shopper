@@ -25,7 +25,9 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   [`docs/architecture.md`](docs/architecture.md#session-capture).
 - Deployment: one always-on Fly.io machine (`fly.toml`, `Dockerfile`) in
   `syd` with a `/data` volume, publicly reachable over HTTPS; no browser at
-  runtime. `/items` and `/admin/login` are rate limited. See
+  runtime. `/items` and `/admin/login` are rate limited. Requests log one
+  `request completed` line and every auth rejection a `warn` with a `reason`
+  (never the secret or token). See
   [`docs/deployment.md`](docs/deployment.md).
 - Voice capture uses a fixed-phrase Shortcut with a follow-up Dictate Text
   prompt, not a custom Siri phrase with an embedded free-text slot — that's

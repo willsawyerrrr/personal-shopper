@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import formbody from '@fastify/formbody'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
+import { logAuthFailure, secretsEqual, verifyBasic, type AuthFailure } from './auth.ts'
 import type { AppConfig } from './config.ts'
 import { loadItems, normalizeWord, saveItems, type ItemMapping, type ItemsConfig } from './items.ts'
 
@@ -22,9 +23,11 @@ export async function registerAdmin(app: FastifyInstance, config: AppConfig): Pr
       if (request.url.startsWith('/admin/login')) {
         return
       }
-      if (isAuthorized(request, config.sharedSecret, sessionToken)) {
+      const failure = authFailure(request, config.sharedSecret, sessionToken)
+      if (!failure) {
         return
       }
+      logAuthFailure(request, failure, config.sharedSecret)
       if (wantsJson(request)) {
         return reply.code(401).send({ error: 'unauthorized' })
       }
@@ -42,7 +45,17 @@ export async function registerAdmin(app: FastifyInstance, config: AppConfig): Pr
       '/admin/login',
       { config: { rateLimit: { max: LOGIN_RATE_LIMIT_MAX, timeWindow: '1 minute' } } },
       async (request, reply) => {
-        if (request.body.secret !== config.sharedSecret) {
+        const supplied = request.body?.secret
+        if (typeof supplied !== 'string' || !secretsEqual(supplied, config.sharedSecret)) {
+          logAuthFailure(
+            request,
+            {
+              reason: 'login_failed',
+              authScheme: 'none',
+              ...(typeof supplied === 'string' ? { token: supplied } : {}),
+            },
+            config.sharedSecret,
+          )
           reply.code(401).type('text/html').send(renderLoginPage('Incorrect secret.'))
           return
         }
@@ -122,16 +135,20 @@ export async function registerAdmin(app: FastifyInstance, config: AppConfig): Pr
   })
 }
 
-function isAuthorized(
+function authFailure(
   request: FastifyRequest,
   sharedSecret: string,
   sessionToken: string,
-): boolean {
-  const header = request.headers.authorization
-  if (header === `Basic ${Buffer.from(`admin:${sharedSecret}`).toString('base64')}`) {
-    return true
+): AuthFailure | undefined {
+  const failure = verifyBasic(request.headers.authorization, sharedSecret)
+  if (!failure) {
+    return undefined
   }
-  return readCookie(request.headers.cookie, SESSION_COOKIE) === sessionToken
+  const cookie = readCookie(request.headers.cookie, SESSION_COOKIE)
+  if (cookie !== undefined && secretsEqual(cookie, sessionToken)) {
+    return undefined
+  }
+  return failure
 }
 
 // API clients (the iOS app) opt in with `Accept: application/json` and get

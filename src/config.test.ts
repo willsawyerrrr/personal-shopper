@@ -10,6 +10,7 @@ describe('loadConfig', () => {
     const config = loadConfig({ SHARED_SECRET: 'secret' })
     expect(config).toEqual({
       port: 3000,
+      logLevel: 'info',
       trustProxy: false,
       sharedSecret: 'secret',
       itemsPath: 'items.yml',
@@ -36,6 +37,16 @@ describe('loadConfig', () => {
     expect(config.sessionPath).toBe('/tmp/session.json')
     expect(config.sessionKeepAliveIntervalMs).toBe(0)
     expect(config.passkeyCredentialsPath).toBe('/tmp/passkey.json')
+  })
+
+  it('reads LOG_LEVEL case-insensitively', () => {
+    expect(loadConfig({ SHARED_SECRET: 'secret', LOG_LEVEL: 'Debug' }).logLevel).toBe('debug')
+  })
+
+  it('rejects an unknown LOG_LEVEL', () => {
+    expect(() => loadConfig({ SHARED_SECRET: 'secret', LOG_LEVEL: 'verbose' })).toThrow(
+      'LOG_LEVEL must be one of',
+    )
   })
 
   it('leaves reminders sync disabled unless both iCloud credentials are set', () => {

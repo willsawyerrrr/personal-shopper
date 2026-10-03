@@ -18,6 +18,7 @@ describe('admin', () => {
     await writeFile(itemsPath, 'milk:\n  stockcode: 123456\n  quantity: 1\n')
     config = {
       port: 0,
+      logLevel: 'info',
       trustProxy: false,
       sharedSecret: 'secret',
       itemsPath,
