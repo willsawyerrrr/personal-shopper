@@ -1,41 +1,48 @@
-import { createHash, timingSafeEqual } from 'node:crypto'
 import type { FastifyRequest } from 'fastify'
+import type { LoginFailureDetail } from './google.ts'
+import type { TokenRecord, TokenStore } from './tokens.ts'
 
 /**
  * Why a request was rejected, logged as `reason` on every auth failure:
  *
- * - `missing_authorization`: no `Authorization` header (webhook).
- * - `unsupported_scheme`: the header's scheme is not the one the route expects.
- * - `empty_token`: the scheme is right but carries no credentials.
- * - `secret_mismatch`: the supplied credentials differ from the shared secret.
- * - `no_session`: no `Authorization` header and no valid admin session cookie.
- * - `login_failed`: the admin login form was submitted with the wrong secret.
+ * - `missing_authorization`: no `Authorization` header and no session cookie.
+ * - `unsupported_scheme`: the header's scheme is not `Bearer`.
+ * - `empty_token`: the credentials are empty.
+ * - `invalid_token`: the token is not one the server issued, or was revoked.
+ * - `expired_token`: the token was issued by the server but has expired.
+ * - `email_not_allowed`: a valid sign-in or token for an email not in `ALLOWED_EMAILS`.
+ * - `invalid_state`: the Google callback's `state` is unknown, expired or already used.
+ * - `login_failed`: Google sign-in did not complete (see `detail`).
+ * - `invalid_request`: `/auth/start` called with missing or malformed parameters.
+ * - `invalid_grant`: `/auth/token` called with an unknown, used or expired code, or a wrong verifier.
  */
 export type AuthFailureReason =
   | 'missing_authorization'
   | 'unsupported_scheme'
   | 'empty_token'
-  | 'secret_mismatch'
-  | 'no_session'
+  | 'invalid_token'
+  | 'expired_token'
+  | 'email_not_allowed'
+  | 'invalid_state'
   | 'login_failed'
+  | 'invalid_request'
+  | 'invalid_grant'
 
-export type AuthScheme = 'Bearer' | 'Basic' | 'other' | 'none'
+export type AuthScheme = 'Bearer' | 'Basic' | 'cookie' | 'other' | 'none'
 
 export interface AuthFailure {
   reason: AuthFailureReason
   authScheme: AuthScheme
   /** The supplied credential; only ever used to derive diagnostics, never logged. */
   token?: string
+  /** A fixed, non-sensitive explanation of a `login_failed`. */
+  detail?: LoginFailureDetail
 }
 
-/**
- * Compares two secrets in constant time by hashing both to equal-length
- * digests first, so neither the content nor the length leaks through timing.
- */
-export function secretsEqual(supplied: string, expected: string): boolean {
-  const digest = (value: string) => createHash('sha256').update(value).digest()
-  return timingSafeEqual(digest(supplied), digest(expected))
-}
+export const SESSION_COOKIE = 'ps_admin_session'
+
+export type Authentication =
+  { ok: true; record: TokenRecord; token: string } | { ok: false; failure: AuthFailure }
 
 function parseAuthorization(header: string): { scheme: AuthScheme; credentials: string } {
   const space = header.indexOf(' ')
@@ -47,72 +54,81 @@ function parseAuthorization(header: string): { scheme: AuthScheme; credentials: 
   return { scheme, credentials }
 }
 
-function checkCredentials(
-  scheme: AuthScheme,
-  credentials: string,
-  expectedScheme: 'Bearer' | 'Basic',
-  isMatch: (credentials: string) => boolean,
-): AuthFailure | undefined {
-  if (scheme !== expectedScheme) {
-    return { reason: 'unsupported_scheme', authScheme: scheme, token: credentials }
+/**
+ * Authenticates a request by its `Authorization: Bearer <token>` header or,
+ * with `acceptCookie`, the admin session cookie when there is no header.
+ * Tokens for an email outside `allowedEmails` are rejected.
+ */
+export async function authenticate(
+  request: FastifyRequest,
+  tokens: TokenStore,
+  allowedEmails: readonly string[],
+  acceptCookie: boolean,
+): Promise<Authentication> {
+  const header = request.headers.authorization
+  const cookie = acceptCookie ? readCookie(request.headers.cookie, SESSION_COOKIE) : undefined
+  let scheme: AuthScheme
+  let credentials: string
+  if (header !== undefined) {
+    ;({ scheme, credentials } = parseAuthorization(header))
+    if (scheme !== 'Bearer') {
+      return { ok: false, failure: { reason: 'unsupported_scheme', authScheme: scheme } }
+    }
+  } else if (cookie !== undefined) {
+    scheme = 'cookie'
+    credentials = cookie
+  } else {
+    return { ok: false, failure: { reason: 'missing_authorization', authScheme: 'none' } }
   }
   if (credentials.trim() === '') {
-    return { reason: 'empty_token', authScheme: scheme, token: credentials }
+    return {
+      ok: false,
+      failure: { reason: 'empty_token', authScheme: scheme, token: credentials },
+    }
   }
-  return isMatch(credentials)
-    ? undefined
-    : { reason: 'secret_mismatch', authScheme: scheme, token: credentials }
+  const check = await tokens.verify(credentials)
+  if (!check.ok) {
+    return {
+      ok: false,
+      failure: { reason: check.reason, authScheme: scheme, token: credentials },
+    }
+  }
+  if (!allowedEmails.includes(check.record.email)) {
+    return {
+      ok: false,
+      failure: { reason: 'email_not_allowed', authScheme: scheme, token: credentials },
+    }
+  }
+  return { ok: true, record: check.record, token: credentials }
 }
 
-/** Checks the webhook's `Authorization: Bearer <secret>` header. */
-export function verifyBearer(header: string | undefined, secret: string): AuthFailure | undefined {
-  if (header === undefined) {
-    return { reason: 'missing_authorization', authScheme: 'none' }
-  }
-  const { scheme, credentials } = parseAuthorization(header)
-  return checkCredentials(scheme, credentials, 'Bearer', (token) => secretsEqual(token, secret))
+export function sessionCookie(value: string, maxAgeSeconds: number, secure: boolean): string {
+  return `${SESSION_COOKIE}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${secure ? '; Secure' : ''}`
 }
 
-/**
- * Checks the admin's `Authorization: Basic base64(admin:<secret>)` header.
- * The reported token is the password part.
- */
-export function verifyBasic(header: string | undefined, secret: string): AuthFailure | undefined {
-  if (header === undefined) {
-    return { reason: 'no_session', authScheme: 'none' }
-  }
-  const { scheme, credentials } = parseAuthorization(header)
-  const failure = checkCredentials(scheme, credentials, 'Basic', (encoded) =>
-    secretsEqual(Buffer.from(encoded, 'base64').toString(), `admin:${secret}`),
-  )
-  if (failure?.token === undefined || failure.reason === 'unsupported_scheme') {
-    return failure
-  }
-  const decoded = Buffer.from(failure.token, 'base64').toString()
-  return { ...failure, token: decoded.slice(decoded.indexOf(':') + 1) }
+export function readCookie(header: string | undefined, name: string): string | undefined {
+  return header
+    ?.split(';')
+    .map((part) => part.trim().split('='))
+    .find(([key]) => key === name)?.[1]
 }
 
 /**
  * Logs a single structured `warn` describing an auth rejection. It carries
- * the shape of the supplied token (length, whitespace, whether it matches
- * once trimmed) but never the token, the secret, or any header or cookie.
+ * the shape of the supplied token (length, whitespace) but never the token,
+ * a code, an ID token, a secret, or any header or cookie.
  */
-export function logAuthFailure(
-  request: FastifyRequest,
-  failure: AuthFailure,
-  secret: string,
-): void {
+export function logAuthFailure(request: FastifyRequest, failure: AuthFailure): void {
   const { token } = failure
   request.log.warn(
     {
       reason: failure.reason,
+      ...(failure.detail ? { detail: failure.detail } : {}),
       route: request.routeOptions.url ?? requestPath(request),
       method: request.method,
       authScheme: failure.authScheme,
       tokenLength: token?.length ?? 0,
       hasSurroundingWhitespace: token !== undefined && token !== token.trim(),
-      matchesAfterTrim:
-        token !== undefined && token.trim() !== '' && secretsEqual(token.trim(), secret),
       userAgent: request.headers['user-agent'],
       ip: request.ip,
       reqId: request.id,

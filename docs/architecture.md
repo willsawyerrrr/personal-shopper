@@ -2,75 +2,58 @@
 
 ## Flow
 
-1. **Voice capture**: a Shortcut with a fixed Siri phrase (e.g. "Add to
-   shopping list") runs **Dictate Text**, which triggers Siri's own built-in
-   spoken prompt ("What's the text?"), then **Get Contents of URL** to call
-   the webhook below with whatever you said. Lives entirely in the Shortcuts
-   app, confirmed working end-to-end — see [`siri-setup.md`](siri-setup.md).
-   There's no native Reminders-list trigger to hook into Shortcuts
-   automations with, and no way for a user-created Shortcut to register a
-   Siri phrase with an embedded free-text slot — this is the actual
-   available mechanism, not the more elegant-sounding alternative it
-   replaced.
-2. **`POST /items`** (this repo, `src/app.ts`) — bearer-auth via `SHARED_SECRET`,
-   body `{ "item": "milk" }`. Looks up the spoken term in `items.yml`
-   (`stockcode` + `quantity`, maintained by hand) and calls
-   `WoolworthsClient.addToCart`.
-3. **`WoolworthsClient`** (`src/woolworths/client.ts`) calls Woolworths'
+1. **Sign-in**: Google is the only way to authenticate, for the browser and
+   for API clients (iOS app, Chrome extension). The server is the OAuth client
+   of Google, restricts sign-in to `ALLOWED_EMAILS`, and issues its own
+   session cookie (browser) or opaque bearer token (clients). Endpoints,
+   token lifetime and the client contract are in [`auth.md`](auth.md).
+2. **`/admin`** (`src/admin.ts`): lists, adds, and removes entries in
+   `items.yml` directly, no restart required. It is behind Google sign-in
+   (`/admin/login` is a "Sign in with Google" button; routes in
+   `src/login.ts`) and shows every active session with a revoke button. Since
+   Woolworths' search is broken (see risks below), there's no in-app product
+   search; you find a product on woolworths.com.au yourself and paste its URL
+   in, and the stockcode is parsed out of `/shop/productdetails/<stockcode>/...`.
+   Requests with `Accept: application/json` and a bearer token get JSON
+   instead of the web UI's redirects: `GET /admin/items`,
+   `POST /admin/items`, `DELETE /admin/items/:word`, and `401 {error}` when
+   unauthenticated.
+3. **The `extension/` Chrome extension** and **the `ios/` app** are clients of
+   that JSON API: from the Woolworths product page (extension) or share sheet
+   (iOS) they add a product with its URL and name prefilled. See
+   [`extension/README.md`](../extension/README.md) and
+   [`ios/README.md`](../ios/README.md); both sign in with the client flow in
+   [`auth.md`](auth.md#api-client-sign-in).
+4. **Reminders queue**: items reach the cart through an iCloud Reminders list
+   that the server syncs, below.
+5. **`WoolworthsClient`** (`src/woolworths/client.ts`) calls Woolworths'
    unofficial API directly. `POST /api/v3/ui/trolley/update` for cart changes
    is confirmed working against a live cart. `POST /apis/ui/Search/products`
-   for search is confirmed broken or deprecated — see the risks below.
-4. **`SessionStore`** (`src/woolworths/session.ts`) holds the cookie jar
+   for search is confirmed broken or deprecated; see the risks below.
+6. **`SessionStore`** (`src/woolworths/session.ts`) holds the cookie jar
    (`session.json`, gitignored) those calls authenticate with and refreshes
-   it through `GET /auth/heartbeat`.
-5. **`GET /admin`** (`src/admin.ts`), gated by a login form at
-   `/admin/login` (password field is `SHARED_SECRET`, autofillable from a
-   password manager) that sets an in-memory session cookie — not
-   Basic-Auth, so it works with a real form instead of the browser's native
-   auth dialog. Since Woolworths' search is broken (see risks below),
-   there's no in-app product search — instead you find a product on
-   woolworths.com.au yourself and paste its URL in; the stockcode is parsed
-   out of `/shop/productdetails/<stockcode>/...`. Lists, adds, and removes
-   entries in `items.yml` directly, no restart required.
-6. **The `extension/` Chrome extension** calls the same `POST /admin/items`
-   endpoint from a popup on the Woolworths product page you're already
-   looking at, prefilling the URL and name so there's no tab-switching to
-   copy them across by hand. Authenticates with a Basic-Auth header (its own
-   `SHARED_SECRET`, entered once in the extension's options page) rather
-   than the admin UI's session cookie, since it's a background `fetch` call
-   with no browser chrome to show a login form in. See
-   [`extension/README.md`](../extension/README.md).
-7. **The `ios/` app** is a SwiftUI client of the same routes. Requests with
-   `Accept: application/json` and Basic auth get JSON instead of the web
-   UI's redirects and login page: `GET /admin/items` returns
-   `{items: [{word, stockcode, quantity, name?}]}`, `POST /admin/items`
-   (JSON body `word`, `url`, `name?`, `quantity?`) returns 201 with the
-   stored item or 400 `{error}`, `POST /admin/items/:word/delete` returns
-   204, and a missing or wrong secret returns 401 `{error}`. The app's Share
-   extension (iOS share sheet) and `AddItemIntent` (Shortcuts/Siri) share one
-   Swift package for the client, Keychain-stored secret and URL parsing. See
-   [`ios/README.md`](../ios/README.md).
+   it through `GET /auth/heartbeat` (Woolworths' endpoint, not this
+   server's).
 
-## Reminders offline queue
+## Reminders queue
 
-Step 1's webhook call can fail when the server is unreachable (see
-[`deployment.md`](deployment.md)); a Shortcut fallback (`siri-setup.md`
-step 1a) queues anything it can't deliver by adding a reminder to a shared
-iCloud Reminders list ("Shopping List" by default) instead of losing it.
+A shared iCloud Reminders list ("Shopping List" by default) is the queue the
+server drains into the cart. Adding a reminder to it, such as with Siri's
+built-in "add milk to my Shopping List", queues that item.
 
 `ICloudRemindersClient` (`src/reminders/client.ts`) polls that list over
 iCloud's CalDAV interface (`https://caldav.icloud.com`), authenticated with
 an app-specific password (`ICLOUD_USERNAME` /
-`ICLOUD_APP_SPECIFIC_PASSWORD`, generated at appleid.apple.com — not the
+`ICLOUD_APP_SPECIFIC_PASSWORD`, generated at appleid.apple.com, not the
 Apple ID password itself). `syncReminders` (`src/reminders/sync.ts`) runs on
 an interval (`REMINDERS_SYNC_INTERVAL_MS`, default 5 minutes) from
 `src/server.ts`: for each pending reminder it resolves the title against
-`items.yml` exactly like `POST /items` does, calls
-`WoolworthsClient.addToCart` directly (no HTTP hop), and deletes the
-reminder once it lands in the cart. A reminder with no mapping, or one that
-fails because the Woolworths session is expired (heartbeat refresh rejected), is left queued and retried
-on the next interval. This is opt-in — deployments that don't set both
-iCloud env vars skip it entirely.
+`items.yml` (an exact, normalised match on the trigger word), calls
+`WoolworthsClient.addToCart` directly, and deletes the reminder once it lands
+in the cart. A reminder with no mapping, or one that fails because the
+Woolworths session is expired (heartbeat refresh rejected), is left queued and
+retried on the next interval. This is opt-in: deployments that don't set both
+iCloud env vars skip it entirely. It is server-side only and needs no sign-in.
 
 ## Session capture
 
@@ -131,14 +114,14 @@ passkey login surfaces its own error; the next call retries it.
 ## Deployment
 
 Runs as one always-on Fly.io machine in `syd`, publicly reachable over HTTPS
-so the Shortcut works from any network. The image is a multi-stage Node
+so the clients work from any network. The image is a multi-stage Node
 build with production dependencies only and no browser; Chrome is only used
 by the one-off `pnpm register-passkey` and `pnpm capture-session` on a
-developer machine. A Fly volume at `/data` holds `items.yml`, `session.json`
-and `passkey-credentials.json`. Because the server is on the internet,
-`/items` and `/admin/login` are rate limited per client IP (keyed on
-`X-Forwarded-For` when `TRUST_PROXY=true`), the admin session cookie is
-`Secure` over HTTPS, and `GET /healthz` is the unauthenticated health check.
+developer machine. A Fly volume at `/data` holds `items.yml`, `session.json`,
+`passkey-credentials.json` and `tokens.json`. Because the server is on the
+internet, `/auth/*` is rate limited per client IP (keyed on `X-Forwarded-For`
+when `TRUST_PROXY=true`), the admin session cookie is `Secure` over HTTPS, and
+`GET /healthz` is the unauthenticated health check.
 See [`deployment.md`](deployment.md).
 
 ## Risks / open questions
@@ -180,11 +163,10 @@ See [`deployment.md`](deployment.md).
   `isMobile`, `groupEdmVariants`) made no difference. `pnpm search-product`
   doesn't currently work; find stockcodes by hand instead from a product's
   URL (`/shop/productdetails/<stockcode>/...`). `addToCart` is unaffected.
-- **No Shortcut-only path into the Woolworths app exists.** Its
+- **No on-device path into the Woolworths app exists.** Its
   `apple-app-site-association` file (`https://www.woolworths.com.au/.well-
 known/apple-app-site-association`) confirms `/shop/productdetails/*` is a
-  registered universal link, so a Shortcut's "Open URL" does deep-link into
-  the app's product page — but there's no documented URL parameter, App
-  Intent, or Siri Shortcut donation that adds to cart from there, so it
-  still needs a manual tap. An on-device-only Shortcut can't replace this
-  repo's server.
+  registered universal link, so opening a product URL deep-links into the
+  app's product page, but there's no documented URL parameter, App Intent, or
+  Siri Shortcut donation that adds to cart from there, so it still needs a
+  manual tap. An on-device-only flow can't replace this repo's server.

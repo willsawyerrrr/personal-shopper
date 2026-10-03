@@ -5,8 +5,10 @@ Click & Collect cart: "Hey Siri, add milk to Grocery List" on a HomePod ends
 with the household's usual milk in the cart.
 
 See [`docs/architecture.md`](docs/architecture.md) for how it fits together,
-[`docs/siri-setup.md`](docs/siri-setup.md) for the Shortcuts/Reminders setup,
-and [`docs/deployment.md`](docs/deployment.md) for deploying the webhook to Fly.io.
+[`docs/auth.md`](docs/auth.md) for Google sign-in and the API client contract,
+[`docs/siri-setup.md`](docs/siri-setup.md) for the Siri and Reminders setup,
+and [`docs/deployment.md`](docs/deployment.md) for deploying to Fly.io and
+creating the Google OAuth client.
 
 The Woolworths login is captured once with `pnpm capture-session` and then
 kept alive by the server through Woolworths' `/auth/heartbeat` refresh. Set
@@ -19,8 +21,12 @@ passkey registered once via `pnpm register-passkey` (saved to
 passkey, re-run `pnpm capture-session`.
 
 The server runs on Fly.io (`fly.toml`, `Dockerfile`) with its data on a
-volume; `GET /healthz` is the unauthenticated health check, and `/items` and
-`/admin/login` are rate limited per client IP.
+volume; `GET /healthz` is the unauthenticated health check, and `/auth/*` is
+rate limited per client IP.
+
+Sign-in is Google only, restricted to `ALLOWED_EMAILS`: the admin UI at
+`/admin` uses a session cookie and API clients use server-issued bearer
+tokens.
 
 The `ios/` app (see [`ios/README.md`](ios/README.md)) manages items and adds a
 product from the iOS share sheet, Shortcuts or Siri.
@@ -29,7 +35,7 @@ product from the iOS share sheet, Shortcuts or Siri.
 
 ```bash
 pnpm install
-cp .env.example .env
+cp .env.example .env   # fill in the Google variables (docs/deployment.md#google-sign-in)
 cp items.example.yml items.yml
 pnpm dev
 ```
