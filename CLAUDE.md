@@ -17,9 +17,9 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
 - Session auth is cookie replay, kept alive by `GET /auth/heartbeat`
   refreshes (on demand near token expiry, plus an opt-out timer) that persist
   the rotating `w-aref` cookie. When the refresh is rejected the server signs
-  in headlessly with a stored passkey credential held by a CDP virtual
-  authenticator (`src/woolworths/passkey.ts`; needs Chrome installed), which
-  `pnpm register-passkey` registers once by hand. Without a registered
+  in over plain HTTP with a stored passkey credential
+  (`src/woolworths/passkey.ts`; no browser), which `pnpm register-passkey`
+  registers once by hand in Chrome. Without a registered
   credential, `pnpm capture-session` (manual login) is the only recovery. No
   password or SMS-code login is automated. See
   [`docs/architecture.md`](docs/architecture.md#session-capture).
@@ -45,7 +45,7 @@ pnpm run typecheck
 pnpm run coverage
 pnpm run build
 pnpm run register-passkey     # one-off: register the passkey the server logs in with
-pnpm run passkey-login        # headless passkey login, writes session.json
+pnpm run passkey-login        # HTTP passkey login, writes session.json
 pnpm run capture-session      # manual Woolworths login, writes session.json (only needed when the heartbeat refresh is rejected)
 pnpm run search-product <term>  # find a stockcode for items.yml
 ```

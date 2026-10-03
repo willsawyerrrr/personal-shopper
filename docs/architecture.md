@@ -68,24 +68,30 @@ Woolworths' login (Auth0 at `auth.woolworths.com.au`) signs in without a
 password or SMS code when a discoverable passkey is available, and sits behind
 Akamai Bot Manager. Two paths produce `session.json`:
 
-- **Passkey login** (`src/woolworths/passkey.ts`): headless Chrome with a CDP
-  virtual authenticator (`WebAuthn.addVirtualAuthenticator`: ctap2, internal,
-  resident key, user verified) preloaded with the stored credential
-  (`WebAuthn.addCredential`). It opens `/shop/securelogin`, dispatches a click
-  on Login (a plain `click()` hangs), waits for the redirect to
-  `#postSuccessLogin` and for every required cookie, including the httpOnly,
-  `/auth`-scoped `w-aref`. Akamai answers "Access Denied" to default headless
-  Chrome; it accepts the installed Chrome channel (`channel: 'chrome'`, so
-  Chrome must be installed) with `--disable-blink-features=AutomationControlled`
-  and an explicit desktop user agent. Errors distinguish an Akamai block, a
-  rejected passkey and missing cookies. `pnpm passkey-login` runs it by hand.
+- **Passkey login** (`src/woolworths/passkey.ts`): plain `fetch` with a cookie
+  jar, no browser. It walks `GET /auth/login` through the redirects to the
+  Auth0 identifier page (`/u/login/identifier?state=…`), reads the WebAuthn
+  challenge from the page's embedded context
+  (`screen.data.passkey.public_key.challenge`), and signs it with the stored
+  credential's private key: `clientDataJSON` for origin
+  `https://auth.woolworths.com.au`, `authenticatorData` of the RP ID hash, flags
+  `0x05` and a timestamp sign count. Ed25519 keys sign raw, ES256 (P-256) keys
+  produce a DER signature. The assertion is posted to the identifier form;
+  following `/authorize/resume` and `/auth/callback` leaves the jar holding
+  `w-rctx`, `wow-auth-token`, `prodwow-auth-token`, `w-aref` (httpOnly,
+  `/auth`-scoped) and `w-loggedin`. Cookies set by the responses are kept
+  (deletions applied); the session stores the required ones plus any Akamai
+  cookies. Errors distinguish an Akamai block (403, non-HTML or "Access
+  Denied" response), a rejected passkey and missing cookies. `pnpm passkey-login`
+  runs it by hand.
 - **Manual capture** (`pnpm capture-session`, `scripts/capture-session.ts`):
   opens a visible browser, waits for you to log in and set your Click &
   Collect store/pickup slot by hand, then extracts the required cookies into
   `session.json`.
 
 `pnpm register-passkey` (`scripts/register-passkey.ts`) registers the
-credential once: it opens a headed Chrome with a virtual authenticator, you
+credential once: it opens a headed Chrome (the only passkey step that needs a
+browser) with a virtual authenticator, you
 log in and accept Woolworths' prompt to create a passkey, and the credential
 (the output of `WebAuthn.getCredentials`) is written with `0600` permissions
 to `PASSKEY_CREDENTIALS_PATH` (default `passkey-credentials.json`,
@@ -115,9 +121,10 @@ passkey login surfaces its own error; the next call retries it.
 ## Deployment
 
 Runs natively on an always-on Windows PC, reachable only over the home
-network — no public exposure, deliberately. Chrome must be installed there
-for the passkey login and session capture, and this sidesteps WSL2's
-port-forwarding limitations for LAN reachability. See [`deployment.md`](deployment.md).
+network — no public exposure, deliberately. The server needs no browser;
+Chrome is only used by the one-off `pnpm register-passkey` and `pnpm
+capture-session`. Running natively sidesteps WSL2's port-forwarding
+limitations for LAN reachability. See [`deployment.md`](deployment.md).
 
 ## Risks / open questions
 
@@ -128,17 +135,19 @@ port-forwarding limitations for LAN reachability. See [`deployment.md`](deployme
   signs in with the stored passkey; without one, run `pnpm capture-session`
   again.
 - **Passkey login**: depends on Woolworths keeping discoverable-passkey login
-  and on Akamai accepting the installed-Chrome fingerprint above; either can
-  change without notice, in which case the login fails with a descriptive
+  and on Akamai accepting plain HTTP requests with browser-like headers;
+  either can change without notice, in which case the login fails with a descriptive
   error. Whether the Click & Collect store/slot survives a passkey login
   (rather than a hand-captured session) is unverified; if items land against
   the wrong store, re-select it with `pnpm capture-session`.
 - **Anti-bot**: Akamai Bot Manager cookies (`bm_sv`, `_abck`, `ak_bmsc`) are
-  present on woolworths.com.au. Plain HTTP requests without a real browser's
-  fingerprint risk being challenged or blocked; that's why login goes
-  through an actual Chrome rather than HTTP calls. The
-  heartbeat refresh, sent as plain HTTP with the captured cookies and
-  browser-like headers, was not blocked when checked against the live site.
+  present on woolworths.com.au but are optional in a session: the passkey
+  login, `GET /auth/heartbeat` and an authenticated read
+  (`GET /api/v3/ui/trolley`, which reports the account as signed in) all
+  succeed without them, over plain HTTP with browser-like headers. Cart writes
+  (`POST /api/v3/ui/trolley/update`) without them are unverified, as they
+  mutate the real cart; if Akamai challenges writes, a hand-captured session
+  (`pnpm capture-session`) still carries them.
 - **Click & Collect store/slot persistence is confirmed working.** Picking
   the store by hand in `pnpm capture-session`'s real browser, then replaying
   the captured cookies through `WoolworthsClient.addToCart`, successfully

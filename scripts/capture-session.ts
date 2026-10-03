@@ -1,5 +1,5 @@
 import { chromium } from 'playwright'
-import { REQUIRED_COOKIES, SessionStore } from '../src/woolworths/session.ts'
+import { REQUIRED_COOKIES, SESSION_COOKIES, SessionStore } from '../src/woolworths/session.ts'
 
 async function main(): Promise<void> {
   const sessionPath = process.env.SESSION_PATH ?? 'session.json'
@@ -20,9 +20,7 @@ async function main(): Promise<void> {
   await waitForEnter()
 
   const cookies = await context.cookies()
-  const captured = cookies.filter((cookie) =>
-    (REQUIRED_COOKIES as readonly string[]).includes(cookie.name),
-  )
+  const captured = cookies.filter((cookie) => SESSION_COOKIES.includes(cookie.name))
   const missing = REQUIRED_COOKIES.filter(
     (name) => !captured.some((cookie) => cookie.name === name),
   )

@@ -9,10 +9,12 @@ export const REQUIRED_COOKIES = [
   'wow-auth-token',
   'prodwow-auth-token',
   REFRESH_COOKIE,
-  'bm_sv',
-  '_abck',
-  'ak_bmsc',
 ] as const
+
+/** Akamai Bot Manager cookies; kept when present but not needed for a valid session. */
+export const OPTIONAL_COOKIES = ['bm_sv', '_abck', 'ak_bmsc'] as const
+
+export const SESSION_COOKIES: readonly string[] = [...REQUIRED_COOKIES, ...OPTIONAL_COOKIES]
 
 export interface StoredCookie {
   name: string
@@ -122,11 +124,11 @@ export class SessionStore {
   }
 }
 
-interface IssuedCookie extends StoredCookie {
+export interface IssuedCookie extends StoredCookie {
   remove: boolean
 }
 
-function parseSetCookies(headers: string[]): IssuedCookie[] {
+export function parseSetCookies(headers: string[]): IssuedCookie[] {
   return headers.flatMap((header) => {
     const [pair = '', ...attributes] = header.split(';')
     const separator = pair.indexOf('=')
@@ -147,7 +149,7 @@ function parseSetCookies(headers: string[]): IssuedCookie[] {
   })
 }
 
-function mergeCookies(existing: StoredCookie[], issued: IssuedCookie[]): StoredCookie[] {
+export function mergeCookies(existing: StoredCookie[], issued: IssuedCookie[]): StoredCookie[] {
   const jar = new Map(existing.map((cookie) => [cookie.name, cookie.value]))
   for (const { name, value, remove } of issued) {
     if (remove) {
