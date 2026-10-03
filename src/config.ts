@@ -5,8 +5,12 @@ export interface RemindersSyncConfig {
   intervalMs: number
 }
 
+export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const
+export type LogLevel = (typeof LOG_LEVELS)[number]
+
 export interface AppConfig {
   port: number
+  logLevel: LogLevel
   trustProxy: boolean
   sharedSecret: string
   itemsPath: string
@@ -23,6 +27,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   }
   return {
     port: Number(env.PORT ?? 3000),
+    logLevel: parseLogLevel(env.LOG_LEVEL),
     // Behind a reverse proxy (Fly) the client IP, which rate limiting keys on,
     // is only in `X-Forwarded-For`; trusting it when exposed directly would
     // let clients spoof it.
@@ -35,6 +40,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     passkeyCredentialsPath: env.PASSKEY_CREDENTIALS_PATH ?? 'passkey-credentials.json',
     remindersSync: loadRemindersSyncConfig(env),
   }
+}
+
+function parseLogLevel(value: string | undefined): LogLevel {
+  if (!value) {
+    return 'info'
+  }
+  const level = LOG_LEVELS.find((candidate) => candidate === value.toLowerCase())
+  if (!level) {
+    throw new Error(`LOG_LEVEL must be one of ${LOG_LEVELS.join(', ')}`)
+  }
+  return level
 }
 
 // Syncing the offline-queue Reminders list (see docs/architecture.md) needs

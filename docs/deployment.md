@@ -108,4 +108,34 @@ certificate is issued. Point the Shortcut at
 ## Updating
 
 `fly deploy` rebuilds the image and rolls the machine; the volume, and so the
-items and session, persist. Logs: `fly logs`.
+items and session, persist.
+
+## Logs
+
+`fly logs` shows one JSON line per request, `request completed`, with
+`method`, `url` (path only), `statusCode`, `responseTime` (ms), `userAgent`
+and `ip`. `/healthz` checks are logged only at `LOG_LEVEL=debug`.
+
+Every rejected credential logs one `warn` line, `auth rejected`:
+
+```bash
+fly logs | grep '"reason"'
+```
+
+Each line carries `reason`, `route`, `method`, `authScheme` (`Bearer`,
+`Basic`, `other` or `none`), `tokenLength`, `hasSurroundingWhitespace`,
+`matchesAfterTrim` (the token equals the secret once trimmed, a common
+Shortcut paste mistake), `userAgent`, `ip` and `reqId`. The secret, the
+supplied token, and the `Authorization` and `Cookie` headers are never logged.
+
+| `reason`                | Meaning                                                                       |
+| ----------------------- | ----------------------------------------------------------------------------- |
+| `missing_authorization` | `/items` request with no `Authorization` header.                              |
+| `unsupported_scheme`    | Wrong scheme: not `Bearer` on `/items`, not `Basic` on `/admin`.              |
+| `empty_token`           | Right scheme but no credentials after it.                                     |
+| `secret_mismatch`       | Credentials differ from `SHARED_SECRET`; compare `tokenLength` to its length. |
+| `no_session`            | `/admin` request with no `Authorization` header and no valid session cookie.  |
+| `login_failed`          | `/admin/login` submitted with the wrong secret.                               |
+
+`matchesAfterTrim: true` on a `secret_mismatch` means the Shortcut's token has
+extra whitespace or a newline; re-paste it without one.
