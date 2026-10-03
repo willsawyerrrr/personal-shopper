@@ -1,148 +1,139 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { FastifyInstance } from 'fastify'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { buildApp } from './app.ts'
 import type { AppConfig } from './config.ts'
-import type { CartClient } from './woolworths/client.ts'
+import { signInClient, signInWeb, testConfig } from './testing/app.ts'
+import { FakeGoogle } from './testing/google.ts'
 
 describe('admin', () => {
   let dir: string
   let config: AppConfig
-  let cart: CartClient
-  const authHeader = { authorization: `Basic ${Buffer.from('admin:secret').toString('base64')}` }
+  let google: FakeGoogle
+  let app: FastifyInstance
+  let authHeader: { cookie: string }
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'personal-shopper-admin-'))
-    const itemsPath = join(dir, 'items.yml')
-    await writeFile(itemsPath, 'milk:\n  stockcode: 123456\n  quantity: 1\n')
-    config = {
-      port: 0,
-      logLevel: 'info',
-      trustProxy: false,
-      sharedSecret: 'secret',
-      itemsPath,
-      sessionPath: join(dir, 'session.json'),
-      sessionKeepAliveIntervalMs: 0,
-      passkeyCredentialsPath: 'passkey-credentials.json',
-      remindersSync: undefined,
-    }
-    cart = { addToCart: vi.fn() }
+    config = testConfig(dir)
+    await writeFile(config.itemsPath, 'milk:\n  stockcode: 123456\n  quantity: 1\n')
+    google = await FakeGoogle.create()
+    app = buildApp(config, { fetch: google.fetch })
+    authHeader = { cookie: await signInWeb(app, google) }
   })
 
   afterEach(async () => {
-    await rm(dir, { recursive: true, force: true })
+    await rm(dir, { recursive: true })
   })
 
-  it('rate limits login attempts per client', async () => {
-    const app = buildApp(config, cart)
-    const attempt = () =>
-      app.inject({
-        method: 'POST',
-        url: '/admin/login',
-        payload: 'secret=wrong',
-        headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      })
-    for (let i = 0; i < 10; i++) {
-      expect((await attempt()).statusCode).toBe(401)
-    }
-    expect((await attempt()).statusCode).toBe(429)
-  })
-
-  it('marks the session cookie Secure only over HTTPS', async () => {
-    const app = buildApp({ ...config, trustProxy: true }, cart)
-    const login = (proto: string) =>
-      app.inject({
-        method: 'POST',
-        url: '/admin/login',
-        payload: 'secret=secret',
-        headers: {
-          'content-type': 'application/x-www-form-urlencoded',
-          'x-forwarded-proto': proto,
-        },
-      })
-    expect(String((await login('https')).headers['set-cookie'])).toContain('; Secure')
-    expect(String((await login('http')).headers['set-cookie'])).not.toContain('Secure')
-  })
-
-  it('serves the login page', async () => {
-    const app = buildApp(config, cart)
+  it('serves a Google sign-in button instead of a password form', async () => {
     const response = await app.inject({ method: 'GET', url: '/admin/login' })
     expect(response.statusCode).toBe(200)
-    expect(response.body).toContain('Shared secret')
+    expect(response.body).toContain('href="/auth/google/login"')
+    expect(response.body).toContain('Sign in with Google')
+    expect(response.body).not.toContain('type="password"')
+  })
+
+  it('has no password login', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/admin/login',
+      payload: 'secret=anything',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    })
+    expect(response.statusCode).toBe(404)
+    expect(response.headers['set-cookie']).toBeUndefined()
   })
 
   it('redirects unauthenticated browser requests to the login page', async () => {
-    const app = buildApp(config, cart)
     const response = await app.inject({ method: 'GET', url: '/admin' })
     expect(response.statusCode).toBe(302)
     expect(response.headers.location).toBe('/admin/login')
   })
 
-  it('rejects unauthenticated API requests', async () => {
-    const app = buildApp(config, cart)
-    const response = await app.inject({ method: 'POST', url: '/admin/items', payload: {} })
+  it('answers unauthenticated browser writes with 401', async () => {
+    const response = await app.inject({ method: 'POST', url: '/admin/items/milk/delete' })
     expect(response.statusCode).toBe(401)
+    expect(await readFile(config.itemsPath, 'utf8')).toContain('milk:')
   })
 
-  it('signs in with the shared secret and sets a session cookie', async () => {
-    const app = buildApp(config, cart)
-    const response = await app.inject({
-      method: 'POST',
-      url: '/admin/login',
-      payload: { secret: 'secret' },
-    })
-    expect(response.statusCode).toBe(302)
-    expect(response.headers.location).toBe('/admin')
-    const cookie = response.headers['set-cookie']
-    expect(cookie).toContain('ps_admin_session=')
-
-    const authed = await app.inject({
-      method: 'GET',
-      url: '/admin',
-      headers: { cookie: String(cookie).split(';')[0] },
-    })
-    expect(authed.statusCode).toBe(200)
-  })
-
-  it('rejects sign-in with the wrong secret', async () => {
-    const app = buildApp(config, cart)
-    const response = await app.inject({
-      method: 'POST',
-      url: '/admin/login',
-      payload: { secret: 'wrong' },
-    })
-    expect(response.statusCode).toBe(401)
-    expect(response.body).toContain('Incorrect secret')
-  })
-
-  it('logs out by clearing the session cookie', async () => {
-    const app = buildApp(config, cart)
-    const login = await app.inject({
-      method: 'POST',
-      url: '/admin/login',
-      payload: { secret: 'secret' },
-    })
-    const sessionCookie = String(login.headers['set-cookie']).split(';')[0]
-
-    const logout = await app.inject({
-      method: 'POST',
-      url: '/admin/logout',
-      headers: { cookie: sessionCookie },
-    })
+  it('signs out by revoking the session and clearing the cookie', async () => {
+    const logout = await app.inject({ method: 'POST', url: '/admin/logout', headers: authHeader })
     expect(logout.statusCode).toBe(302)
     expect(logout.headers.location).toBe('/admin/login')
-
-    const afterLogout = await app.inject({
-      method: 'GET',
-      url: '/admin',
-      headers: { cookie: sessionCookie },
-    })
+    expect(String(logout.headers['set-cookie'])).toContain('Max-Age=0')
+    const afterLogout = await app.inject({ method: 'GET', url: '/admin', headers: authHeader })
     expect(afterLogout.statusCode).toBe(302)
   })
 
+  describe('sessions', () => {
+    const rows = (body: string) =>
+      body
+        .split('<tr>')
+        .map((row) => /<td>([^<]*)<\/td>[\s\S]*\/admin\/sessions\/([0-9a-f]+)\/revoke/.exec(row))
+        .flatMap((match) => (match ? [{ client: match[1] ?? '', id: match[2] ?? '' }] : []))
+    const page = async () =>
+      rows((await app.inject({ method: 'GET', url: '/admin', headers: authHeader })).body)
+
+    it('lists active sessions, marking the current one, without exposing tokens', async () => {
+      const token = await signInClient(app, google, { client: 'extension' })
+      const response = await app.inject({ method: 'GET', url: '/admin', headers: authHeader })
+      expect(response.body).toContain('web (this session)')
+      expect(response.body).toContain('extension')
+      expect(response.body).toContain('me@example.com')
+      expect(rows(response.body)).toHaveLength(2)
+      expect(response.body).not.toContain(token)
+      expect(response.body).not.toContain(authHeader.cookie.split('=')[1])
+    })
+
+    it('revokes another session', async () => {
+      const token = await signInClient(app, google)
+      const bearer = { authorization: `Bearer ${token}`, accept: 'application/json' }
+      const ios = (await page()).find((row) => row.client === 'ios')
+      const revoke = await app.inject({
+        method: 'POST',
+        url: `/admin/sessions/${ios?.id}/revoke`,
+        headers: authHeader,
+      })
+      expect(revoke.statusCode).toBe(302)
+      expect(revoke.headers.location).toBe('/admin')
+      const items = await app.inject({ method: 'GET', url: '/admin/items', headers: bearer })
+      expect(items.statusCode).toBe(401)
+      const admin = await app.inject({ method: 'GET', url: '/admin', headers: authHeader })
+      expect(admin.statusCode).toBe(200)
+    })
+
+    it('revokes the current session and signs out', async () => {
+      const own = (await page()).find((row) => row.client.includes('this session'))
+      const revoke = await app.inject({
+        method: 'POST',
+        url: `/admin/sessions/${own?.id}/revoke`,
+        headers: authHeader,
+      })
+      expect(revoke.headers.location).toBe('/admin/login')
+      expect(String(revoke.headers['set-cookie'])).toContain('Max-Age=0')
+      const admin = await app.inject({ method: 'GET', url: '/admin', headers: authHeader })
+      expect(admin.statusCode).toBe(302)
+    })
+
+    it('revokes over JSON with 204', async () => {
+      const token = await signInClient(app, google)
+      const bearer = { authorization: `Bearer ${token}`, accept: 'application/json' }
+      const web = (await page()).find((row) => row.client.includes('this session'))
+      const response = await app.inject({
+        method: 'POST',
+        url: `/admin/sessions/${web?.id}/revoke`,
+        headers: bearer,
+      })
+      expect(response.statusCode).toBe(204)
+      const admin = await app.inject({ method: 'GET', url: '/admin', headers: authHeader })
+      expect(admin.statusCode).toBe(302)
+    })
+  })
+
   it('lists existing items', async () => {
-    const app = buildApp(config, cart)
     const response = await app.inject({ method: 'GET', url: '/admin', headers: authHeader })
     expect(response.statusCode).toBe(200)
     expect(response.body).toContain('milk')
@@ -150,7 +141,6 @@ describe('admin', () => {
   })
 
   it('adds an item from a product URL', async () => {
-    const app = buildApp(config, cart)
     const response = await app.inject({
       method: 'POST',
       url: '/admin/items',
@@ -171,7 +161,6 @@ describe('admin', () => {
   })
 
   it('adds an item from a bare stockcode', async () => {
-    const app = buildApp(config, cart)
     const response = await app.inject({
       method: 'POST',
       url: '/admin/items',
@@ -185,7 +174,6 @@ describe('admin', () => {
   })
 
   it('re-renders with an error when the URL has no stockcode', async () => {
-    const app = buildApp(config, cart)
     const response = await app.inject({
       method: 'POST',
       url: '/admin/items',
@@ -199,7 +187,6 @@ describe('admin', () => {
   })
 
   it('removes an item', async () => {
-    const app = buildApp(config, cart)
     const response = await app.inject({
       method: 'POST',
       url: '/admin/items/milk/delete',
@@ -211,17 +198,22 @@ describe('admin', () => {
   })
 
   describe('JSON API', () => {
-    const json = { ...authHeader, accept: 'application/json' }
+    let json: { authorization: string; accept: string }
+
+    beforeEach(async () => {
+      json = {
+        authorization: `Bearer ${await signInClient(app, google)}`,
+        accept: 'application/json',
+      }
+    })
 
     it('lists items as JSON', async () => {
-      const app = buildApp(config, cart)
       const response = await app.inject({ method: 'GET', url: '/admin/items', headers: json })
       expect(response.statusCode).toBe(200)
       expect(response.json()).toEqual({ items: [{ word: 'milk', stockcode: 123456, quantity: 1 }] })
     })
 
     it('answers unauthenticated JSON requests with 401 instead of a redirect', async () => {
-      const app = buildApp(config, cart)
       const response = await app.inject({
         method: 'GET',
         url: '/admin/items',
@@ -232,7 +224,6 @@ describe('admin', () => {
     })
 
     it('adds an item from a JSON body and returns it', async () => {
-      const app = buildApp(config, cart)
       const response = await app.inject({
         method: 'POST',
         url: '/admin/items',
@@ -255,7 +246,6 @@ describe('admin', () => {
     })
 
     it('rejects a URL without a stockcode', async () => {
-      const app = buildApp(config, cart)
       const response = await app.inject({
         method: 'POST',
         url: '/admin/items',
@@ -267,7 +257,6 @@ describe('admin', () => {
     })
 
     it('rejects a missing trigger word', async () => {
-      const app = buildApp(config, cart)
       const response = await app.inject({
         method: 'POST',
         url: '/admin/items',
@@ -278,8 +267,17 @@ describe('admin', () => {
       expect(response.json()).toEqual({ error: 'A trigger word is required.' })
     })
 
+    it('removes an item with DELETE and 204', async () => {
+      const response = await app.inject({
+        method: 'DELETE',
+        url: '/admin/items/milk',
+        headers: json,
+      })
+      expect(response.statusCode).toBe(204)
+      expect(await readFile(config.itemsPath, 'utf8')).not.toContain('milk:')
+    })
+
     it('removes an item with 204', async () => {
-      const app = buildApp(config, cart)
       const response = await app.inject({
         method: 'POST',
         url: '/admin/items/milk/delete',

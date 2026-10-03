@@ -23,24 +23,29 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   credential, `pnpm capture-session` (manual login) is the only recovery. No
   password or SMS-code login is automated. See
   [`docs/architecture.md`](docs/architecture.md#session-capture).
+- Auth: Google is the only way to sign in; no shared secret exists. The
+  server is the OAuth client of Google (authorization code with PKCE), only
+  `ALLOWED_EMAILS` may sign in, and it issues its own session cookie
+  (`/admin`) or opaque bearer tokens (iOS app, Chrome extension; hashed in
+  `TOKEN_STORE_PATH`, 90-day sliding expiry, revocable). See
+  [`docs/auth.md`](docs/auth.md).
 - Deployment: one always-on Fly.io machine (`fly.toml`, `Dockerfile`) in
   `syd` with a `/data` volume, publicly reachable over HTTPS; no browser at
-  runtime. `/items` and `/admin/login` are rate limited. Requests log one
-  `request completed` line and every auth rejection a `warn` with a `reason`
-  (never the secret or token). See
+  runtime. `/auth/*` is rate limited. Requests log one `request completed`
+  line and every auth rejection a `warn` with a `reason` (never a token,
+  code, ID token, secret or cookie). See
   [`docs/deployment.md`](docs/deployment.md).
-- Voice capture uses a fixed-phrase Shortcut with a follow-up Dictate Text
-  prompt, not a custom Siri phrase with an embedded free-text slot — that's
-  only available to apps built with Apple's App Intents framework. A shared
-  iCloud Reminders list is a fallback offline queue for when the Shortcut
-  can't reach the webhook directly, not the primary capture mechanism. See
+- Voice capture: a shared iCloud Reminders list is the queue the server
+  syncs into the cart (Siri's built-in "add X to my Shopping List"); the iOS
+  app's App Intent is the other Siri path. See
   [`docs/siri-setup.md`](docs/siri-setup.md) and
-  [`docs/architecture.md`](docs/architecture.md#reminders-offline-queue).
+  [`docs/architecture.md`](docs/architecture.md#reminders-queue).
 
 ## Layout
 
 `src/woolworths` is everything that talks to Woolworths' unofficial API;
-`src/app.ts` is the webhook Fastify wires up; `scripts/` are one-off CLIs run
+`src/app.ts` wires up Fastify, `src/login.ts` the Google sign-in routes,
+`src/admin.ts` the admin UI and JSON API, and `src/tokens.ts` the token store; `scripts/` are one-off CLIs run
 by hand (session capture, product lookup); `extension/` is the Chrome
 extension and `ios/` the SwiftUI admin app with its Share extension and App
 Intent, both clients of `/admin/items`. See

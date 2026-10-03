@@ -1,33 +1,33 @@
-import { randomBytes } from 'node:crypto'
 import formbody from '@fastify/formbody'
-import type { FastifyInstance, FastifyRequest } from 'fastify'
-import { logAuthFailure, secretsEqual, verifyBasic, type AuthFailure } from './auth.ts'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import { authenticate, logAuthFailure, requestPath, sessionCookie } from './auth.ts'
 import type { AppConfig } from './config.ts'
 import { loadItems, normalizeWord, saveItems, type ItemMapping, type ItemsConfig } from './items.ts'
+import type { SessionSummary, TokenStore } from './tokens.ts'
 
-const SESSION_COOKIE = 'ps_admin_session'
-const LOGIN_RATE_LIMIT_MAX = 10
-const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
+export async function registerAdmin(
+  app: FastifyInstance,
+  config: AppConfig,
+  tokens: TokenStore,
+): Promise<void> {
+  const secureCookie = config.publicBaseUrl.startsWith('https:')
 
-export async function registerAdmin(app: FastifyInstance, config: AppConfig): Promise<void> {
   await app.register(async (admin) => {
     await admin.register(formbody)
 
-    // Held in memory only, so a restart invalidates every session. Logging
-    // out rotates it, which revokes every other open session too — there's
-    // no per-device session store to invalidate individually, and for a
-    // single-admin household tool an all-or-nothing logout is a fine trade.
-    let sessionToken = randomBytes(32).toString('hex')
+    // The token a request authenticated with, for marking and ending its own session.
+    const current = new WeakMap<FastifyRequest, { token: string; id: string }>()
 
     admin.addHook('onRequest', async (request, reply) => {
-      if (request.url.startsWith('/admin/login')) {
+      if (requestPath(request) === '/admin/login') {
         return
       }
-      const failure = authFailure(request, config.sharedSecret, sessionToken)
-      if (!failure) {
+      const result = await authenticate(request, tokens, config.allowedEmails, true)
+      if (result.ok) {
+        current.set(request, { token: result.token, id: tokens.sessionId(result.record) })
         return
       }
-      logAuthFailure(request, failure, config.sharedSecret)
+      logAuthFailure(request, result.failure)
       if (wantsJson(request)) {
         return reply.code(401).send({ error: 'unauthorized' })
       }
@@ -41,43 +41,30 @@ export async function registerAdmin(app: FastifyInstance, config: AppConfig): Pr
       reply.type('text/html').send(renderLoginPage())
     })
 
-    admin.post<{ Body: { secret: string } }>(
-      '/admin/login',
-      { config: { rateLimit: { max: LOGIN_RATE_LIMIT_MAX, timeWindow: '1 minute' } } },
-      async (request, reply) => {
-        const supplied = request.body?.secret
-        if (typeof supplied !== 'string' || !secretsEqual(supplied, config.sharedSecret)) {
-          logAuthFailure(
-            request,
-            {
-              reason: 'login_failed',
-              authScheme: 'none',
-              ...(typeof supplied === 'string' ? { token: supplied } : {}),
-            },
-            config.sharedSecret,
-          )
-          reply.code(401).type('text/html').send(renderLoginPage('Incorrect secret.'))
-          return
-        }
-        reply
-          .header(
-            'set-cookie',
-            sessionCookie(sessionToken, SESSION_MAX_AGE_SECONDS, request.protocol === 'https'),
-          )
-          .redirect('/admin')
-      },
-    )
-
     admin.post('/admin/logout', async (request, reply) => {
-      sessionToken = randomBytes(32).toString('hex')
-      reply
-        .header('set-cookie', sessionCookie('', 0, request.protocol === 'https'))
-        .redirect('/admin/login')
+      const token = current.get(request)?.token
+      if (token) {
+        await tokens.revoke(token)
+      }
+      reply.header('set-cookie', sessionCookie('', 0, secureCookie)).redirect('/admin/login')
     })
 
-    admin.get('/admin', async (_request, reply) => {
+    admin.post<{ Params: { id: string } }>('/admin/sessions/:id/revoke', async (request, reply) => {
+      await tokens.revokeById(request.params.id)
+      if (wantsJson(request)) {
+        return reply.code(204).send()
+      }
+      if (request.params.id === current.get(request)?.id) {
+        reply.header('set-cookie', sessionCookie('', 0, secureCookie))
+        return reply.redirect('/admin/login')
+      }
+      return reply.redirect('/admin')
+    })
+
+    admin.get('/admin', async (request, reply) => {
       const items = await loadItems(config.itemsPath)
-      reply.type('text/html').send(renderPage(items))
+      const sessions = await tokens.list()
+      reply.type('text/html').send(renderPage(items, sessions, current.get(request)?.id))
     })
 
     admin.get('/admin/items', async () => {
@@ -104,7 +91,11 @@ export async function registerAdmin(app: FastifyInstance, config: AppConfig): Pr
         if (wantsJson(request)) {
           return reply.code(400).send({ error })
         }
-        return reply.code(400).type('text/html').send(renderPage(items, error))
+        const sessions = await tokens.list()
+        return reply
+          .code(400)
+          .type('text/html')
+          .send(renderPage(items, sessions, current.get(request)?.id, error))
       }
       const trimmedName = name?.trim()
       const mapping: ItemMapping = {
@@ -120,53 +111,27 @@ export async function registerAdmin(app: FastifyInstance, config: AppConfig): Pr
       return reply.redirect('/admin')
     })
 
-    admin.post<{ Params: { word: string } }>(
-      '/admin/items/:word/delete',
-      async (request, reply) => {
-        const items = await loadItems(config.itemsPath)
-        delete items[normalizeWord(request.params.word)]
-        await saveItems(config.itemsPath, items)
-        if (wantsJson(request)) {
-          return reply.code(204).send()
-        }
-        return reply.redirect('/admin')
-      },
-    )
+    const removeItem = async (
+      request: FastifyRequest<{ Params: { word: string } }>,
+      reply: FastifyReply,
+    ) => {
+      const items = await loadItems(config.itemsPath)
+      delete items[normalizeWord(request.params.word)]
+      await saveItems(config.itemsPath, items)
+      if (wantsJson(request)) {
+        return reply.code(204).send()
+      }
+      return reply.redirect('/admin')
+    }
+    admin.post<{ Params: { word: string } }>('/admin/items/:word/delete', removeItem)
+    admin.delete<{ Params: { word: string } }>('/admin/items/:word', removeItem)
   })
 }
 
-function authFailure(
-  request: FastifyRequest,
-  sharedSecret: string,
-  sessionToken: string,
-): AuthFailure | undefined {
-  const failure = verifyBasic(request.headers.authorization, sharedSecret)
-  if (!failure) {
-    return undefined
-  }
-  const cookie = readCookie(request.headers.cookie, SESSION_COOKIE)
-  if (cookie !== undefined && secretsEqual(cookie, sessionToken)) {
-    return undefined
-  }
-  return failure
-}
-
-// API clients (the iOS app) opt in with `Accept: application/json` and get
+// API clients (the iOS app, the extension) opt in with `Accept: application/json` and get
 // JSON bodies and status codes instead of the browser flow's redirects.
 function wantsJson(request: FastifyRequest): boolean {
   return request.headers.accept?.includes('application/json') ?? false
-}
-
-function readCookie(header: string | undefined, name: string): string | undefined {
-  return header
-    ?.split(';')
-    .map((part) => part.trim().split('='))
-    .find(([key]) => key === name)?.[1]
-}
-
-// `Secure` only over HTTPS, so local development on plain HTTP still works.
-function sessionCookie(value: string, maxAgeSeconds: number, secure: boolean): string {
-  return `${SESSION_COOKIE}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${secure ? '; Secure' : ''}`
 }
 
 function parseStockcode(input: string): number | undefined {
@@ -263,7 +228,7 @@ const PAGE_STYLES = `
   .logout:hover { background: var(--color-surface); }
 `
 
-function renderLoginPage(error?: string): string {
+function renderLoginPage(): string {
   return `<!doctype html>
 <html>
 <head>
@@ -272,24 +237,34 @@ function renderLoginPage(error?: string): string {
   <style>
     ${PAGE_STYLES}
     body { max-width: 360px; margin-top: 6rem; }
+    .button {
+      display: inline-block;
+      padding: 0.5rem 1rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #fff;
+      background: var(--color-accent);
+      border-radius: var(--radius);
+      text-decoration: none;
+    }
+    .button:hover { background: var(--color-accent-hover); }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>Personal Shopper admin</h1>
-    ${error ? `<p class="error">${escapeHtml(error)}</p>` : ''}
-    <form method="post" action="/admin/login">
-      <label>Shared secret
-        <input name="secret" type="password" autocomplete="current-password" required autofocus>
-      </label>
-      <button type="submit">Sign in</button>
-    </form>
+    <a class="button" href="/auth/google/login">Sign in with Google</a>
   </div>
 </body>
 </html>`
 }
 
-function renderPage(items: ItemsConfig, error?: string): string {
+function renderPage(
+  items: ItemsConfig,
+  sessions: SessionSummary[],
+  currentId: string | undefined,
+  error?: string,
+): string {
   const rows = Object.entries(items)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(
@@ -308,6 +283,23 @@ function renderPage(items: ItemsConfig, error?: string): string {
     )
     .join('')
 
+  const sessionRows = sessions
+    .map(
+      (session) => `
+        <tr>
+          <td>${escapeHtml(session.client)}${session.id === currentId ? ' (this session)' : ''}</td>
+          <td>${escapeHtml(session.email)}</td>
+          <td>${formatTime(session.lastUsedAt)}</td>
+          <td>${formatTime(session.expiresAt)}</td>
+          <td>
+            <form method="post" action="/admin/sessions/${session.id}/revoke">
+              <button type="submit">Revoke</button>
+            </form>
+          </td>
+        </tr>`,
+    )
+    .join('')
+
   return `<!doctype html>
 <html>
 <head>
@@ -319,7 +311,7 @@ function renderPage(items: ItemsConfig, error?: string): string {
   <div class="top-bar">
     <h1>Shopping list items</h1>
     <form method="post" action="/admin/logout">
-      <button type="submit" class="logout">Log out</button>
+      <button type="submit" class="logout">Sign out</button>
     </form>
   </div>
   ${error ? `<p class="error">${escapeHtml(error)}</p>` : ''}
@@ -348,8 +340,19 @@ function renderPage(items: ItemsConfig, error?: string): string {
       <button type="submit">Add item</button>
     </form>
   </div>
+  <div class="card">
+    <h2>Signed-in sessions</h2>
+    <table>
+      <thead><tr><th>Client</th><th>Account</th><th>Last used</th><th>Expires</th><th></th></tr></thead>
+      <tbody>${sessionRows}</tbody>
+    </table>
+  </div>
 </body>
 </html>`
+}
+
+function formatTime(ms: number): string {
+  return `${new Date(ms).toISOString().slice(0, 16).replace('T', ' ')} UTC`
 }
 
 function escapeHtml(value: string): string {

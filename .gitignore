@@ -4,6 +4,7 @@
 !.env.example
 items.yml
 session.json
+tokens.json
 passkey-credentials.json
 
 # Dependencies

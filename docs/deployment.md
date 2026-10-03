@@ -2,31 +2,82 @@
 
 Production runs on [Fly.io](https://fly.io) as a single always-on machine
 (`fly.toml`: `syd`, `shared-cpu-1x`, 256 MB) behind Fly's HTTPS proxy, so the
-Shortcut reaches it from any network. The image (`Dockerfile`) holds
+iOS app, Chrome extension and browser reach it from any network. The image (`Dockerfile`) holds
 production dependencies only and no browser; the Woolworths login is plain
 HTTP. The server process runs unprivileged: `docker-entrypoint.sh` hands the
 `/data` volume to the `node` user, then drops root.
 
-Local development uses the same code: `pnpm dev`, then `POST /items` and
-`/admin` against `localhost`.
+Local development uses the same code: `pnpm dev`, then `/admin` against
+`localhost` (Google sign-in needs `http://localhost:3000/auth/google/callback`
+registered, below).
 
 ## What lives where
 
-- Secrets (`fly secrets set`): `SHARED_SECRET`, and optionally
-  `ICLOUD_USERNAME` / `ICLOUD_APP_SPECIFIC_PASSWORD` for the
-  [Reminders queue](architecture.md#reminders-offline-queue).
+- Secrets (`fly secrets set`): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
+  `ALLOWED_EMAILS`, `PUBLIC_BASE_URL`, optionally `ALLOWED_CLIENT_REDIRECTS`,
+  and optionally `ICLOUD_USERNAME` / `ICLOUD_APP_SPECIFIC_PASSWORD` for the
+  [Reminders queue](architecture.md#reminders-queue).
 - Config (`fly.toml` `[env]`): `PORT`, `TRUST_PROXY=true` (rate limiting keys
-  on the client IP from `X-Forwarded-For`), and the three data paths below.
+  on the client IP from `X-Forwarded-For`), and the four data paths below.
 - Volume `data` mounted at `/data`: `items.yml`, `session.json` (rewritten as
-  the login refreshes) and `passkey-credentials.json`. A missing `items.yml`
-  reads as no mappings; add them through `/admin`.
+  the login refreshes), `passkey-credentials.json` and `tokens.json` (hashed
+  bearer tokens and admin sessions). A missing `items.yml` reads as no
+  mappings; add them through `/admin`.
 
-`SHARED_SECRET` gates the bearer-authed `/items` webhook and the `/admin` UI
-(login form at `/admin/login`; store it in a password manager). The service
-is internet-reachable, so use a long random value (`openssl rand -hex 32`).
-`/items` allows 30 requests per minute and `/admin/login` 10 per minute per
-client IP; excess requests get `429`. `GET /healthz` is unauthenticated and
-backs the Fly health check.
+Sign-in is Google only; see [`auth.md`](auth.md) for the flows and the client
+contract. The service is internet-reachable: only the accounts in
+`ALLOWED_EMAILS` can sign in, and the `/auth/*` routes allow 30 requests per
+minute per client IP; excess requests get `429`. `GET /healthz` is
+unauthenticated and backs the Fly health check. The server refuses to start
+without the Google variables.
+
+## Google sign-in
+
+One-off setup in [Google Cloud Console](https://console.cloud.google.com/);
+`PUBLIC_BASE_URL` below is `https://personal-shopper.willsawyerrrr.dev`.
+
+1. Create or pick a project (top bar, project picker, New Project).
+2. APIs & Services, OAuth consent screen (Google Auth Platform, Branding):
+   - User type **External** (the only choice for a personal Gmail account;
+     **Internal** is available only inside a Google Workspace organisation
+     and then needs no test users).
+   - App name `Personal Shopper`, your email as support and developer contact.
+   - Leave the publishing status **Testing** and add your email (every
+     account in `ALLOWED_EMAILS`) under Audience, Test users. Only test users
+     can sign in while testing. No sensitive scopes are requested: the
+     server asks for `openid email` only, so verification is never required.
+   - Testing mode expires refresh tokens after 7 days. This server never
+     asks for or stores a Google refresh token (it uses Google only to read
+     your verified email at sign-in, then issues its own tokens), so that
+     limit does not affect it.
+3. APIs & Services, Credentials, Create credentials, OAuth client ID:
+   - Application type **Web application**, name `Personal Shopper server`.
+   - Authorized redirect URIs:
+     - `https://personal-shopper.willsawyerrrr.dev/auth/google/callback`
+     - `http://localhost:3000/auth/google/callback`
+   - No JavaScript origins are needed. Create, then copy the client ID and
+     secret.
+4. Set them on Fly (the app, not the iOS app or extension, holds the secret):
+
+   ```bash
+   fly secrets set \
+     GOOGLE_CLIENT_ID=... \
+     GOOGLE_CLIENT_SECRET=... \
+     ALLOWED_EMAILS=you@gmail.com \
+     PUBLIC_BASE_URL=https://personal-shopper.willsawyerrrr.dev
+   ```
+
+   Setting secrets restarts the machine. Add
+   `ALLOWED_CLIENT_REDIRECTS=dev.willsawyerrrr.personalshopper://auth,https://<extension-id>.chromiumapp.org/`
+   once the Chrome extension is installed (the default covers only the iOS
+   app).
+
+5. For local development put the same values in `.env` with
+   `PUBLIC_BASE_URL=http://localhost:3000`, run `pnpm dev` and open
+   `http://localhost:3000/admin`.
+
+Google rejects a redirect URI that differs from a registered one by even a
+trailing slash (`redirect_uri_mismatch`); `PUBLIC_BASE_URL` has no path.
 
 ## Capture the Woolworths login
 
@@ -47,7 +98,7 @@ cookies a passkey login lacks.
 ```bash
 fly apps create willsawyerrrr-personal-shopper   # names are global; must match `app` in fly.toml
 fly volumes create data --region syd --size 1
-fly secrets set SHARED_SECRET=... ICLOUD_USERNAME=... ICLOUD_APP_SPECIFIC_PASSWORD=...
+fly secrets set GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... ALLOWED_EMAILS=... PUBLIC_BASE_URL=... ICLOUD_USERNAME=... ICLOUD_APP_SPECIFIC_PASSWORD=...
 fly deploy
 ```
 
@@ -102,8 +153,8 @@ vercel dns add willsawyerrrr.dev personal-shopper CNAME willsawyerrrr-personal-s
 ```
 
 Check `fly certs show personal-shopper.willsawyerrrr.dev` until the
-certificate is issued. Point the Shortcut at
-`https://personal-shopper.willsawyerrrr.dev/items`.
+certificate is issued. `PUBLIC_BASE_URL` and the Google redirect URI use this
+domain.
 
 ## Updating
 
@@ -116,26 +167,28 @@ items and session, persist.
 `method`, `url` (path only), `statusCode`, `responseTime` (ms), `userAgent`
 and `ip`. `/healthz` checks are logged only at `LOG_LEVEL=debug`.
 
-Every rejected credential logs one `warn` line, `auth rejected`:
+Every rejected request or sign-in logs one `warn` line, `auth rejected`:
 
 ```bash
 fly logs | grep '"reason"'
 ```
 
 Each line carries `reason`, `route`, `method`, `authScheme` (`Bearer`,
-`Basic`, `other` or `none`), `tokenLength`, `hasSurroundingWhitespace`,
-`matchesAfterTrim` (the token equals the secret once trimmed, a common
-Shortcut paste mistake), `userAgent`, `ip` and `reqId`. The secret, the
-supplied token, and the `Authorization` and `Cookie` headers are never logged.
+`Basic`, `cookie`, `other` or `none`), `tokenLength`,
+`hasSurroundingWhitespace` (the token has extra whitespace or a newline; a
+common copy-paste mistake), `userAgent`, `ip` and `reqId`, and `detail` for
+`login_failed`. Tokens, authorization codes, ID tokens, the Google client
+secret, and the `Authorization` and `Cookie` headers are never logged.
 
-| `reason`                | Meaning                                                                       |
-| ----------------------- | ----------------------------------------------------------------------------- |
-| `missing_authorization` | `/items` request with no `Authorization` header.                              |
-| `unsupported_scheme`    | Wrong scheme: not `Bearer` on `/items`, not `Basic` on `/admin`.              |
-| `empty_token`           | Right scheme but no credentials after it.                                     |
-| `secret_mismatch`       | Credentials differ from `SHARED_SECRET`; compare `tokenLength` to its length. |
-| `no_session`            | `/admin` request with no `Authorization` header and no valid session cookie.  |
-| `login_failed`          | `/admin/login` submitted with the wrong secret.                               |
-
-`matchesAfterTrim: true` on a `secret_mismatch` means the Shortcut's token has
-extra whitespace or a newline; re-paste it without one.
+| `reason`                | Meaning                                                                                                                                         |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `missing_authorization` | No `Authorization` header and no session cookie.                                                                                                |
+| `unsupported_scheme`    | The `Authorization` scheme is not `Bearer`.                                                                                                     |
+| `empty_token`           | `Bearer` with no token after it.                                                                                                                |
+| `invalid_token`         | Not a token the server issued, or revoked.                                                                                                      |
+| `expired_token`         | A server-issued token past its 90 day sliding expiry (30 days for web sessions).                                                                |
+| `email_not_allowed`     | A sign-in, or a token's account, not in `ALLOWED_EMAILS`.                                                                                       |
+| `invalid_state`         | The Google callback's `state` is unknown, expired (10 minutes) or already used.                                                                 |
+| `login_failed`          | Google sign-in failed; `detail` is `authorization_denied`, `token_exchange_failed`, `invalid_id_token`, `nonce_mismatch` or `email_unverified`. |
+| `invalid_request`       | `/auth/start` or `/auth/token` called with missing or malformed parameters, or a redirect URI off the allowlist.                                |
+| `invalid_grant`         | `/auth/token` with an unknown, used or expired code, or a wrong `code_verifier`.                                                                |

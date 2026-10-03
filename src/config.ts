@@ -12,7 +12,15 @@ export interface AppConfig {
   port: number
   logLevel: LogLevel
   trustProxy: boolean
-  sharedSecret: string
+  googleClientId: string
+  googleClientSecret: string
+  /** Lower-cased Google account emails allowed to sign in. */
+  allowedEmails: string[]
+  /** Origin the server is reached at, without a trailing slash. */
+  publicBaseUrl: string
+  /** Redirect URIs API clients may pass to `/auth/start`, matched exactly. */
+  allowedClientRedirects: string[]
+  tokenStorePath: string
   itemsPath: string
   sessionPath: string
   sessionKeepAliveIntervalMs: number
@@ -21,10 +29,6 @@ export interface AppConfig {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
-  const sharedSecret = env.SHARED_SECRET
-  if (!sharedSecret) {
-    throw new Error('SHARED_SECRET environment variable is required')
-  }
   return {
     port: Number(env.PORT ?? 3000),
     logLevel: parseLogLevel(env.LOG_LEVEL),
@@ -32,7 +36,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     // is only in `X-Forwarded-For`; trusting it when exposed directly would
     // let clients spoof it.
     trustProxy: env.TRUST_PROXY === 'true',
-    sharedSecret,
+    googleClientId: required(env, 'GOOGLE_CLIENT_ID'),
+    googleClientSecret: required(env, 'GOOGLE_CLIENT_SECRET'),
+    allowedEmails: parseAllowedEmails(required(env, 'ALLOWED_EMAILS')),
+    publicBaseUrl: parsePublicBaseUrl(required(env, 'PUBLIC_BASE_URL')),
+    allowedClientRedirects: parseList(env.ALLOWED_CLIENT_REDIRECTS ?? DEFAULT_CLIENT_REDIRECT),
+    tokenStorePath: env.TOKEN_STORE_PATH ?? 'tokens.json',
     itemsPath: env.ITEMS_PATH ?? 'items.yml',
     sessionPath: env.SESSION_PATH ?? 'session.json',
     // 0 disables the timer; the session then only refreshes on demand.
@@ -40,6 +49,45 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     passkeyCredentialsPath: env.PASSKEY_CREDENTIALS_PATH ?? 'passkey-credentials.json',
     remindersSync: loadRemindersSyncConfig(env),
   }
+}
+
+/** The iOS app's custom URL scheme; the Chrome extension's redirect URI is deployment-specific. */
+const DEFAULT_CLIENT_REDIRECT = 'dev.willsawyerrrr.personalshopper://auth'
+
+function required(env: NodeJS.ProcessEnv, name: string): string {
+  const value = env[name]?.trim()
+  if (!value) {
+    throw new Error(`${name} environment variable is required`)
+  }
+  return value
+}
+
+function parseList(value: string): string[] {
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+}
+
+function parseAllowedEmails(value: string): string[] {
+  const emails = parseList(value).map((email) => email.toLowerCase())
+  if (emails.length === 0) {
+    throw new Error('ALLOWED_EMAILS must list at least one email')
+  }
+  return emails
+}
+
+function parsePublicBaseUrl(value: string): string {
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    throw new Error('PUBLIC_BASE_URL must be an absolute http(s) URL')
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    throw new Error('PUBLIC_BASE_URL must be an absolute http(s) URL')
+  }
+  return url.origin
 }
 
 function parseLogLevel(value: string | undefined): LogLevel {

@@ -8,6 +8,7 @@ primary_region = "syd"
   TRUST_PROXY = "true"
   ITEMS_PATH = "/data/items.yml"
   SESSION_PATH = "/data/session.json"
+  TOKEN_STORE_PATH = "/data/tokens.json"
   PASSKEY_CREDENTIALS_PATH = "/data/passkey-credentials.json"
 
 [mounts]

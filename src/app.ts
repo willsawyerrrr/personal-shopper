@@ -1,32 +1,50 @@
-import { Writable } from 'node:stream'
+import type { Writable } from 'node:stream'
 import rateLimit from '@fastify/rate-limit'
 import Fastify, { LogController, type FastifyInstance } from 'fastify'
 import { registerAdmin } from './admin.ts'
-import { logAuthFailure, requestPath, verifyBearer } from './auth.ts'
+import { requestPath } from './auth.ts'
 import type { AppConfig } from './config.ts'
-import { loadItems, resolveItem } from './items.ts'
-import type { CartClient } from './woolworths/client.ts'
-
-const WEBHOOK_RATE_LIMIT_MAX = 30
+import { GoogleOAuth } from './google.ts'
+import { registerLogin } from './login.ts'
+import { TokenStore } from './tokens.ts'
 
 const HEALTH_CHECK_PATH = '/healthz'
 
-/** `logStream` replaces stdout as the log destination (used by tests). */
-export function buildApp(
-  config: AppConfig,
-  cart: CartClient,
-  logStream?: Writable,
-): FastifyInstance {
+export interface AppOptions {
+  /** Replaces stdout as the log destination (used by tests). */
+  logStream?: Writable
+  /** Replaces the global `fetch` for calls to Google (used by tests). */
+  fetch?: typeof fetch
+  /** Replaces the clock (used by tests). */
+  now?: () => number
+}
+
+export function buildApp(config: AppConfig, options: AppOptions = {}): FastifyInstance {
+  const now = options.now ?? Date.now
   const app = Fastify({
     logger: {
       level: config.logLevel,
       redact: ['req.headers.authorization', 'req.headers.cookie'],
-      ...(logStream ? { stream: logStream } : {}),
+      ...(options.logStream ? { stream: options.logStream } : {}),
     },
     // Replaced by the single `request completed` line below.
     logController: new LogController({ disableRequestLogging: true }),
     trustProxy: config.trustProxy,
   })
+
+  const tokens = new TokenStore(config.tokenStorePath, now, (error) => app.log.error(error))
+  const google = new GoogleOAuth({
+    clientId: config.googleClientId,
+    clientSecret: config.googleClientSecret,
+    redirectUri: `${config.publicBaseUrl}/auth/google/callback`,
+    ...(options.fetch ? { fetch: options.fetch } : {}),
+    now,
+  })
+
+  // A corrupt token file fails startup instead of silently signing everyone out.
+  app.addHook('onReady', () => tokens.load())
+  // Lets a pending last-used write finish before the process exits.
+  app.addHook('onClose', () => tokens.flush())
 
   app.addHook('onResponse', async (request, reply) => {
     const path = requestPath(request)
@@ -46,37 +64,17 @@ export function buildApp(
   })
 
   // Routes opt in via `config.rateLimit`; the app is internet-reachable, so
-  // the two that accept the shared secret are throttled per client IP.
+  // the sign-in routes are throttled per client IP.
   void app.register(rateLimit, { global: false })
 
   // Registered as plugins so they load after the rate limiter and pick up
   // its per-route config.
   void app.register(async (routes) => {
     routes.get('/healthz', async () => ({ status: 'ok' }))
-
-    routes.post<{ Body: { item: string } }>('/items', {
-      config: { rateLimit: { max: WEBHOOK_RATE_LIMIT_MAX, timeWindow: '1 minute' } },
-      preHandler: async (request, reply) => {
-        const failure = verifyBearer(request.headers.authorization, config.sharedSecret)
-        if (failure) {
-          logAuthFailure(request, failure, config.sharedSecret)
-          return reply.code(401).send({ error: 'unauthorized' })
-        }
-      },
-      handler: async (request, reply) => {
-        const { item } = request.body
-        const items = await loadItems(config.itemsPath)
-        const mapping = resolveItem(items, item)
-        if (!mapping) {
-          return reply.code(404).send({ error: `no mapping configured for "${item}"` })
-        }
-        await cart.addToCart(mapping.stockcode, mapping.quantity)
-        return reply.send({ item, stockcode: mapping.stockcode, quantity: mapping.quantity })
-      },
-    })
   })
 
-  void registerAdmin(app, config)
+  void registerLogin(app, { config, tokens, google, now })
+  void registerAdmin(app, config, tokens)
 
   return app
 }
