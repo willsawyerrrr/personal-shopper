@@ -4,11 +4,12 @@ options:
   deploymentTarget:
     iOS: '18.0'
   createIntermediateGroups: true
+configFiles:
+  Debug: Config/Shared.xcconfig
+  Release: Config/Shared.xcconfig
 settings:
   base:
     SWIFT_VERSION: '6.0'
-    # Set to your team ID (or in Xcode: Signing & Capabilities) to run on a device.
-    DEVELOPMENT_TEAM: ''
     CODE_SIGN_STYLE: Automatic
     GENERATE_INFOPLIST_FILE: NO
 packages:

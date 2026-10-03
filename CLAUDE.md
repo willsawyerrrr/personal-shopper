@@ -60,6 +60,11 @@ cd ios && xcodegen generate     # writes the gitignored Xcode project from proje
 xcodebuild test -project ios/PersonalShopper.xcodeproj -scheme PersonalShopper -destination 'platform=iOS Simulator,name=iPhone 17'
 ```
 
+iOS device signing: put `DEVELOPMENT_TEAM = <team ID>` in the gitignored
+`ios/Config/Local.xcconfig` (template: `Local.xcconfig.example`), included
+optionally by `Config/Shared.xcconfig`. Never set the team in the Xcode UI or
+commit the ID. See [`ios/README.md`](ios/README.md#setup).
+
 ## Conventions
 
 - Planning happens in Linear, not in ad-hoc conversation or another planning
