@@ -10,6 +10,7 @@ describe('loadConfig', () => {
     const config = loadConfig({ SHARED_SECRET: 'secret' })
     expect(config).toEqual({
       port: 3000,
+      trustProxy: false,
       sharedSecret: 'secret',
       itemsPath: 'items.yml',
       sessionPath: 'session.json',
@@ -23,12 +24,14 @@ describe('loadConfig', () => {
     const config = loadConfig({
       SHARED_SECRET: 'secret',
       PORT: '4000',
+      TRUST_PROXY: 'true',
       ITEMS_PATH: '/tmp/items.yml',
       SESSION_PATH: '/tmp/session.json',
       SESSION_KEEPALIVE_INTERVAL_MS: '0',
       PASSKEY_CREDENTIALS_PATH: '/tmp/passkey.json',
     })
     expect(config.port).toBe(4000)
+    expect(config.trustProxy).toBe(true)
     expect(config.itemsPath).toBe('/tmp/items.yml')
     expect(config.sessionPath).toBe('/tmp/session.json')
     expect(config.sessionKeepAliveIntervalMs).toBe(0)

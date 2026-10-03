@@ -1,0 +1,13 @@
+.git
+.github
+.claude
+node_modules
+dist
+coverage
+extension
+docs
+*.md
+.env*
+session.json
+passkey-credentials.json
+items.yml

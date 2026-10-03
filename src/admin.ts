@@ -5,8 +5,7 @@ import type { AppConfig } from './config.ts'
 import { loadItems, normalizeWord, saveItems, type ItemsConfig } from './items.ts'
 
 const SESSION_COOKIE = 'ps_admin_session'
-// No `Secure` flag: this only ever runs over plain HTTP on the home LAN
-// (see docs/deployment.md).
+const LOGIN_RATE_LIMIT_MAX = 10
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
 
 export async function registerAdmin(app: FastifyInstance, config: AppConfig): Promise<void> {
@@ -36,19 +35,28 @@ export async function registerAdmin(app: FastifyInstance, config: AppConfig): Pr
       reply.type('text/html').send(renderLoginPage())
     })
 
-    admin.post<{ Body: { secret: string } }>('/admin/login', async (request, reply) => {
-      if (request.body.secret !== config.sharedSecret) {
-        reply.code(401).type('text/html').send(renderLoginPage('Incorrect secret.'))
-        return
-      }
-      reply
-        .header('set-cookie', sessionCookie(sessionToken, SESSION_MAX_AGE_SECONDS))
-        .redirect('/admin')
-    })
+    admin.post<{ Body: { secret: string } }>(
+      '/admin/login',
+      { config: { rateLimit: { max: LOGIN_RATE_LIMIT_MAX, timeWindow: '1 minute' } } },
+      async (request, reply) => {
+        if (request.body.secret !== config.sharedSecret) {
+          reply.code(401).type('text/html').send(renderLoginPage('Incorrect secret.'))
+          return
+        }
+        reply
+          .header(
+            'set-cookie',
+            sessionCookie(sessionToken, SESSION_MAX_AGE_SECONDS, request.protocol === 'https'),
+          )
+          .redirect('/admin')
+      },
+    )
 
-    admin.post('/admin/logout', async (_request, reply) => {
+    admin.post('/admin/logout', async (request, reply) => {
       sessionToken = randomBytes(32).toString('hex')
-      reply.header('set-cookie', sessionCookie('', 0)).redirect('/admin/login')
+      reply
+        .header('set-cookie', sessionCookie('', 0, request.protocol === 'https'))
+        .redirect('/admin/login')
     })
 
     admin.get('/admin', async (_request, reply) => {
@@ -117,8 +125,9 @@ function readCookie(header: string | undefined, name: string): string | undefine
     .find(([key]) => key === name)?.[1]
 }
 
-function sessionCookie(value: string, maxAgeSeconds: number): string {
-  return `${SESSION_COOKIE}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}`
+// `Secure` only over HTTPS, so local development on plain HTTP still works.
+function sessionCookie(value: string, maxAgeSeconds: number, secure: boolean): string {
+  return `${SESSION_COOKIE}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${secure ? '; Secure' : ''}`
 }
 
 function parseStockcode(input: string): number | undefined {

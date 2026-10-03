@@ -1,125 +1,86 @@
 # Deployment
 
-The service runs anywhere `pnpm dev`/`pnpm start` runs — same code, same
-config, no separate "dev build". Use your own machine for local development
-and testing (`pnpm dev`, then `POST /items` and `/admin` against
-`localhost`); production is an always-on Windows PC, reachable only over
-your home network — no public internet exposure, no tunnel, no DNS.
+Production runs on [Fly.io](https://fly.io) as a single always-on machine
+(`fly.toml`: `syd`, `shared-cpu-1x`, 256 MB) behind Fly's HTTPS proxy, so the
+Shortcut reaches it from any network. The image (`Dockerfile`) holds
+production dependencies only and no browser; the Woolworths login is plain
+HTTP. The server process runs unprivileged: `docker-entrypoint.sh` hands the
+`/data` volume to the `node` user, then drops root.
 
-This is a deliberate choice, not a limitation worked around: Woolworths'
-login is an HTTP passkey flow the server runs itself, so the PC needs no
-browser at runtime. Running natively on Windows (rather than inside WSL)
-keeps the service trivially reachable from your phone's Shortcuts automation over
-LAN — no Cloudflare account, no subdomain delegation, no WSL2
-port-forwarding workarounds.
+Local development uses the same code: `pnpm dev`, then `POST /items` and
+`/admin` against `localhost`.
 
-`SHARED_SECRET` gates both the bearer-authed `/items` webhook and the
-`/admin` UI, signed into via a login form at `/admin/login` — store it in a
-password manager and let it autofill that form rather than typing it by
-hand. Since nothing here leaves your home network, this is belt-and-braces
-rather than the only thing standing between the service and the internet —
-but treat it as a real secret regardless.
+## What lives where
 
-## Install Node + pnpm
+- Secrets (`fly secrets set`): `SHARED_SECRET`, and optionally
+  `ICLOUD_USERNAME` / `ICLOUD_APP_SPECIFIC_PASSWORD` for the
+  [Reminders queue](architecture.md#reminders-offline-queue).
+- Config (`fly.toml` `[env]`): `PORT`, `TRUST_PROXY=true` (rate limiting keys
+  on the client IP from `X-Forwarded-For`), and the three data paths below.
+- Volume `data` mounted at `/data`: `items.yml`, `session.json` (rewritten as
+  the login refreshes) and `passkey-credentials.json`. A missing `items.yml`
+  reads as no mappings; add them through `/admin`.
 
-In an elevated PowerShell prompt:
+`SHARED_SECRET` gates the bearer-authed `/items` webhook and the `/admin` UI
+(login form at `/admin/login`; store it in a password manager). The service
+is internet-reachable, so use a long random value (`openssl rand -hex 32`).
+`/items` allows 30 requests per minute and `/admin/login` 10 per minute per
+client IP; excess requests get `429`. `GET /healthz` is unauthenticated and
+backs the Fly health check.
 
-```powershell
-winget install Schniz.fnm
-fnm install 24
-fnm use 24
-corepack enable
-corepack prepare pnpm@11.22.0 --activate
+## Capture the Woolworths login
+
+On your own machine (Chrome is needed for the one-off registration):
+
+```bash
+pnpm install
+pnpm register-passkey   # saves passkey-credentials.json
+pnpm passkey-login      # writes session.json over plain HTTP
 ```
 
-Verify with `node --version` (`v24.x.x`) and `pnpm --version` (`11.22.0`).
+Use `pnpm capture-session` instead of `passkey-login` to pick your Direct to
+Boot store in a real browser; it carries the store selection and Akamai
+cookies a passkey login lacks.
 
-## Install and run the service
+## First deploy
 
-```powershell
-git clone https://github.com/willsawyerrrr/personal-shopper.git
-cd personal-shopper
-pnpm install --frozen-lockfile
-Copy-Item .env.example .env        # fill in SHARED_SECRET
-pnpm capture-session                # opens a real Chrome window — log in
-                                     # with your passkey and set your Direct
-                                     # to boot store, then press Enter in
-                                     # this terminal
-pnpm register-passkey               # optional, one-off: log in and accept the
-                                     # passkey prompt so the server can sign
-                                     # itself back in when the session lapses
-pnpm build
+```bash
+fly apps create personal-shopper        # names are global; if taken, pick another and edit `app` in fly.toml
+fly volumes create data --region syd --size 1
+fly secrets set SHARED_SECRET=... ICLOUD_USERNAME=... ICLOUD_APP_SPECIFIC_PASSWORD=...
+fly deploy
 ```
 
-Chrome is only needed for `pnpm register-passkey` and `pnpm capture-session`;
-`pnpm passkey-login` and the server's automatic passkey login are plain HTTP.
-`passkey-credentials.json` (path
-via `PASSKEY_CREDENTIALS_PATH`) is a secret: restrict it to your user.
+Upload the Woolworths login to the volume, then restart so the server picks
+it up:
 
-Add items via `/admin` or the Chrome extension once the service is running
-below, rather than hand-editing `items.yml`.
-
-## Run at startup
-
-A Scheduled Task with an "At startup" trigger survives reboots without
-needing anyone logged in, and restarts the process if it crashes. Registering
-a task that runs as `SYSTEM` requires an **elevated** PowerShell prompt (Run
-as Administrator) — a non-elevated session fails with "Access is denied".
-
-Find `node.exe`'s stable install path first. `(Get-Command node).Source`
-looks right but resolves through `fnm`'s per-session "multishell" symlink,
-which stops existing once that specific shell session closes — a task built
-on that path runs fine until you close the window you registered it from,
-then fails silently (`LastTaskResult` nonzero, nothing listening on the
-port). Search for the real, persistent install instead:
-
-```powershell
-$nodePath = Get-ChildItem -Path $env:LOCALAPPDATA,$env:APPDATA -Recurse -Filter node.exe -ErrorAction SilentlyContinue |
-  Where-Object { $_.FullName -notmatch 'multishell' } |
-  Select-Object -First 1 -ExpandProperty FullName
+```bash
+fly ssh sftp shell
+> put session.json /data/session.json
+> put passkey-credentials.json /data/passkey-credentials.json
+fly machine restart
 ```
 
-Then register the task, pointing at the compiled entrypoint
-(`dist/src/server.js` — `tsc`'s output mirrors `src/`'s structure, it is not
-flattened into `dist/` directly):
+`passkey-credentials.json` is a secret: it is uploaded over SSH rather than
+baked into the image or set as an env var, and `.dockerignore` keeps it and
+`session.json` out of the build context. Without it the server still
+refreshes the session through the heartbeat but cannot sign back in once
+`w-aref` is rejected.
 
-```powershell
-$action = New-ScheduledTaskAction `
-  -Execute $nodePath `
-  -Argument '--env-file=.env dist/src/server.js' `
-  -WorkingDirectory (Get-Location)
-$trigger = New-ScheduledTaskTrigger -AtStartup
-$settings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)
-Register-ScheduledTask -TaskName 'PersonalShopper' -Action $action -Trigger $trigger -Settings $settings -RunLevel Highest -User 'SYSTEM'
-Start-ScheduledTask -TaskName 'PersonalShopper'
+Verify with `curl https://personal-shopper.fly.dev/healthz`.
+
+## Custom domain
+
+```bash
+fly certs add personal-shopper.willsawyerrrr.dev
 ```
 
-Verify it actually started — `Get-ScheduledTaskInfo -TaskName
-'PersonalShopper'`'s `LastTaskResult` should read `0`. Task Scheduler
-doesn't capture the process's stdout/stderr, so if something's still wrong,
-run the same command directly in a terminal to see the real error:
+Add the CNAME it prints (`personal-shopper` -> `personal-shopper.fly.dev`)
+at the DNS provider, then check `fly certs show personal-shopper.willsawyerrrr.dev`
+until the certificate is issued. Point the Shortcut at
+`https://personal-shopper.willsawyerrrr.dev/items`.
 
-```powershell
-& $nodePath --env-file=.env dist/src/server.js
-```
+## Updating
 
-To pick up an update later: `git pull`, `pnpm install --frozen-lockfile`,
-`pnpm build`, then `Restart-ScheduledTask -TaskName 'PersonalShopper'` (or
-`Stop-ScheduledTask` + `Start-ScheduledTask`).
-
-## Firewall
-
-Allow the port on your home network only — the `Private` profile excludes
-public/untrusted networks by default:
-
-```powershell
-New-NetFirewallRule -DisplayName 'Personal Shopper' -Direction Inbound -Protocol TCP -LocalPort 3000 -Action Allow -Profile Private
-```
-
-## Reaching it from Shortcuts
-
-Find the PC's LAN IP with `ipconfig` (the `IPv4 Address` under your active
-adapter), then point the Shortcuts automation's "Get Contents of URL" at
-`http://<that-ip>:3000/items`. Reserve a static DHCP lease for the PC in
-your router's settings so this IP doesn't change and break the automation —
-otherwise every router reboot is a live risk.
+`fly deploy` rebuilds the image and rolls the machine; the volume, and so the
+items and session, persist. Logs: `fly logs`.

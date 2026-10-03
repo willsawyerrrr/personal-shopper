@@ -18,6 +18,7 @@ describe('admin', () => {
     await writeFile(itemsPath, 'milk:\n  stockcode: 123456\n  quantity: 1\n')
     config = {
       port: 0,
+      trustProxy: false,
       sharedSecret: 'secret',
       itemsPath,
       sessionPath: join(dir, 'session.json'),
@@ -30,6 +31,37 @@ describe('admin', () => {
 
   afterEach(async () => {
     await rm(dir, { recursive: true, force: true })
+  })
+
+  it('rate limits login attempts per client', async () => {
+    const app = buildApp(config, cart)
+    const attempt = () =>
+      app.inject({
+        method: 'POST',
+        url: '/admin/login',
+        payload: 'secret=wrong',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      })
+    for (let i = 0; i < 10; i++) {
+      expect((await attempt()).statusCode).toBe(401)
+    }
+    expect((await attempt()).statusCode).toBe(429)
+  })
+
+  it('marks the session cookie Secure only over HTTPS', async () => {
+    const app = buildApp({ ...config, trustProxy: true }, cart)
+    const login = (proto: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/admin/login',
+        payload: 'secret=secret',
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded',
+          'x-forwarded-proto': proto,
+        },
+      })
+    expect(String((await login('https')).headers['set-cookie'])).toContain('; Secure')
+    expect(String((await login('http')).headers['set-cookie'])).not.toContain('Secure')
   })
 
   it('serves the login page', async () => {

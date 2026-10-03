@@ -17,6 +17,7 @@ describe('buildApp', () => {
     await writeFile(itemsPath, 'milk:\n  stockcode: 123456\n  quantity: 1\n')
     config = {
       port: 0,
+      trustProxy: false,
       sharedSecret: 'secret',
       itemsPath,
       sessionPath: join(dir, 'session.json'),
@@ -29,6 +30,51 @@ describe('buildApp', () => {
 
   afterEach(async () => {
     await rm(dir, { recursive: true, force: true })
+  })
+
+  it('answers the health check without authentication', async () => {
+    const app = buildApp(config, cart)
+    const response = await app.inject({ method: 'GET', url: '/healthz' })
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toEqual({ status: 'ok' })
+  })
+
+  it('rate limits the webhook per client', async () => {
+    const app = buildApp(config, cart)
+    const send = () =>
+      app.inject({
+        method: 'POST',
+        url: '/items',
+        payload: { item: 'milk' },
+        remoteAddress: '1.1.1.1',
+      })
+    for (let i = 0; i < 30; i++) {
+      expect((await send()).statusCode).toBe(401)
+    }
+    expect((await send()).statusCode).toBe(429)
+    const other = await app.inject({
+      method: 'POST',
+      url: '/items',
+      payload: { item: 'milk' },
+      remoteAddress: '2.2.2.2',
+    })
+    expect(other.statusCode).toBe(401)
+  })
+
+  it('keys rate limits on X-Forwarded-For when the proxy is trusted', async () => {
+    const app = buildApp({ ...config, trustProxy: true }, cart)
+    const send = (ip: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/items',
+        payload: { item: 'milk' },
+        headers: { 'x-forwarded-for': ip },
+      })
+    for (let i = 0; i < 30; i++) {
+      await send('3.3.3.3')
+    }
+    expect((await send('3.3.3.3')).statusCode).toBe(429)
+    expect((await send('4.4.4.4')).statusCode).toBe(401)
   })
 
   it('rejects requests without the shared secret', async () => {
