@@ -64,26 +64,32 @@ iCloud env vars skip it entirely.
 
 ## Session capture
 
-Woolworths' login requires approving a passkey (or SMS code) in a real,
-visible browser and sits behind Akamai Bot Manager, so there's no clean
-programmatic login path — every existing community project that automates
-this API does the same thing: a human logs in through a real browser once,
-and the cookies get replayed for subsequent API calls. The passkey is
-synced through 1Password rather than tied to one physical key, but
-WebAuthn's user-verification step still requires a human to unlock the
-vault and approve it, so it doesn't unlock scripted login even though it
-drops the SMS-code step. Driving the approval via RPA (e.g. scripting
-clicks through the 1Password extension) doesn't change that either: it
-would need the vault unlocked non-interactively — undermining the point
-of gating login behind a passkey — and running login through Playwright
-repeatedly is exactly the
-scripted-browser pattern Akamai Bot Manager is positioned to catch.
+Woolworths' login (Auth0 at `auth.woolworths.com.au`) signs in without a
+password or SMS code when a discoverable passkey is available, and sits behind
+Akamai Bot Manager. Two paths produce `session.json`:
 
-`pnpm capture-session` (`scripts/capture-session.ts`) opens a real,
-non-headless browser via Playwright, waits for you to log in and set your
-Click & Collect store/pickup slot by hand, then extracts the required cookies
-(including the httpOnly, `/auth`-scoped `w-aref` refresh cookie) into
-`session.json`.
+- **Passkey login** (`src/woolworths/passkey.ts`): headless Chrome with a CDP
+  virtual authenticator (`WebAuthn.addVirtualAuthenticator`: ctap2, internal,
+  resident key, user verified) preloaded with the stored credential
+  (`WebAuthn.addCredential`). It opens `/shop/securelogin`, dispatches a click
+  on Login (a plain `click()` hangs), waits for the redirect to
+  `#postSuccessLogin` and for every required cookie, including the httpOnly,
+  `/auth`-scoped `w-aref`. Akamai answers "Access Denied" to default headless
+  Chrome; it accepts the installed Chrome channel (`channel: 'chrome'`, so
+  Chrome must be installed) with `--disable-blink-features=AutomationControlled`
+  and an explicit desktop user agent. Errors distinguish an Akamai block, a
+  rejected passkey and missing cookies. `pnpm passkey-login` runs it by hand.
+- **Manual capture** (`pnpm capture-session`, `scripts/capture-session.ts`):
+  opens a visible browser, waits for you to log in and set your Click &
+  Collect store/pickup slot by hand, then extracts the required cookies into
+  `session.json`.
+
+`pnpm register-passkey` (`scripts/register-passkey.ts`) registers the
+credential once: it opens a headed Chrome with a virtual authenticator, you
+log in and accept Woolworths' prompt to create a passkey, and the credential
+(the output of `WebAuthn.getCredentials`) is written with `0600` permissions
+to `PASSKEY_CREDENTIALS_PATH` (default `passkey-credentials.json`,
+gitignored). It grants login to the account, so treat it like a password.
 
 ### Heartbeat refresh
 
@@ -98,30 +104,39 @@ calls it with browser-like headers and writes every re-issued cookie back to
 - on a timer (`SESSION_KEEPALIVE_INTERVAL_MS`, default 6 hours, `0`
   disables) so the 30 day `w-aref` window keeps rolling while idle.
 
-A non-200, `refreshed:false`, or a response without a new `w-aref` is an
-expired session: the request fails with the same error (and the Reminders
-sync leaves items queued) until `pnpm capture-session` is run again.
+A non-200, `refreshed:false`, or a response without a new `w-aref` is a
+rejected session. If the passkey credential file exists when the server
+starts, `SessionStore` runs the passkey login and persists the result;
+concurrent callers share one refresh and one login. Otherwise the request
+fails with the session-expired error (and the Reminders sync leaves items
+queued) until `pnpm passkey-login` or `pnpm capture-session` is run. A failed
+passkey login surfaces its own error; the next call retries it.
 
 ## Deployment
 
 Runs natively on an always-on Windows PC, reachable only over the home
-network — no public exposure, deliberately. `pnpm capture-session` needs a
-real browser you can approve with a passkey anyway, so there's no benefit to
-running elsewhere, and this sidesteps WSL2's port-forwarding limitations for
-LAN reachability. See [`deployment.md`](deployment.md).
+network — no public exposure, deliberately. Chrome must be installed there
+for the passkey login and session capture, and this sidesteps WSL2's
+port-forwarding limitations for LAN reachability. See [`deployment.md`](deployment.md).
 
 ## Risks / open questions
 
 - **Session lifetime**: `wow-auth-token` and `prodwow-auth-token` are
   short-lived JWTs (refreshed after 55 minutes in `SessionStore`). The
   heartbeat keeps the login alive for as long as `w-aref` (30 days, rotated
-  on each refresh) stays valid. Run `pnpm capture-session` again when the
-  server is down or idle past that window, or Woolworths rejects the
-  refresh.
+  on each refresh) stays valid. When the refresh is rejected the server
+  signs in with the stored passkey; without one, run `pnpm capture-session`
+  again.
+- **Passkey login**: depends on Woolworths keeping discoverable-passkey login
+  and on Akamai accepting the installed-Chrome fingerprint above; either can
+  change without notice, in which case the login fails with a descriptive
+  error. Whether the Click & Collect store/slot survives a passkey login
+  (rather than a hand-captured session) is unverified; if items land against
+  the wrong store, re-select it with `pnpm capture-session`.
 - **Anti-bot**: Akamai Bot Manager cookies (`bm_sv`, `_abck`, `ak_bmsc`) are
   present on woolworths.com.au. Plain HTTP requests without a real browser's
-  fingerprint risk being challenged or blocked; that's why session capture
-  goes through an actual browser rather than a scripted login. The
+  fingerprint risk being challenged or blocked; that's why login goes
+  through an actual Chrome rather than HTTP calls. The
   heartbeat refresh, sent as plain HTTP with the captured cookies and
   browser-like headers, was not blocked when checked against the live site.
 - **Click & Collect store/slot persistence is confirmed working.** Picking

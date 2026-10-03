@@ -11,6 +11,7 @@ export interface AppConfig {
   itemsPath: string
   sessionPath: string
   sessionKeepAliveIntervalMs: number
+  passkeyCredentialsPath: string
   remindersSync: RemindersSyncConfig | undefined
 }
 
@@ -26,6 +27,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     sessionPath: env.SESSION_PATH ?? 'session.json',
     // 0 disables the timer; the session then only refreshes on demand.
     sessionKeepAliveIntervalMs: Number(env.SESSION_KEEPALIVE_INTERVAL_MS ?? 6 * 60 * 60 * 1000),
+    passkeyCredentialsPath: env.PASSKEY_CREDENTIALS_PATH ?? 'passkey-credentials.json',
     remindersSync: loadRemindersSyncConfig(env),
   }
 }

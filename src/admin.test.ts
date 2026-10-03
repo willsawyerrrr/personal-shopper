@@ -22,6 +22,7 @@ describe('admin', () => {
       itemsPath,
       sessionPath: join(dir, 'session.json'),
       sessionKeepAliveIntervalMs: 0,
+      passkeyCredentialsPath: 'passkey-credentials.json',
       remindersSync: undefined,
     }
     cart = { addToCart: vi.fn() }
