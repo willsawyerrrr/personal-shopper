@@ -62,6 +62,13 @@ In the Woolworths app or Safari, open a product, tap Share, then Personal
 Shopper (enable it under "More" in the share sheet's app row the first time).
 Check the name, set a trigger word, and tap Add.
 
+If Personal Shopper is missing, scroll the share sheet's app row, tap More,
+and turn it on under Favourites (reinstall the app if it is still absent).
+After changing `project.yml`, run `xcodegen generate` then
+`Scripts/check-share-extension.sh` to confirm the extension declares its
+`NSExtensionActivationRule`; pass the built
+`PlugIns/ShareExtension.appex/Info.plist` to check a build.
+
 ## Shortcuts and Siri
 
 The App Intent is what Shortcuts and Siri use, separate from the share sheet.
