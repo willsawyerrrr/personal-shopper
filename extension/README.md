@@ -11,9 +11,8 @@ check, token exchange; `passkey.test.js`: credential selection, status, API call
 
 ## Load it
 
-Distributed as an unpacked extension rather than through the Chrome Web
-Store — no developer account, fee, or public listing needed for something
-this small and single-user.
+Run unpacked for development; see [Publishing](#publishing) for the Chrome
+Web Store build.
 
 1. `chrome://extensions` → enable Developer Mode → Load unpacked → this
    folder.
@@ -105,6 +104,26 @@ digit mapped `0-9a-f` to `a-p`).
   reach the server; this server sets no CORS headers. `https://*.willsawyerrrr.dev/*`
   covers the deployed server.
   `https://*.woolworths.com.au/*` covers the Woolworths login tab.
+
+## Publishing
+
+Submitted to the Chrome Web Store as an unlisted item. Listing copy,
+permission justifications and the screenshot checklist are in
+[`store/listing.md`](store/listing.md); the privacy policy is served at
+`/privacy` (`src/privacy.ts`).
+
+1. Bump `version` in `manifest.json` (the store rejects a repeated version).
+2. `pnpm run package-extension` writes `dist/extension.zip`: the runtime files
+   only, with the `key` dropped and `host_permissions` narrowed to the hosted
+   server and `https://*.woolworths.com.au/*`. CI attaches the same zip as the
+   `extension` artifact on runs touching `extension/**`.
+3. In the [developer dashboard](https://chrome.google.com/webstore/devconsole)
+   add a new item, upload the zip, fill in the listing from `store/listing.md`,
+   set the privacy policy URL, set visibility to Unlisted and submit.
+4. After the first upload, copy the store-assigned extension ID and add
+   `https://<id>.chromiumapp.org/` to `ALLOWED_CLIENT_REDIRECTS` on Fly,
+   keeping the unpacked ID's entry. Google OAuth needs no change: Google
+   redirects to the server, not the extension.
 
 ## What this doesn't cover
 

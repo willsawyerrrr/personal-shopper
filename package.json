@@ -17,6 +17,7 @@
     "coverage": "vitest run --coverage",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "package-extension": "tsx scripts/package-extension.ts",
     "capture-session": "tsx scripts/capture-session.ts",
     "passkey-login": "tsx scripts/passkey-login.ts",
     "register-passkey": "tsx scripts/register-passkey.ts",
