@@ -70,13 +70,54 @@ export const PAGE_STYLES = `
     border: 1px solid var(--color-border);
   }
   table button:hover { background: var(--color-bg); }
-  details.edit { margin-bottom: 0.4rem; }
+  tr.item td { border-bottom: none; padding-bottom: 0.1rem; }
+  tr.item-edit td { padding-top: 0; }
   details.edit summary {
     cursor: pointer;
     font-size: 0.8rem;
     color: var(--color-accent);
   }
-  details.edit form { min-width: 14rem; margin-top: 0.6rem; }
+  .edit-panel {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.6rem;
+    margin: 0.4rem 0 0.25rem;
+    padding: 0.7rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+  }
+  .edit-panel label { margin: 0; font-size: 0.75rem; }
+  .edit-panel label.grow { flex: 1 1 8rem; }
+  .edit-panel label.qty { flex: 0 0 5rem; }
+  .edit-panel input {
+    margin-top: 0.2rem;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.85rem;
+    background: var(--color-surface);
+    border-radius: 6px;
+  }
+  .edit-panel .actions { display: flex; gap: 0.5rem; }
+  .edit-panel button {
+    padding: 0.35rem 0.8rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #fff;
+    background: var(--color-accent);
+    border: 1px solid var(--color-accent);
+    border-radius: 6px;
+  }
+  .edit-panel button:hover { background: var(--color-accent-hover); }
+  .edit-panel button.danger {
+    color: var(--color-danger);
+    background: transparent;
+    border-color: var(--color-danger);
+  }
+  .edit-panel button.danger:hover { background: var(--color-surface); }
+  @media (max-width: 30rem) {
+    .edit-panel label.grow, .edit-panel label.qty { flex: 1 1 100%; }
+  }
   .listing { color: var(--color-text-muted); font-size: 0.8rem; margin-top: 0.15rem; }
   .error { color: var(--color-danger); margin: 0 0 1rem; font-size: 0.9rem; }
   .hint { color: var(--color-text-muted); font-size: 0.85rem; margin: 0 0 1rem; }
