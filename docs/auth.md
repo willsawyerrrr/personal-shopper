@@ -29,7 +29,6 @@ integers.
 | Variable                     | Default | Meaning                                                                                                         |
 | ---------------------------- | ------- | --------------------------------------------------------------------------------------------------------------- |
 | `MAX_USERS`                  | 50      | Total users. Beyond it a new Google account cannot sign up (`signup_closed`); existing users are unaffected.    |
-| `MAX_ITEMS_PER_HOUSEHOLD`    | 200     | Items a household may map. `POST /items` for a new phrase beyond it gets `409`; replacing an item is allowed.   |
 | `MAX_INVITES_PER_HOUSEHOLD`  | 5       | Unexpired household invites at once. `POST /household/invites` beyond it gets `409`.                            |
 | `MAX_TOKENS_PER_USER`        | 20      | Unexpired tokens (web sessions and API clients) a user may hold. A sign-in beyond it is refused (`user_limit`). |
 | `USER_RATE_LIMIT_PER_MINUTE` | 120     | Authenticated requests per minute per user on `/` and `/cart`; excess gets `429 {"error":"rate_limited"}`.      |
@@ -147,9 +146,6 @@ any `GET /items` or `GET /`, so a later list contains it.
 | `400`  | `{"error":"<message>"}`: a field is invalid; nothing is written |
 | `404`  | `{"error":"<message>"}`: no item for `:word`                    |
 | `409`  | `{"error":"<message>"}`: `word` is already used by another item |
-
-`POST /items` also answers `409` when the user is at
-`MAX_ITEMS_PER_HOUSEHOLD` and the phrase is new.
 
 Browser form edits answer the same statuses by re-rendering `/` with the
 message, and redirect to `/` on success. They rely on the session

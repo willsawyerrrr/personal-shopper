@@ -658,29 +658,6 @@ describe('admin with several users', () => {
     expect((await list(me)).items).toEqual([])
   })
 
-  it('limits the items a user can map, replacing an existing one still allowed', async () => {
-    const strict = buildApp(
-      testConfig(dir, { limits: { ...DEFAULT_LIMITS, maxItemsPerHousehold: 2 } }),
-      {
-        sql: db.sql,
-        fetch: google.fetch,
-      },
-    )
-    const headers = {
-      authorization: `Bearer ${await signInClient(strict, google)}`,
-      accept: 'application/json',
-    }
-    const post = (word: string) =>
-      strict.inject({ method: 'POST', url: '/items', headers, payload: { word, url: '1' } })
-    expect((await post('milk')).statusCode).toBe(201)
-    expect((await post('bread')).statusCode).toBe(201)
-    const full = await post('eggs')
-    expect(full.statusCode).toBe(409)
-    expect(full.json()).toEqual({ error: 'You can have at most 2 items.' })
-    expect((await post('Milk')).statusCode).toBe(201)
-    await strict.close()
-  })
-
   describe('household', () => {
     const json = (token: string) => ({
       authorization: `Bearer ${token}`,

@@ -43,8 +43,8 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   row is created on first sign-in), and it issues its own session cookie
   (`/`) or opaque bearer tokens (iOS app, Chrome extension; hashed in
   the `tokens` table, 90-day sliding expiry, revocable). Abuse is bounded by
-  env-configurable limits: `MAX_USERS`, per-household items and invites, per-user active tokens, and
-  per-user plus per-IP rate limits (`docs/auth.md#limits`). The Google
+  env-configurable limits: `MAX_USERS`, per-household invites, per-user active
+  tokens, and per-user plus per-IP rate limits (`docs/auth.md#limits`). The Google
   consent screen must be published "In production". See
   [`docs/auth.md`](docs/auth.md).
 - Deployment: one always-on Fly.io machine (`fly.toml`, `Dockerfile`) in
