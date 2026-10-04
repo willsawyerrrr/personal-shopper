@@ -8,7 +8,7 @@ import { SessionStore } from '../src/woolworths/session.ts'
 
 /**
  * Resolves the user a script acts for: `--user <email>`, else the owner
- * (`REMINDERS_OWNER_EMAIL`, else the first of `ALLOWED_EMAILS`). The user's
+ * (`REMINDERS_OWNER_EMAIL`). The user's
  * data is in the database at `DATABASE_URL`, like the server's. Call `close`
  * when done.
  */
@@ -17,7 +17,10 @@ export function scriptUser() {
     options: { user: { type: 'string' } },
     allowPositionals: true,
   })
-  const email = normalizeEmail(values.user ?? resolveOwnerEmail())
+  const email = values.user ? normalizeEmail(values.user) : resolveOwnerEmail()
+  if (!email) {
+    throw new Error('Pass --user <email> or set REMINDERS_OWNER_EMAIL')
+  }
   const databaseUrl = process.env.DATABASE_URL
   if (!databaseUrl) {
     throw new Error('DATABASE_URL is required')

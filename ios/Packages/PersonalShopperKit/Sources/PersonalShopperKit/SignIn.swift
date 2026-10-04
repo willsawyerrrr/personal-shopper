@@ -38,8 +38,11 @@ public struct SignIn: Sendable {
         func value(_ name: String) -> String? { items.first { $0.name == name }?.value }
         guard value("state") == state else { throw AdminError.signInFailed("The sign-in response didn't match the request.") }
         if let error = value("error") {
-            throw AdminError.signInFailed(
-                error == "email_not_allowed" ? "That Google account isn't allowed." : "Google sign-in failed.")
+            switch error {
+            case "signup_closed": throw AdminError.signInFailed("Sign-ups are closed.")
+            case "user_limit": throw AdminError.signInFailed("Too many active sign-ins. Sign out of another device and try again.")
+            default: throw AdminError.signInFailed("Google sign-in failed.")
+            }
         }
         guard let code = value("code"), !code.isEmpty else { throw AdminError.signInFailed("Google sign-in failed.") }
         return code

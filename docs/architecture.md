@@ -4,7 +4,7 @@
 
 1. **Sign-in**: Google is the only way to authenticate, for the browser and
    for API clients (iOS app, Chrome extension). The server is the OAuth client
-   of Google, restricts sign-in to `ALLOWED_EMAILS`, and issues its own
+   of Google, accepts any verified Google account (up to `MAX_USERS`), and issues its own
    session cookie (browser) or opaque bearer token (clients). Each token
    belongs to a user (their lower-cased email), and everything below acts for
    that user: their items, their Woolworths session, their passkey. Endpoints,
@@ -101,7 +101,7 @@ Woolworths session is expired (heartbeat refresh rejected), is left queued and
 retried on the next interval. This is opt-in: deployments that don't set both
 iCloud env vars skip it entirely. It is server-side only and needs no sign-in.
 The list belongs to the operator, so the sync acts for one user, the owner
-(`REMINDERS_OWNER_EMAIL`, default the first of `ALLOWED_EMAILS`): it resolves
+(`REMINDERS_OWNER_EMAIL`, required to enable the sync): it resolves
 titles against the owner's items and adds to the owner's cart.
 
 ## Session capture

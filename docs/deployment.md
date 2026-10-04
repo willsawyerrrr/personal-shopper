@@ -14,15 +14,16 @@ registered, below).
 ## What lives where
 
 - Secrets (`fly secrets set`): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
-  `ALLOWED_EMAILS`, `PUBLIC_BASE_URL`, `DATABASE_URL`,
+  `PUBLIC_BASE_URL`, `DATABASE_URL`,
   `CREDENTIALS_ENCRYPTION_KEY` (`openssl rand -base64 32`; required once any
   passkey credential exists, and never stored in the database), optionally
-  `REMINDERS_OWNER_EMAIL`, `ALLOWED_CLIENT_REDIRECTS`, and `ICLOUD_USERNAME` /
-  `ICLOUD_APP_SPECIFIC_PASSWORD` for the
+  `ALLOWED_CLIENT_REDIRECTS`, and `ICLOUD_USERNAME` /
+  `ICLOUD_APP_SPECIFIC_PASSWORD` with `REMINDERS_OWNER_EMAIL` for the
   [Reminders queue](architecture.md#reminders-queue).
 - Config (`fly.toml` `[env]`): `PORT`, `TRUST_PROXY=true` (rate limiting keys
-  on the client IP from `X-Forwarded-For`), and the paths of single-user files
-  to import (below).
+  on the client IP from `X-Forwarded-For`), the abuse limits (`MAX_USERS` and
+  the others in [`auth.md`](auth.md#limits)) and the paths of single-user
+  files to import (below).
 - Postgres (Supabase): users, tokens, items, Woolworths sessions and encrypted
   passkey credentials, per user ([`architecture.md`](architecture.md#data)). A
   user without items has none; they add them through `/admin`.
@@ -48,9 +49,11 @@ Tests run against a real Postgres at `TEST_DATABASE_URL` (default
 CI provides as a service container.
 
 Sign-in is Google only; see [`auth.md`](auth.md) for the flows and the client
-contract. The service is internet-reachable: only the accounts in
-`ALLOWED_EMAILS` can sign in, and the `/auth/*` routes allow 30 requests per
-minute per client IP; excess requests get `429`. `GET /healthz` is
+contract. The service is internet-reachable and sign-up is open: any Google
+account with a verified email can sign in and gets a user on first sign-in,
+bounded by the limits in [`auth.md`](auth.md#limits) (`MAX_USERS` total users,
+per-user items, tokens and request rates, and per-IP request rates on `/auth/*`
+and `POST /cart/items`); excess requests get `429`. `GET /healthz` is
 unauthenticated and backs the Fly health check. The server refuses to start
 without the Google variables.
 
@@ -65,14 +68,15 @@ One-off setup in [Google Cloud Console](https://console.cloud.google.com/);
      **Internal** is available only inside a Google Workspace organisation
      and then needs no test users).
    - App name `Personal Shopper`, your email as support and developer contact.
-   - Leave the publishing status **Testing** and add your email (every
-     account in `ALLOWED_EMAILS`) under Audience, Test users. Only test users
-     can sign in while testing. No sensitive scopes are requested: the
-     server asks for `openid email` only, so verification is never required.
-   - Testing mode expires refresh tokens after 7 days. This server never
-     asks for or stores a Google refresh token (it uses Google only to read
-     your verified email at sign-in, then issues its own tokens), so that
-     limit does not affect it.
+   - Under Audience, set the publishing status to **In production**. Open
+     sign-up needs it: in **Testing** only listed test users (at most 100) can
+     sign in, and everyone else is refused by Google. No sensitive or
+     restricted scopes are requested: the server asks for `openid email`
+     only, so Google's app verification is not required.
+   - This server never asks for or stores a Google refresh token (it uses
+     Google only to read the verified email at sign-in, then issues its own
+     tokens), so Google's 7-day refresh-token expiry for apps in **Testing**
+     does not affect it.
 3. APIs & Services, Credentials, Create credentials, OAuth client ID:
    - Application type **Web application**, name `Personal Shopper server`.
    - Authorized redirect URIs:
@@ -86,7 +90,6 @@ One-off setup in [Google Cloud Console](https://console.cloud.google.com/);
    fly secrets set \
      GOOGLE_CLIENT_ID=... \
      GOOGLE_CLIENT_SECRET=... \
-     ALLOWED_EMAILS=you@gmail.com \
      PUBLIC_BASE_URL=https://personal-shopper.willsawyerrrr.dev
    ```
 
@@ -113,10 +116,9 @@ pnpm register-passkey   # encrypts the passkey and stores it for the owner
 pnpm passkey-login      # signs in over plain HTTP and stores the session
 ```
 
-Each script acts for the owner (`REMINDERS_OWNER_EMAIL`, else the first of
-`ALLOWED_EMAILS`); pass `--user <email>` to act for another user, who must
-register their own passkey, or they can register it from the Chrome
-extension ([`extension/README.md`](../extension/README.md#woolworths-passkey)).
+Each script acts for `--user <email>`, else `REMINDERS_OWNER_EMAIL`; each user
+registers their own passkey, or they can register it from the Chrome extension
+([`extension/README.md`](../extension/README.md#woolworths-passkey)).
 
 Use `pnpm capture-session` instead of `passkey-login` to pick your Direct to
 Boot store in a real browser; it carries the store selection and Akamai
@@ -127,7 +129,7 @@ cookies a passkey login lacks.
 ```bash
 fly apps create willsawyerrrr-personal-shopper   # names are global; must match `app` in fly.toml
 fly volumes create data --region syd --size 1   # `[mounts]` in fly.toml needs it; holds single-user files to import
-fly secrets set GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... ALLOWED_EMAILS=... PUBLIC_BASE_URL=... DATABASE_URL=... CREDENTIALS_ENCRYPTION_KEY=... ICLOUD_USERNAME=... ICLOUD_APP_SPECIFIC_PASSWORD=...
+fly secrets set GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... PUBLIC_BASE_URL=... DATABASE_URL=... CREDENTIALS_ENCRYPTION_KEY=... ICLOUD_USERNAME=... ICLOUD_APP_SPECIFIC_PASSWORD=... REMINDERS_OWNER_EMAIL=...
 fly deploy
 ```
 
@@ -203,7 +205,8 @@ secret, and the `Authorization` and `Cookie` headers are never logged.
 | `empty_token`           | `Bearer` with no token after it.                                                                                                                |
 | `invalid_token`         | Not a token the server issued, or revoked.                                                                                                      |
 | `expired_token`         | A server-issued token past its 90 day sliding expiry (30 days for web sessions).                                                                |
-| `email_not_allowed`     | A sign-in, or a token's account, not in `ALLOWED_EMAILS`.                                                                                       |
+| `signup_closed`         | A new Google account tried to sign up while `MAX_USERS` users exist.                                                                            |
+| `user_limit`            | A sign-in would exceed the user's `MAX_TOKENS_PER_USER` unexpired tokens.                                                                       |
 | `invalid_state`         | The Google callback's `state` is unknown, expired (10 minutes) or already used.                                                                 |
 | `login_failed`          | Google sign-in failed; `detail` is `authorization_denied`, `token_exchange_failed`, `invalid_id_token`, `nonce_mismatch` or `email_unverified`. |
 | `invalid_request`       | `/auth/start` or `/auth/token` called with missing or malformed parameters, or a redirect URI off the allowlist.                                |

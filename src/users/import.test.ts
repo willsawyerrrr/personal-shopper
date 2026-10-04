@@ -117,4 +117,12 @@ describe('importLegacyFiles', () => {
       'not a token store',
     )
   })
+
+  it('imports only the tokens when there is no owner', async () => {
+    await writeAll()
+    await expect(importLegacyFiles(db.sql, files, undefined, credentials)).resolves.toEqual([
+      'tokens',
+    ])
+    expect(await readdir(dir)).toContain('items.yml')
+  })
 })

@@ -18,14 +18,34 @@ export interface LegacyFiles {
   passkeyCredentials: string
 }
 
+/** Abuse limits; each is overridable by an environment variable. */
+export interface Limits {
+  /** Total users; a Google account beyond this cannot sign up. */
+  maxUsers: number
+  /** Items a user may map. */
+  maxItemsPerUser: number
+  /** Unexpired tokens (sign-ins) a user may hold at once. */
+  maxTokensPerUser: number
+  /** Authenticated requests per minute per user on `/admin` and `/cart`. */
+  userRequestsPerMinute: number
+  /** Requests per minute per client IP on `/auth/*` and `/cart/items`. */
+  ipRequestsPerMinute: number
+}
+
+export const DEFAULT_LIMITS: Limits = {
+  maxUsers: 50,
+  maxItemsPerUser: 200,
+  maxTokensPerUser: 20,
+  userRequestsPerMinute: 120,
+  ipRequestsPerMinute: 30,
+}
+
 export interface AppConfig {
   port: number
   logLevel: LogLevel
   trustProxy: boolean
   googleClientId: string
   googleClientSecret: string
-  /** Lower-cased Google account emails allowed to sign in. */
-  allowedEmails: string[]
   /** Origin the server is reached at, without a trailing slash. */
   publicBaseUrl: string
   /** Redirect URIs API clients may pass to `/auth/start`, matched exactly. */
@@ -34,8 +54,13 @@ export interface AppConfig {
   databaseUrl: string
   /** Files of a single-user deployment, imported into the owner's rows on first start. */
   legacyFiles: LegacyFiles
-  /** The user the iCloud Reminders sync and the `scripts/` CLIs act for by default. */
-  ownerEmail: string
+  /**
+   * The user the iCloud Reminders sync, the single-user file import and the
+   * `scripts/` CLIs act for by default; required when the Reminders sync is
+   * enabled.
+   */
+  ownerEmail: string | undefined
+  limits: Limits
   /** Key encrypting stored passkey credentials; required once any credential exists. */
   credentialsEncryptionKey: Buffer | undefined
   sessionKeepAliveIntervalMs: number
@@ -43,7 +68,7 @@ export interface AppConfig {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
-  return {
+  const config: AppConfig = {
     port: Number(env.PORT ?? 3000),
     logLevel: parseLogLevel(env.LOG_LEVEL),
     // Behind a reverse proxy (Fly) the client IP, which rate limiting keys on,
@@ -52,7 +77,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     trustProxy: env.TRUST_PROXY === 'true',
     googleClientId: required(env, 'GOOGLE_CLIENT_ID'),
     googleClientSecret: required(env, 'GOOGLE_CLIENT_SECRET'),
-    allowedEmails: parseAllowedEmails(required(env, 'ALLOWED_EMAILS')),
     publicBaseUrl: parsePublicBaseUrl(required(env, 'PUBLIC_BASE_URL')),
     allowedClientRedirects: parseList(env.ALLOWED_CLIENT_REDIRECTS ?? DEFAULT_CLIENT_REDIRECT),
     databaseUrl: required(env, 'DATABASE_URL'),
@@ -63,6 +87,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       passkeyCredentials: env.PASSKEY_CREDENTIALS_PATH ?? 'passkey-credentials.json',
     },
     ownerEmail: resolveOwnerEmail(env),
+    limits: loadLimits(env),
     credentialsEncryptionKey: env.CREDENTIALS_ENCRYPTION_KEY?.trim()
       ? parseEncryptionKey(env.CREDENTIALS_ENCRYPTION_KEY)
       : undefined,
@@ -70,18 +95,46 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     sessionKeepAliveIntervalMs: Number(env.SESSION_KEEPALIVE_INTERVAL_MS ?? 6 * 60 * 60 * 1000),
     remindersSync: loadRemindersSyncConfig(env),
   }
+  if (config.remindersSync && !config.ownerEmail) {
+    throw new Error('REMINDERS_OWNER_EMAIL is required when the Reminders sync is enabled')
+  }
+  return config
 }
 
-/**
- * The email the Reminders sync and the `scripts/` CLIs act for by default:
- * `REMINDERS_OWNER_EMAIL`, else the first of `ALLOWED_EMAILS`.
- */
-export function resolveOwnerEmail(env: NodeJS.ProcessEnv = process.env): string {
-  const owner = env.REMINDERS_OWNER_EMAIL?.trim() || parseList(env.ALLOWED_EMAILS ?? '')[0]
-  if (!owner) {
-    throw new Error('REMINDERS_OWNER_EMAIL or ALLOWED_EMAILS is required')
+/** `REMINDERS_OWNER_EMAIL`, lower-cased; undefined when unset. */
+export function resolveOwnerEmail(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const owner = env.REMINDERS_OWNER_EMAIL?.trim()
+  return owner ? normalizeEmail(owner) : undefined
+}
+
+function loadLimits(env: NodeJS.ProcessEnv): Limits {
+  return {
+    maxUsers: positiveInt(env, 'MAX_USERS', DEFAULT_LIMITS.maxUsers),
+    maxItemsPerUser: positiveInt(env, 'MAX_ITEMS_PER_USER', DEFAULT_LIMITS.maxItemsPerUser),
+    maxTokensPerUser: positiveInt(env, 'MAX_TOKENS_PER_USER', DEFAULT_LIMITS.maxTokensPerUser),
+    userRequestsPerMinute: positiveInt(
+      env,
+      'USER_RATE_LIMIT_PER_MINUTE',
+      DEFAULT_LIMITS.userRequestsPerMinute,
+    ),
+    ipRequestsPerMinute: positiveInt(
+      env,
+      'IP_RATE_LIMIT_PER_MINUTE',
+      DEFAULT_LIMITS.ipRequestsPerMinute,
+    ),
   }
-  return normalizeEmail(owner)
+}
+
+function positiveInt(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
+  const raw = env[name]?.trim()
+  if (!raw) {
+    return fallback
+  }
+  const value = Number(raw)
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`${name} must be a positive integer`)
+  }
+  return value
 }
 
 /** The iOS app's custom URL scheme; the Chrome extension's redirect URI is deployment-specific. */
@@ -100,14 +153,6 @@ function parseList(value: string): string[] {
     .split(',')
     .map((entry) => entry.trim())
     .filter(Boolean)
-}
-
-function parseAllowedEmails(value: string): string[] {
-  const emails = parseList(value).map((email) => email.toLowerCase())
-  if (emails.length === 0) {
-    throw new Error('ALLOWED_EMAILS must list at least one email')
-  }
-  return emails
 }
 
 function parsePublicBaseUrl(value: string): string {

@@ -18,7 +18,7 @@ Requirements:
 - The Reminders list is named as `REMINDERS_LIST_NAME` (default "Shopping
   List") and is in the iCloud account that username belongs to.
 - The spoken word has a mapping in the owner's items
-  (`REMINDERS_OWNER_EMAIL`, default the first of `ALLOWED_EMAILS`): add it in `/admin`, the Chrome
+  (`REMINDERS_OWNER_EMAIL`): add it in `/admin`, the Chrome
   extension or the iOS app. A reminder with no mapping stays in the list and
   is retried every interval.
 - Sync runs every `REMINDERS_SYNC_INTERVAL_MS` (default 5 minutes), so the

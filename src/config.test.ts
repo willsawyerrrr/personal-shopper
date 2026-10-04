@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { loadConfig } from './config.ts'
+import { DEFAULT_LIMITS, loadConfig } from './config.ts'
 
 const BASE = {
   GOOGLE_CLIENT_ID: 'client-id',
   GOOGLE_CLIENT_SECRET: 'client-secret',
-  ALLOWED_EMAILS: 'me@example.com',
   PUBLIC_BASE_URL: 'https://shop.example.com',
   DATABASE_URL: 'postgres://db.example.com/postgres',
 }
@@ -29,7 +28,6 @@ describe('loadConfig', () => {
       trustProxy: false,
       googleClientId: 'client-id',
       googleClientSecret: 'client-secret',
-      allowedEmails: ['me@example.com'],
       publicBaseUrl: 'https://shop.example.com',
       allowedClientRedirects: ['dev.willsawyerrrr.personalshopper://auth'],
       databaseUrl: 'postgres://db.example.com/postgres',
@@ -39,7 +37,8 @@ describe('loadConfig', () => {
         session: 'session.json',
         passkeyCredentials: 'passkey-credentials.json',
       },
-      ownerEmail: 'me@example.com',
+      ownerEmail: undefined,
+      limits: DEFAULT_LIMITS,
       credentialsEncryptionKey: undefined,
       sessionKeepAliveIntervalMs: 6 * 60 * 60 * 1000,
       remindersSync: undefined,
@@ -68,22 +67,6 @@ describe('loadConfig', () => {
     expect(config.sessionKeepAliveIntervalMs).toBe(0)
   })
 
-  it('makes the first allowed email the owner by default', () => {
-    expect(
-      loadConfig({ ...BASE, ALLOWED_EMAILS: 'First@Example.com,second@example.com' }).ownerEmail,
-    ).toBe('first@example.com')
-  })
-
-  it('reads the owner from REMINDERS_OWNER_EMAIL', () => {
-    expect(
-      loadConfig({
-        ...BASE,
-        ALLOWED_EMAILS: 'a@example.com,b@example.com',
-        REMINDERS_OWNER_EMAIL: ' B@Example.com ',
-      }).ownerEmail,
-    ).toBe('b@example.com')
-  })
-
   it('reads the credentials encryption key as base64 or hex', () => {
     const key = Buffer.alloc(32, 7)
     expect(
@@ -102,14 +85,46 @@ describe('loadConfig', () => {
     )
   })
 
-  it('lower-cases and trims the allowed emails', () => {
-    const config = loadConfig({ ...BASE, ALLOWED_EMAILS: ' Me@Example.com, you@example.com ,' })
-    expect(config.allowedEmails).toEqual(['me@example.com', 'you@example.com'])
+  it('lower-cases and trims the owner email, which is optional', () => {
+    expect(loadConfig({ ...BASE, REMINDERS_OWNER_EMAIL: ' Me@Example.com ' }).ownerEmail).toBe(
+      'me@example.com',
+    )
+    expect(loadConfig(BASE).ownerEmail).toBeUndefined()
   })
 
-  it('rejects an allowlist with no emails', () => {
-    expect(() => loadConfig({ ...BASE, ALLOWED_EMAILS: ' , ' })).toThrow(
-      'ALLOWED_EMAILS must list at least one email',
+  it('requires the owner email when the Reminders sync is enabled', () => {
+    const reminders = { ICLOUD_USERNAME: 'me@icloud.com', ICLOUD_APP_SPECIFIC_PASSWORD: 'x' }
+    expect(() => loadConfig({ ...BASE, ...reminders })).toThrow(
+      'REMINDERS_OWNER_EMAIL is required when the Reminders sync is enabled',
+    )
+    expect(
+      loadConfig({ ...BASE, ...reminders, REMINDERS_OWNER_EMAIL: 'me@example.com' }).remindersSync,
+    ).toBeDefined()
+  })
+
+  it('defaults the abuse limits and reads overrides', () => {
+    expect(loadConfig(BASE).limits).toEqual(DEFAULT_LIMITS)
+    expect(
+      loadConfig({
+        ...BASE,
+        MAX_USERS: '5',
+        MAX_ITEMS_PER_USER: '6',
+        MAX_TOKENS_PER_USER: '7',
+        USER_RATE_LIMIT_PER_MINUTE: '8',
+        IP_RATE_LIMIT_PER_MINUTE: '9',
+      }).limits,
+    ).toEqual({
+      maxUsers: 5,
+      maxItemsPerUser: 6,
+      maxTokensPerUser: 7,
+      userRequestsPerMinute: 8,
+      ipRequestsPerMinute: 9,
+    })
+  })
+
+  it.each(['0', '-1', 'many', '1.5'])('rejects MAX_USERS %s', (value) => {
+    expect(() => loadConfig({ ...BASE, MAX_USERS: value })).toThrow(
+      'MAX_USERS must be a positive integer',
     )
   })
 
@@ -151,6 +166,7 @@ describe('loadConfig', () => {
   it('enables reminders sync with defaults once both iCloud credentials are set', () => {
     const config = loadConfig({
       ...BASE,
+      REMINDERS_OWNER_EMAIL: 'me@example.com',
       ICLOUD_USERNAME: 'me@example.com',
       ICLOUD_APP_SPECIFIC_PASSWORD: 'abcd-abcd-abcd-abcd',
     })
@@ -165,6 +181,7 @@ describe('loadConfig', () => {
   it('reads reminders sync overrides from the environment', () => {
     const config = loadConfig({
       ...BASE,
+      REMINDERS_OWNER_EMAIL: 'me@example.com',
       ICLOUD_USERNAME: 'me@example.com',
       ICLOUD_APP_SPECIFIC_PASSWORD: 'abcd-abcd-abcd-abcd',
       REMINDERS_LIST_NAME: 'Woolworths Queue',

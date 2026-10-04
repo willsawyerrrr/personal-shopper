@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { stringify } from 'yaml'
-import type { AppConfig } from '../config.ts'
+import { DEFAULT_LIMITS, type AppConfig } from '../config.ts'
 import type { Sql } from '../db.ts'
 import { ItemStore, parseItemsYaml } from '../items.ts'
 import { CLIENT_ID, CLIENT_SECRET, type FakeGoogle, type IdTokenOverrides } from './google.ts'
@@ -28,7 +28,6 @@ export function testConfig(dir: string, overrides: Partial<AppConfig> = {}): App
     trustProxy: false,
     googleClientId: CLIENT_ID,
     googleClientSecret: CLIENT_SECRET,
-    allowedEmails: [OWNER],
     publicBaseUrl: 'https://shop.example.com',
     allowedClientRedirects: [IOS_REDIRECT, EXTENSION_REDIRECT],
     databaseUrl: 'postgres://unused',
@@ -39,6 +38,7 @@ export function testConfig(dir: string, overrides: Partial<AppConfig> = {}): App
       passkeyCredentials: `${dir}/passkey-credentials.json`,
     },
     ownerEmail: OWNER,
+    limits: DEFAULT_LIMITS,
     credentialsEncryptionKey: undefined,
     sessionKeepAliveIntervalMs: 0,
     remindersSync: undefined,

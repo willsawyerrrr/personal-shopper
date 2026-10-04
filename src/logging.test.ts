@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { Writable } from 'node:stream'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { buildApp } from './app.ts'
-import type { AppConfig } from './config.ts'
+import { DEFAULT_LIMITS, type AppConfig } from './config.ts'
 import { IOS_REDIRECT, pkcePair, signInClient, signInWeb, testConfig } from './testing/app.ts'
 import { createTestDb } from './testing/db.ts'
 import { CLIENT_SECRET, FakeGoogle } from './testing/google.ts'
@@ -129,21 +129,22 @@ describe('logging', () => {
       expect(rejections()[0]).toMatchObject({ reason: 'expired_token', authScheme: 'Bearer' })
     })
 
-    it('logs email_not_allowed for a token whose account left the allowlist', async () => {
-      const token = await signInClient(build(), google)
-      await get(build({ allowedEmails: ['someone-else@example.com'] }), {
-        authorization: `Bearer ${token}`,
-      })
-      expect(rejections()[0]).toMatchObject({ reason: 'email_not_allowed', authScheme: 'Bearer' })
-    })
-
-    it('logs email_not_allowed for a sign-in by another account', async () => {
-      await signInWeb(build(), google, { email: 'stranger@example.com' })
+    it('logs signup_closed for a new account beyond the user cap', async () => {
+      const app = build({ limits: { ...DEFAULT_LIMITS, maxUsers: 1 } })
+      await signInWeb(app, google)
+      await signInWeb(app, google, { email: 'stranger@example.com' })
       expect(rejections()[0]).toMatchObject({
-        reason: 'email_not_allowed',
+        reason: 'signup_closed',
         route: '/auth/google/callback',
       })
       expect(output).not.toContain('stranger@example.com')
+    })
+
+    it('logs user_limit when a user already holds the maximum of tokens', async () => {
+      const app = build({ limits: { ...DEFAULT_LIMITS, maxTokensPerUser: 1 } })
+      await signInClient(app, google)
+      await signInClient(app, google)
+      expect(rejections()[0]).toMatchObject({ reason: 'user_limit', route: '/auth/token' })
     })
 
     it('logs invalid_state for an unknown callback state', async () => {

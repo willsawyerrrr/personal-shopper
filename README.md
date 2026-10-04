@@ -28,7 +28,8 @@ The server runs on Fly.io (`fly.toml`, `Dockerfile`) with its data in Supabase
 Postgres; `GET /healthz` is the unauthenticated health check, and `/auth/*` is
 rate limited per client IP.
 
-Sign-in is Google only, restricted to `ALLOWED_EMAILS`: the admin UI at
+Sign-in is Google only and open to any account with a verified email, up to
+`MAX_USERS`: the admin UI at
 `/admin` uses a session cookie and API clients use server-issued bearer
 tokens.
 

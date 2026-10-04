@@ -1,7 +1,6 @@
 import { createPrivateKey } from 'node:crypto'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { authenticate, logAuthFailure } from './auth.ts'
-import type { AppConfig } from './config.ts'
 import type { TokenStore } from './tokens.ts'
 import type { CredentialStore, PasskeyCredential } from './users/credentials.ts'
 
@@ -73,7 +72,6 @@ export function selectCredential(
  */
 export async function registerPasskey(
   app: FastifyInstance,
-  config: AppConfig,
   tokens: TokenStore,
   { credentials, invalidate }: PasskeyOptions,
 ): Promise<void> {
@@ -82,7 +80,7 @@ export async function registerPasskey(
     const rateLimit = { max: PASSKEY_RATE_LIMIT_MAX, timeWindow: '1 minute' }
 
     routes.addHook('onRequest', async (request, reply) => {
-      const result = await authenticate(request, tokens, config.allowedEmails, false)
+      const result = await authenticate(request, tokens, false)
       if (!result.ok) {
         logAuthFailure(request, result.failure)
         return reply.code(401).send({ error: 'unauthorized' })

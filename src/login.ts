@@ -8,16 +8,17 @@ import {
   type AuthFailureReason,
 } from './auth.ts'
 import type { AppConfig } from './config.ts'
+import { admitUser, type Sql } from './db.ts'
 import { LoginError, type GoogleOAuth } from './google.ts'
 import {
   DEFAULT_TOKEN_TTL_MS,
   hashToken,
+  TokenLimitError,
   WEB_SESSION_TTL_MS,
   type TokenClient,
   type TokenStore,
 } from './tokens.ts'
 
-const AUTH_RATE_LIMIT_MAX = 30
 /** How long a user has to finish the Google consent screen. */
 const PENDING_LOGIN_TTL_MS = 10 * 60 * 1000
 /** How long a client has to redeem its one-time code. */
@@ -54,6 +55,7 @@ interface AuthCode {
 
 export interface LoginDeps {
   config: AppConfig
+  sql: Sql
   tokens: TokenStore
   google: GoogleOAuth
   now: () => number
@@ -80,10 +82,12 @@ function sweep<T extends { expiresAt: number }>(map: Map<string, T>, now: number
  * Google; clients then trade the server's one-time code for a bearer token.
  */
 export async function registerLogin(app: FastifyInstance, deps: LoginDeps): Promise<void> {
-  const { config, tokens, google, now } = deps
+  const { config, sql, tokens, google, now } = deps
   const pending = new Map<string, PendingLogin>()
   const codes = new Map<string, AuthCode>()
-  const rateLimit = { rateLimit: { max: AUTH_RATE_LIMIT_MAX, timeWindow: '1 minute' } }
+  const rateLimit = {
+    rateLimit: { max: config.limits.ipRequestsPerMinute, timeWindow: '1 minute' },
+  }
   const secureCookie = config.publicBaseUrl.startsWith('https:')
 
   function begin(destination: Destination, reply: FastifyReply): void {
@@ -108,6 +112,22 @@ export async function registerLogin(app: FastifyInstance, deps: LoginDeps): Prom
       return
     }
     reply.code(status).type('text/html').send(renderError(failure.reason))
+  }
+
+  /** Issues a token, or returns undefined when the user already holds the maximum. */
+  async function issueOrLimit(
+    email: string,
+    client: TokenClient,
+    ttlMs: number,
+  ): Promise<{ token: string; expiresAt: number } | undefined> {
+    try {
+      return await tokens.issue(email, client, ttlMs)
+    } catch (error) {
+      if (error instanceof TokenLimitError) {
+        return undefined
+      }
+      throw error
+    }
   }
 
   function invalidRequest(request: FastifyRequest, reply: FastifyReply): void {
@@ -194,17 +214,27 @@ export async function registerLogin(app: FastifyInstance, deps: LoginDeps): Prom
             destination,
           )
         }
-        if (!config.allowedEmails.includes(email)) {
+        if ((await admitUser(sql, email, config.limits.maxUsers)) === 'closed') {
           return reject(
             request,
             reply,
-            { reason: 'email_not_allowed', authScheme: 'none' },
+            { reason: 'signup_closed', authScheme: 'none' },
             403,
             destination,
           )
         }
         if (destination.kind === 'web') {
-          const { token } = await tokens.issue(email, 'web', WEB_SESSION_TTL_MS)
+          const issued = await issueOrLimit(email, 'web', WEB_SESSION_TTL_MS)
+          if (!issued) {
+            return reject(
+              request,
+              reply,
+              { reason: 'user_limit', authScheme: 'none' },
+              403,
+              destination,
+            )
+          }
+          const { token } = issued
           return reply
             .header('set-cookie', sessionCookie(token, WEB_SESSION_TTL_MS / 1000, secureCookie))
             .redirect('/admin')
@@ -246,15 +276,12 @@ export async function registerLogin(app: FastifyInstance, deps: LoginDeps): Prom
           logAuthFailure(request, { reason: 'invalid_grant', authScheme: 'none' })
           return reply.code(400).send({ error: 'invalid_grant' })
         }
-        if (!config.allowedEmails.includes(entry.email)) {
-          logAuthFailure(request, { reason: 'email_not_allowed', authScheme: 'none' })
-          return reply.code(403).send({ error: 'forbidden' })
+        const issued = await issueOrLimit(entry.email, entry.client, DEFAULT_TOKEN_TTL_MS)
+        if (!issued) {
+          logAuthFailure(request, { reason: 'user_limit', authScheme: 'none' })
+          return reply.code(403).send({ error: 'user_limit' })
         }
-        const { token, expiresAt } = await tokens.issue(
-          entry.email,
-          entry.client,
-          DEFAULT_TOKEN_TTL_MS,
-        )
+        const { token, expiresAt } = issued
         return reply
           .header('cache-control', 'no-store')
           .send({ access_token: token, expires_at: new Date(expiresAt).toISOString() })
@@ -262,7 +289,7 @@ export async function registerLogin(app: FastifyInstance, deps: LoginDeps): Prom
     )
 
     routes.post('/auth/logout', { config: rateLimit }, async (request, reply) => {
-      const result = await authenticate(request, tokens, config.allowedEmails, false)
+      const result = await authenticate(request, tokens, false)
       if (!result.ok) {
         logAuthFailure(request, result.failure)
         return reply.code(401).send({ error: 'unauthorized' })
@@ -287,7 +314,8 @@ function clientRedirect(
 
 const MESSAGES: Partial<Record<AuthFailureReason, string>> = {
   invalid_state: 'This sign-in link has expired or was already used.',
-  email_not_allowed: 'That Google account is not allowed to sign in.',
+  signup_closed: 'Sign-ups are closed. Only existing users can sign in.',
+  user_limit: 'Too many active sign-ins. Sign out of another device and try again.',
 }
 
 function renderError(reason: AuthFailureReason): string {

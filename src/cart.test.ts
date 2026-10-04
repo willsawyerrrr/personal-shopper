@@ -5,6 +5,7 @@ import { Writable } from 'node:stream'
 import type { FastifyInstance } from 'fastify'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildApp } from './app.ts'
+import { DEFAULT_LIMITS } from './config.ts'
 import { seedItems, signInClient, signInWeb, testConfig } from './testing/app.ts'
 import { createTestDb } from './testing/db.ts'
 import { FakeGoogle } from './testing/google.ts'
@@ -33,10 +34,7 @@ describe('POST /cart/items', () => {
     output = ''
     dir = await mkdtemp(join(tmpdir(), 'personal-shopper-cart-'))
     db = await createTestDb()
-    const config = testConfig(dir, {
-      logLevel: 'info',
-      allowedEmails: ['me@example.com', 'you@example.com'],
-    })
+    const config = testConfig(dir, { logLevel: 'info' })
     await seedItems(db.sql, 'milk:\n  stockcode: 123456\n  quantity: 2\n')
     google = await FakeGoogle.create()
     addToCart = vi.fn<CartClient['addToCart']>().mockResolvedValue(undefined)
@@ -167,5 +165,32 @@ describe('POST /cart/items', () => {
       await post({ item: 'milk' })
     }
     expect((await post({ item: 'milk' })).statusCode).toBe(429)
+  })
+
+  it('limits each user per minute, independently of the others and of their IP', async () => {
+    const strict = buildApp(
+      testConfig(dir, { limits: { ...DEFAULT_LIMITS, userRequestsPerMinute: 2 } }),
+      { sql: db.sql, fetch: google.fetch, cart: cartFor },
+    )
+    const mine = { authorization: `Bearer ${await signInClient(strict, google)}` }
+    const yours = {
+      authorization: `Bearer ${await signInClient(strict, google, { overrides: { email: 'you@example.com' } })}`,
+    }
+    const send = (headers: Record<string, string>, remoteAddress: string) =>
+      strict.inject({
+        method: 'POST',
+        url: '/cart/items',
+        payload: { item: 'milk' },
+        headers,
+        remoteAddress,
+      })
+    expect((await send(mine, '1.1.1.1')).statusCode).toBe(200)
+    expect((await send(mine, '2.2.2.2')).statusCode).toBe(200)
+    const limited = await send(mine, '3.3.3.3')
+    expect(limited.statusCode).toBe(429)
+    expect(limited.json()).toEqual({ error: 'rate_limited' })
+    expect(Number(limited.headers['retry-after'])).toBeGreaterThan(0)
+    expect((await send(yours, '1.1.1.1')).statusCode).toBe(404)
+    await strict.close()
   })
 })

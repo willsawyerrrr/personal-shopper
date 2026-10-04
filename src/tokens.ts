@@ -21,6 +21,13 @@ export interface SessionSummary extends Omit<TokenRecord, 'hash'> {
 export type TokenCheck =
   { ok: true; record: TokenRecord } | { ok: false; reason: 'invalid_token' | 'expired_token' }
 
+/** Thrown by `TokenStore.issue` when the user already holds the maximum of unexpired tokens. */
+export class TokenLimitError extends Error {
+  constructor() {
+    super('token limit reached')
+  }
+}
+
 export const DEFAULT_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000
 export const WEB_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
@@ -62,9 +69,13 @@ export class TokenStore {
   constructor(
     private readonly sql: Sql,
     private readonly now: () => number = Date.now,
+    private readonly maxActive: number = Number.POSITIVE_INFINITY,
   ) {}
 
-  /** Mints a token for `email`; `ttlMs` is also the sliding window. */
+  /**
+   * Mints a token for `email`; `ttlMs` is also the sliding window. Throws
+   * `TokenLimitError` when the user already holds the maximum of unexpired tokens.
+   */
   async issue(
     email: string,
     client: TokenClient,
@@ -74,10 +85,20 @@ export class TokenStore {
     const now = this.now()
     const userId = await ensureUser(this.sql, email)
     const expiresAt = now + ttlMs
-    await this.sql`delete from tokens where expires_at + ${EXPIRED_RETENTION_MS} < ${now}`
-    await this.sql`
-      insert into tokens (hash, user_id, client, created_at, last_used_at, expires_at)
-      values (${hashToken(token)}, ${userId}, ${client}, ${now}, ${now}, ${expiresAt})`
+    await this.sql.begin(async (tx) => {
+      // Serialises this user's issuing, so concurrent sign-ins cannot exceed the cap.
+      await tx`select 1 from users where id = ${userId} for update`
+      await tx`delete from tokens where expires_at + ${EXPIRED_RETENTION_MS} < ${now}`
+      const [active] = await tx<{ count: string }[]>`
+        select count(*)::text as count from tokens
+        where user_id = ${userId} and expires_at > ${now}`
+      if (Number(active?.count) >= this.maxActive) {
+        throw new TokenLimitError()
+      }
+      await tx`
+        insert into tokens (hash, user_id, client, created_at, last_used_at, expires_at)
+        values (${hashToken(token)}, ${userId}, ${client}, ${now}, ${now}, ${expiresAt})`
+    })
     return { token, expiresAt }
   }
 

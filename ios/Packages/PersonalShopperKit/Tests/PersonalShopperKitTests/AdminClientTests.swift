@@ -236,8 +236,8 @@ struct SignInTests {
     @Test func rejectsWrongStateAndServerErrors() throws {
         let wrong = try #require(URL(string: "dev.willsawyerrrr.personalshopper://auth?code=abc&state=evil"))
         #expect(throws: AdminError.self) { try attempt().code(from: wrong) }
-        let denied = try #require(URL(string: "dev.willsawyerrrr.personalshopper://auth?error=email_not_allowed&state=st4te"))
-        #expect(throws: AdminError.signInFailed("That Google account isn't allowed.")) { try attempt().code(from: denied) }
+        let denied = try #require(URL(string: "dev.willsawyerrrr.personalshopper://auth?error=signup_closed&state=st4te"))
+        #expect(throws: AdminError.signInFailed("Sign-ups are closed.")) { try attempt().code(from: denied) }
     }
 }
 

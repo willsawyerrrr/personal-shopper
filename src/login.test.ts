@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { buildApp } from './app.ts'
-import type { AppConfig } from './config.ts'
+import { DEFAULT_LIMITS, type AppConfig } from './config.ts'
 import {
   EXTENSION_REDIRECT,
   IOS_REDIRECT,
@@ -106,9 +106,11 @@ describe('Google sign-in', () => {
       expect(String(response.headers['set-cookie'])).not.toContain('Secure')
     })
 
-    it('rejects an account outside the allowlist, case-insensitively for allowed ones', async () => {
-      const app = build()
+    it('signs up any account until the user cap, case-insensitively for existing ones', async () => {
+      const app = build({ limits: { ...DEFAULT_LIMITS, maxUsers: 2 } })
       expect(await signInWeb(app, google, { email: 'ME@Example.com' })).toContain('ps_')
+      expect(await signInWeb(app, google, { email: 'me@example.com' })).toContain('ps_')
+      expect(await signInWeb(app, google, { email: 'new@example.com' })).toContain('ps_')
       const login = await app.inject({ method: 'GET', url: '/auth/google/login' })
       const { code, state } = google.approve(String(login.headers.location), {
         email: 'stranger@example.com',
@@ -116,7 +118,27 @@ describe('Google sign-in', () => {
       const response = await callback(app, { code, state })
       expect(response.statusCode).toBe(403)
       expect(response.headers['set-cookie']).toBeUndefined()
-      expect(response.body).toContain('not allowed')
+      expect(response.body).toContain('Sign-ups are closed')
+      expect(await db.sql`select 1 from users`).toHaveLength(2)
+    })
+
+    it('creates a user on first sign-in and none for a repeat sign-in', async () => {
+      const app = build()
+      await signInWeb(app, google, { email: 'new@example.com' })
+      await signInWeb(app, google, { email: 'new@example.com' })
+      const users = await db.sql`select email from users`
+      expect(users.map((user) => user.email)).toEqual(['new@example.com'])
+    })
+
+    it('refuses a sign-in while the user holds the maximum of tokens', async () => {
+      const app = build({ limits: { ...DEFAULT_LIMITS, maxTokensPerUser: 1 } })
+      expect(await signInWeb(app, google)).toContain('ps_')
+      const login = await app.inject({ method: 'GET', url: '/auth/google/login' })
+      const { code, state } = google.approve(String(login.headers.location))
+      const response = await callback(app, { code, state })
+      expect(response.statusCode).toBe(403)
+      expect(response.body).toContain('Too many active sign-ins')
+      expect(response.headers['set-cookie']).toBeUndefined()
     })
 
     it('rejects an unverified email', async () => {
@@ -256,8 +278,9 @@ describe('Google sign-in', () => {
       expect(response.headers['set-cookie']).toBeUndefined()
     })
 
-    it('returns the error and state to the redirect URI when sign-in is not allowed', async () => {
-      const app = build()
+    it('returns the error and state to the redirect URI when sign-ups are closed', async () => {
+      const app = build({ limits: { ...DEFAULT_LIMITS, maxUsers: 1 } })
+      await signInClient(app, google)
       const start = await app.inject({ method: 'GET', url: startUrl({ state: 'xyz' }) })
       const { code, state } = google.approve(String(start.headers.location), {
         email: 'stranger@example.com',
@@ -265,7 +288,7 @@ describe('Google sign-in', () => {
       const response = await callback(app, { code, state })
       expect(response.statusCode).toBe(302)
       const params = redirectParams(response.headers.location)
-      expect(params.get('error')).toBe('email_not_allowed')
+      expect(params.get('error')).toBe('signup_closed')
       expect(params.get('state')).toBe('xyz')
       expect(params.get('code')).toBeNull()
     })
@@ -352,6 +375,26 @@ describe('Google sign-in', () => {
         expect((await redeem({ code, code_verifier: verifier })).statusCode).toBe(400)
       })
 
+      it('refuses to issue a token beyond the per-user cap', async () => {
+        const app = build({ limits: { ...DEFAULT_LIMITS, maxTokensPerUser: 1 } })
+        await signInClient(app, google)
+        const { verifier, challenge } = pkcePair()
+        const start = await app.inject({
+          method: 'GET',
+          url: startUrl({ code_challenge: challenge }),
+        })
+        const approved = google.approve(String(start.headers.location))
+        const response = await callback(app, approved)
+        const authCode = redirectParams(response.headers.location).get('code')
+        const token = await app.inject({
+          method: 'POST',
+          url: '/auth/token',
+          payload: { code: authCode, code_verifier: verifier },
+        })
+        expect(token.statusCode).toBe(403)
+        expect(token.json()).toEqual({ error: 'user_limit' })
+      })
+
       it.each([[{}], [{ code: 1, code_verifier: 2 }], [{ code: 'x' }], [null]])(
         'rejects a malformed body %j',
         async (payload) => {
@@ -360,22 +403,6 @@ describe('Google sign-in', () => {
           expect(response.json()).toEqual({ error: 'invalid_request' })
         },
       )
-
-      it('refuses a code whose account has since left the allowlist', async () => {
-        const stricter = buildApp(
-          { ...config, allowedEmails: ['someone-else@example.com'] },
-          { sql: db.sql, fetch: google.fetch, now: () => clock },
-        )
-        expect(
-          (
-            await stricter.inject({
-              method: 'POST',
-              url: '/auth/token',
-              payload: { code, code_verifier: verifier },
-            })
-          ).statusCode,
-        ).toBe(400)
-      })
     })
   })
 
@@ -412,16 +439,6 @@ describe('Google sign-in', () => {
       expect((await get()).statusCode).toBe(200)
       clock += 91 * DAY
       expect((await get()).statusCode).toBe(401)
-    })
-
-    it('rejects the token once its account leaves the allowlist', async () => {
-      const token = await signInClient(build(), google)
-      const response = await build({ allowedEmails: ['someone-else@example.com'] }).inject({
-        method: 'GET',
-        url: '/admin/items',
-        headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
-      })
-      expect(response.statusCode).toBe(401)
     })
 
     it('keeps tokens across a restart', async () => {

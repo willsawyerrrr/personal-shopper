@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { ensureUser } from './db.ts'
+import { admitUser, ensureUser } from './db.ts'
 import { createTestDb } from './testing/db.ts'
 
 describe('migrations', () => {
@@ -49,5 +49,33 @@ describe('ensureUser', () => {
 
   it('refuses an email that is not lower-case when written directly', async () => {
     await expect(db.sql`insert into users (email) values ('Me@Example.com')`).rejects.toThrow()
+  })
+})
+
+describe('admitUser', () => {
+  let db: Awaited<ReturnType<typeof createTestDb>>
+
+  beforeEach(async () => {
+    db = await createTestDb()
+  })
+
+  afterEach(async () => {
+    await db.close()
+  })
+
+  it('creates users up to the cap and admits existing ones beyond it', async () => {
+    expect(await admitUser(db.sql, 'a@example.com', 2)).toBe('admitted')
+    expect(await admitUser(db.sql, 'b@example.com', 2)).toBe('admitted')
+    expect(await admitUser(db.sql, 'c@example.com', 2)).toBe('closed')
+    expect(await admitUser(db.sql, 'A@Example.com', 2)).toBe('admitted')
+    expect(await db.sql`select 1 from users`).toHaveLength(2)
+  })
+
+  it('never exceeds the cap under concurrent sign-ups', async () => {
+    const results = await Promise.all(
+      Array.from({ length: 10 }, (_, i) => admitUser(db.sql, `user${i}@example.com`, 3)),
+    )
+    expect(results.filter((result) => result === 'admitted')).toHaveLength(3)
+    expect(await db.sql`select 1 from users`).toHaveLength(3)
   })
 })

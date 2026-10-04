@@ -6,6 +6,8 @@ primary_region = "syd"
 [env]
   PORT = "3000"
   TRUST_PROXY = "true"
+  # Abuse limits for open sign-up; see docs/auth.md#limits.
+  MAX_USERS = "50"
   # Files on the volume from before the database; imported on start, then renamed.
   ITEMS_PATH = "/data/items.yml"
   SESSION_PATH = "/data/session.json"
