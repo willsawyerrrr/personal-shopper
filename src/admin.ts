@@ -278,32 +278,34 @@ function renderPage(
     .sort(([a], [b]) => a.localeCompare(b))
     .map(
       ([word, mapping]) => `
-        <tr>
+        <tr class="item">
           <td>
             <strong>${escapeHtml(word)}</strong>
             ${mapping.listing ? `<div class="listing">${escapeHtml(mapping.listing)}</div>` : ''}
           </td>
           <td>${mapping.stockcode}</td>
           <td>${mapping.quantity}</td>
-          <td>
+        </tr>
+        <tr class="item-edit">
+          <td colspan="3">
             <details class="edit">
               <summary>Edit</summary>
-              <form method="post" action="/admin/items/${encodeURIComponent(word)}/edit">
-                <label>Trigger word
+              <form class="edit-panel" method="post" action="/admin/items/${encodeURIComponent(word)}/edit">
+                <label class="grow">Trigger word
                   <input name="word" required value="${escapeHtml(word)}">
                 </label>
-                <label>Woolworths product URL or stockcode
+                <label class="grow">Woolworths product URL or stockcode
                   <input name="url" required value="${mapping.stockcode}">
                 </label>
-                <label>Quantity
+                <label class="qty">Quantity
                   <input name="quantity" type="number" min="1" value="${mapping.quantity}">
                 </label>
-                <button type="submit">Save</button>
+                <div class="actions">
+                  <button type="submit">Save</button>
+                  <button type="submit" class="danger" formaction="/admin/items/${encodeURIComponent(word)}/delete" formnovalidate>Remove</button>
+                </div>
               </form>
             </details>
-            <form method="post" action="/admin/items/${encodeURIComponent(word)}/delete">
-              <button type="submit">Remove</button>
-            </form>
           </td>
         </tr>`,
     )
@@ -343,8 +345,8 @@ function renderPage(
   ${error ? `<p class="error">${escapeHtml(error)}</p>` : ''}
   <div class="card">
     <table>
-      <thead><tr><th>Phrase</th><th>Stockcode</th><th>Qty</th><th></th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="4">No items configured yet.</td></tr>'}</tbody>
+      <thead><tr><th>Phrase</th><th>Stockcode</th><th>Qty</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="3">No items configured yet.</td></tr>'}</tbody>
     </table>
   </div>
   <div class="card">
