@@ -5,7 +5,10 @@ import { UserRateLimiter } from './rate-limit.ts'
 import { authenticate, logAuthFailure, requestPath, sessionCookie } from './auth.ts'
 import type { AppConfig } from './config.ts'
 import { applyEdit, parseStockcode } from './item-edit.ts'
+import { applyGroupEdit, groupKey, removeGroup } from './products.ts'
 import { renderHousehold, type HouseholdView } from './admin-household.ts'
+import { renderItemRows } from './admin-items.ts'
+import { escapeHtml } from './html.ts'
 import { InviteLimitError, type HouseholdStore } from './households.ts'
 import { normalizeWord, type ItemMapping, type ItemsConfig, type ItemStore } from './items.ts'
 import { createListingBackfill, lookupListing } from './listings.ts'
@@ -213,9 +216,7 @@ export async function registerAdmin(
       const items = await store.load(emailOf(request))
       void backfillOf(request)
       return {
-        items: Object.entries(items)
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([word, mapping]) => ({ word, ...mapping })),
+        items: Object.entries(items).map(([word, mapping]) => ({ word, ...mapping })),
       }
     })
 
@@ -273,19 +274,7 @@ export async function registerAdmin(
       const items = await store.load(emailOf(request))
       const result = applyEdit(items, normalizeWord(request.params.word), request.body ?? {})
       if (!result.ok) {
-        if (wantsJson(request)) {
-          return reply.code(result.status).send({ error: result.error })
-        }
-        const sessions = await sessionsOf(request)
-        return reply
-          .code(result.status)
-          .type('text/html')
-          .send(
-            renderPage(items, sessions, current.get(request)?.id, result.error, undefined, {
-              word: normalizeWord(request.params.word),
-              values: request.body ?? {},
-            }),
-          )
+        return reply.code(result.status).send({ error: result.error })
       }
       const edited = result.items[result.word]
       if (edited && edited.stockcode !== items[normalizeWord(request.params.word)]?.stockcode) {
@@ -299,21 +288,87 @@ export async function registerAdmin(
         }
       }
       await store.save(emailOf(request), result.items)
-      if (wantsJson(request)) {
-        return reply.send({ word: result.word, ...result.items[result.word] })
-      }
-      return reply.redirect('/')
+      return reply.send({ word: result.word, ...result.items[result.word] })
     }
     admin.patch<{ Params: { word: string }; Body: Record<string, unknown> | null }>(
       '/items/:word',
       editItem,
     )
-    admin.post<{ Params: { word: string }; Body: Record<string, unknown> | null }>(
-      '/items/:word/edit',
-      editItem,
-    )
     admin.post<{ Params: { word: string } }>('/items/:word/delete', removeItem)
     admin.delete<{ Params: { word: string } }>('/items/:word', removeItem)
+
+    // A product is the group of items sharing a stockcode and quantity.
+    type ProductRoute = { Params: { stockcode: string; quantity: string } }
+    const productOf = (request: FastifyRequest<ProductRoute>): [number, number] => [
+      Number(request.params.stockcode),
+      Number(request.params.quantity),
+    ]
+    const editProduct = async (
+      request: FastifyRequest<ProductRoute & { Body: Record<string, unknown> | null }>,
+      reply: FastifyReply,
+    ) => {
+      const [stockcode, quantity] = productOf(request)
+      const email = emailOf(request)
+      const items = await store.load(email)
+      const fields = request.body ?? {}
+      const result = applyGroupEdit(items, stockcode, quantity, fields)
+      if (!result.ok) {
+        if (wantsJson(request)) {
+          return reply.code(result.status).send({ error: result.error })
+        }
+        const sessions = await sessionsOf(request)
+        return reply
+          .code(result.status)
+          .type('text/html')
+          .send(
+            renderPage(items, sessions, current.get(request)?.id, result.error, undefined, {
+              key: groupKey({ stockcode, quantity }),
+              values: fields,
+            }),
+          )
+      }
+      if (result.stockcodeChanged) {
+        const listing = await lookupListing(lookupFor?.(email), result.group.stockcode, request.log)
+        if (listing) {
+          for (const word of result.group.words) {
+            ;(result.items[word] as ItemMapping).listing = listing
+          }
+          result.group.listing = listing
+        }
+      }
+      await store.save(email, result.items)
+      if (wantsJson(request)) {
+        return reply.send(result.group)
+      }
+      return reply.redirect('/')
+    }
+    const removeProduct = async (request: FastifyRequest<ProductRoute>, reply: FastifyReply) => {
+      const [stockcode, quantity] = productOf(request)
+      const remaining = removeGroup(await store.load(emailOf(request)), stockcode, quantity)
+      if (remaining) {
+        await store.save(emailOf(request), remaining)
+      }
+      if (wantsJson(request)) {
+        return remaining ? reply.code(204).send() : reply.code(404).send({ error: 'No such item.' })
+      }
+      return reply.redirect('/')
+    }
+    const productParams = {
+      schema: {
+        params: {
+          type: 'object',
+          properties: {
+            stockcode: { type: 'string', pattern: '^[1-9][0-9]{0,15}$' },
+            quantity: { type: 'string', pattern: '^[1-9][0-9]{0,15}$' },
+          },
+        },
+      },
+    }
+    type ProductEdit = ProductRoute & { Body: Record<string, unknown> | null }
+    admin.patch<ProductEdit>('/products/:stockcode/:quantity', productParams, editProduct)
+    admin.post<ProductEdit>('/products/:stockcode/:quantity/edit', productParams, editProduct)
+    admin.post<ProductRoute>('/products/:stockcode/:quantity/delete', productParams, removeProduct)
+    admin.delete<ProductRoute>('/products/:stockcode/:quantity', productParams, removeProduct)
   })
 }
 
@@ -361,50 +416,10 @@ function renderPage(
   currentId: string | undefined,
   error?: string,
   passkey?: boolean,
-  edit?: { word: string; values: Record<string, unknown> },
+  edit?: { key: string; values: Record<string, unknown> },
   household?: HouseholdView,
 ): string {
-  const rows = Object.entries(items)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([word, mapping], index) => {
-      const path = `/items/${encodeURIComponent(word)}`
-      const editing = edit?.word === word
-      const field = (name: string, fallback: string | number): string => {
-        const value = editing ? edit.values[name] : undefined
-        return escapeHtml(typeof value === 'string' ? value : String(fallback))
-      }
-      const id = `edit-${index}`
-      return `
-        <form class="item" method="post" action="${path}/edit">
-          <input type="checkbox" class="edit-toggle" id="${id}" aria-label="Edit ${escapeHtml(word)}"${editing ? ' checked' : ''}>
-          <div class="cell phrase">
-            <strong class="view">${escapeHtml(word)}</strong>
-            <label class="edit"><span class="field-name">Trigger word</span>
-              <input aria-label="Trigger word" name="word" required value="${field('word', word)}">
-            </label>
-            ${mapping.listing ? `<div class="listing">${escapeHtml(mapping.listing)}</div>` : ''}
-          </div>
-          <div class="cell product">
-            <span class="view"><span class="view-name">Stockcode</span>${mapping.stockcode}</span>
-            <label class="edit"><span class="field-name">Woolworths product URL or stockcode</span>
-              <input aria-label="Woolworths product URL or stockcode" name="url" required value="${field('url', mapping.stockcode)}">
-            </label>
-          </div>
-          <div class="cell qty">
-            <span class="view"><span class="view-name">Quantity</span>${mapping.quantity}</span>
-            <label class="edit"><span class="field-name">Quantity</span>
-              <input aria-label="Quantity" name="quantity" type="number" min="1" value="${field('quantity', mapping.quantity)}">
-            </label>
-          </div>
-          <div class="cell actions">
-            <label class="view button-label" for="${id}">Edit</label>
-            <button type="submit" class="edit">Save</button>
-            ${editing ? '<a class="edit button-link" href="/">Cancel</a>' : '<button type="reset" class="edit secondary">Cancel</button>'}
-            <button type="submit" class="edit danger" formaction="${path}/delete" formnovalidate>Remove</button>
-          </div>
-        </form>`
-    })
-    .join('')
+  const rows = renderItemRows(items, edit)
 
   const sessionRows = sessions
     .map(
@@ -441,7 +456,7 @@ function renderPage(
   ${error ? `<p class="error">${escapeHtml(error)}</p>` : ''}
   <div class="card">
     <div class="items">
-      <div class="item-head" aria-hidden="true"><span>Phrase</span><span>Product</span><span>Qty</span><span></span></div>
+      <div class="item-head" aria-hidden="true"><span>Product</span><span>Stockcode</span><span>Qty</span><span></span></div>
       ${rows || '<p class="hint">No items configured yet.</p>'}
     </div>
   </div>
@@ -483,12 +498,4 @@ function renderPage(
 
 function formatTime(ms: number): string {
   return `${new Date(ms).toISOString().slice(0, 16).replace('T', ' ')} UTC`
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
 }

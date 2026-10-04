@@ -16,13 +16,4 @@ public struct Item: Codable, Sendable, Equatable, Identifiable {
         self.quantity = quantity
         self.listing = listing
     }
-
-    /// The most prominent row text: the phrase that triggers the item.
-    public var title: String { word }
-
-    /// The row's subtext: the Woolworths listing text, when known.
-    public var subtitle: String? { listing }
-
-    /// The row's footnote: stockcode and quantity.
-    public var detail: String { "\(stockcode) · qty \(quantity)" }
 }

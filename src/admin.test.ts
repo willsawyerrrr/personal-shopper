@@ -222,63 +222,210 @@ describe('admin', () => {
     expect(items).not.toContain('bread:')
   })
 
-  it('offers an edit form per item, prefilled', async () => {
+  it('offers an edit form per product, prefilled', async () => {
     const response = await app.inject({ method: 'GET', url: '/', headers: authHeader })
-    expect(response.body).toContain('action="/items/milk/edit"')
-    expect(response.body).toContain('aria-label="Trigger word" name="word" required value="milk"')
+    expect(response.body).toContain('action="/products/123456/1/edit"')
+    expect(response.body).toContain(
+      'aria-label="Trigger words, separated by commas" name="words" required value="Milk"',
+    )
     expect(response.body).not.toContain('<details')
     expect(response.body).toContain('name="url" required value="123456"')
     expect(response.body).toContain('name="quantity" type="number" min="1" value="1"')
   })
 
-  it('renders items read-only until Edit is pressed', async () => {
+  it('renders products read-only until Edit is pressed', async () => {
     const response = await app.inject({ method: 'GET', url: '/', headers: authHeader })
-    expect(response.body).toContain('<strong class="view">milk</strong>')
+    expect(response.body).toContain('<strong class="view">Milk</strong>')
     expect(response.body).toContain('<label class="view button-label" for="edit-0">Edit</label>')
-    expect(response.body).toMatch(/class="edit-toggle" id="edit-0" aria-label="Edit milk">/)
+    expect(response.body).toMatch(/class="edit-toggle" id="edit-0" aria-label="Edit Milk">/)
     expect(response.body).toContain('<button type="reset" class="edit secondary">Cancel</button>')
   })
 
-  it('edits an item from the web form and redirects', async () => {
-    const response = await app.inject({
-      method: 'POST',
-      url: '/items/milk/edit',
-      headers: { ...authHeader, 'content-type': 'application/x-www-form-urlencoded' },
-      payload: 'word=Oat+Milk&url=654321&quantity=3',
+  describe('grouped by product', () => {
+    beforeEach(async () => {
+      await seedItems(
+        db.sql,
+        [
+          'full cream milk:\n  stockcode: 1\n  quantity: 1\n  listing: Full Cream Milk 2L\n',
+          'bread:\n  stockcode: 2\n  quantity: 1\n',
+          'milk:\n  stockcode: 1\n  quantity: 1\n',
+          "ben & jerry's:\n  stockcode: 3\n  quantity: 2\n",
+          'coca-cola:\n  stockcode: 3\n  quantity: 2\n',
+          '7up:\n  stockcode: 3\n  quantity: 2\n',
+          'lemonade:\n  stockcode: 3\n  quantity: 1\n',
+        ].join(''),
+      )
     })
-    expect(response.statusCode).toBe(302)
-    expect(response.headers.location).toBe('/')
-    expect(await itemsYaml(db.sql)).toBe('oat milk:\n  stockcode: 654321\n  quantity: 3\n')
-  })
 
-  it('re-renders the page with the error when a web edit collides', async () => {
-    await seedItems(
-      db.sql,
-      'milk:\n  stockcode: 1\n  quantity: 1\nbread:\n  stockcode: 2\n  quantity: 1\n',
-    )
-    const response = await app.inject({
-      method: 'POST',
-      url: '/items/milk/edit',
-      headers: { ...authHeader, 'content-type': 'application/x-www-form-urlencoded' },
-      payload: 'word=bread&url=1&quantity=1',
-    })
-    expect(response.statusCode).toBe(409)
-    expect(response.body).toContain('already used by another item')
-    expect(response.body).toMatch(/class="edit-toggle" id="edit-1" aria-label="Edit milk" checked>/)
-    expect(response.body).toContain('name="word" required value="bread"')
-    expect(response.body).toContain('<a class="edit button-link" href="/">Cancel</a>')
-    expect(await itemsYaml(db.sql)).toContain('milk:')
-  })
+    const form = { 'content-type': 'application/x-www-form-urlencoded' }
 
-  it('answers unauthenticated web edits with 401', async () => {
-    const response = await app.inject({
-      method: 'POST',
-      url: '/items/milk/edit',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      payload: 'word=oat&url=1',
+    it('lists one row per product with its words display-cased, in stored order', async () => {
+      const { body } = await app.inject({ method: 'GET', url: '/', headers: authHeader })
+      expect(body.match(/<form class="item"/g)).toHaveLength(4)
+      expect(body).toContain('<strong class="view">Full Cream Milk 2L</strong>')
+      expect(body).toContain('<div class="view words">Full Cream Milk, Milk</div>')
+      expect(body).toContain('<strong class="view">Bread</strong>')
+      expect(body).toContain('<div class="view words">Ben &amp; Jerry\'s, Coca-Cola, 7up</div>')
+      expect(body.indexOf('Full Cream Milk 2L')).toBeLessThan(body.indexOf('>Bread<'))
+      expect(body.indexOf('>Bread<')).toBeLessThan(body.indexOf('Ben &amp; Jerry'))
     })
-    expect(response.statusCode).toBe(401)
-    expect(await itemsYaml(db.sql)).toContain('milk:')
+
+    it('titles a product without a listing by its first word', async () => {
+      const { body } = await app.inject({ method: 'GET', url: '/', headers: authHeader })
+      expect(body).toContain('<strong class="view">Ben &amp; Jerry\'s</strong>')
+    })
+
+    it('edits the whole word set from the web form', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/products/1/1/edit',
+        headers: { ...authHeader, ...form },
+        payload: 'words=Milk%2C+Skim+Milk&url=1&quantity=3',
+      })
+      expect(response.statusCode).toBe(302)
+      expect(response.headers.location).toBe('/')
+      expect(parse(await itemsYaml(db.sql))).toEqual({
+        milk: { stockcode: 1, quantity: 3, listing: 'Full Cream Milk 2L' },
+        'skim milk': { stockcode: 1, quantity: 3, listing: 'Full Cream Milk 2L' },
+        bread: { stockcode: 2, quantity: 1 },
+        "ben & jerry's": { stockcode: 3, quantity: 2 },
+        'coca-cola': { stockcode: 3, quantity: 2 },
+        '7up': { stockcode: 3, quantity: 2 },
+        lemonade: { stockcode: 3, quantity: 1 },
+      })
+    })
+
+    it("re-renders with the error when a web edit takes another product's word", async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/products/1/1/edit',
+        headers: { ...authHeader, ...form },
+        payload: 'words=milk%2C+bread&url=1&quantity=1',
+      })
+      expect(response.statusCode).toBe(409)
+      expect(response.body).toContain('&quot;bread&quot; is already used by another item')
+      expect(response.body).toMatch(/aria-label="Edit Full Cream Milk 2L" checked>/)
+      expect(response.body).toContain('name="words" required value="milk, bread"')
+      expect(response.body).toContain('<a class="edit button-link" href="/">Cancel</a>')
+      expect(await itemsYaml(db.sql)).toContain('full cream milk:')
+    })
+
+    it('answers unauthenticated web edits with 401', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/products/1/1/edit',
+        headers: form,
+        payload: 'words=oat&url=1',
+      })
+      expect(response.statusCode).toBe(401)
+      expect(await itemsYaml(db.sql)).toContain('milk:')
+    })
+
+    it('removes every word of a product', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/products/3/2/delete',
+        headers: authHeader,
+      })
+      expect(response.statusCode).toBe(302)
+      expect(Object.keys(parse(await itemsYaml(db.sql)))).toEqual([
+        'full cream milk',
+        'bread',
+        'milk',
+        'lemonade',
+      ])
+    })
+
+    describe('JSON API', () => {
+      let json: { authorization: string; accept: string }
+
+      beforeEach(async () => {
+        json = {
+          authorization: `Bearer ${await signInClient(app, google)}`,
+          accept: 'application/json',
+        }
+      })
+
+      it('lists items in stored order', async () => {
+        const response = await app.inject({ method: 'GET', url: '/items', headers: json })
+        expect(response.json().items.map((item: { word: string }) => item.word)).toEqual([
+          'full cream milk',
+          'bread',
+          'milk',
+          "ben & jerry's",
+          'coca-cola',
+          '7up',
+          'lemonade',
+        ])
+      })
+
+      it("replaces a product's words, quantity and stockcode", async () => {
+        const response = await app.inject({
+          method: 'PATCH',
+          url: '/products/3/2',
+          headers: json,
+          payload: { words: ['coca-cola', 'Fanta'], quantity: 4, stockcode: 9 },
+        })
+        expect(response.statusCode).toBe(200)
+        expect(response.json()).toEqual({
+          words: ['coca-cola', 'fanta'],
+          stockcode: 9,
+          quantity: 4,
+        })
+        expect(Object.keys(parse(await itemsYaml(db.sql)))).toEqual([
+          'full cream milk',
+          'bread',
+          'milk',
+          'coca-cola',
+          'fanta',
+          'lemonade',
+        ])
+      })
+
+      it('joins another product when its stockcode and quantity match', async () => {
+        const response = await app.inject({
+          method: 'PATCH',
+          url: '/products/3/1',
+          headers: json,
+          payload: { stockcode: 2 },
+        })
+        expect(response.json().words).toEqual(['bread', 'lemonade'])
+      })
+
+      it.each([
+        [{ words: [] }, 400],
+        [{ words: ' , ' }, 400],
+        [{ words: [5] }, 400],
+        [{ words: ['bread'] }, 409],
+        [{ quantity: 0 }, 400],
+        [{ url: 'nope' }, 400],
+      ])('rejects %j with %i and writes nothing', async (payload, status) => {
+        const before = await itemsYaml(db.sql)
+        const response = await app.inject({
+          method: 'PATCH',
+          url: '/products/1/1',
+          headers: json,
+          payload,
+        })
+        expect(response.statusCode).toBe(status)
+        expect(response.json().error).toEqual(expect.any(String))
+        expect(await itemsYaml(db.sql)).toBe(before)
+      })
+
+      it('answers an unknown or malformed product with 404 or 400', async () => {
+        const patch = (url: string) =>
+          app.inject({ method: 'PATCH', url, headers: json, payload: { quantity: 2 } })
+        expect((await patch('/products/99/1')).statusCode).toBe(404)
+        expect((await patch('/products/abc/1')).statusCode).toBe(400)
+      })
+
+      it('removes a product with DELETE and 204, then 404', async () => {
+        const remove = () => app.inject({ method: 'DELETE', url: '/products/3/2', headers: json })
+        expect((await remove()).statusCode).toBe(204)
+        expect(await itemsYaml(db.sql)).not.toContain('coca-cola')
+        expect((await remove()).statusCode).toBe(404)
+      })
+    })
   })
 
   it('removes an item', async () => {
@@ -565,10 +712,10 @@ describe('admin listing text', () => {
     ])
   })
 
-  it('shows the listing under the phrase on the admin page', async () => {
+  it('titles the product with its listing on the admin page', async () => {
     await vi.waitFor(async () => expect((await readItems()).milk?.listing).toBe('Milk 2L'))
     const response = await app.inject({ method: 'GET', url: '/', headers: json })
-    expect(response.body).toContain('<div class="listing">Milk 2L</div>')
+    expect(response.body).toContain('<strong class="view">Milk 2L</strong>')
   })
 })
 
@@ -638,8 +785,8 @@ describe('admin with several users', () => {
     await add(you, 'oatmilk', '2')
     const cookie = await signInWeb(app, google, { email: 'you@example.com' })
     const page = (await app.inject({ method: 'GET', url: '/', headers: { cookie } })).body
-    expect(page).toContain('oatmilk')
-    expect(page).not.toContain('<strong>milk</strong>')
+    expect(page).toContain('Oatmilk')
+    expect(page).not.toContain('<strong class="view">Milk</strong>')
     expect(page).toContain('you@example.com')
     expect(page).not.toContain('me@example.com')
   })

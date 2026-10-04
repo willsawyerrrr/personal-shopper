@@ -114,6 +114,8 @@ Woolworths cart.
 | `POST /items` with `{word, url, quantity?}`                   | `201` with the stored item; `400 {error}` if invalid                          |
 | `PATCH /items/:word` with any of the fields below             | `200` with the stored item; `400`, `404`, `409` below                         |
 | `DELETE /items/:word` (or `POST /items/:word/delete`)         | `204`                                                                         |
+| `PATCH /products/:stockcode/:quantity` with fields below      | `200 {words, stockcode, quantity, listing?}`; `400`, `404`, `409` below       |
+| `DELETE /products/:stockcode/:quantity` (or `POST …/delete`)  | `204`; `404` for an unknown product                                           |
 | `GET /` (HTML), `POST /sessions/:id/revoke` (`204` with JSON) | Browser UI and session revocation                                             |
 | `GET /household`                                              | `200 {"members":[{email, you}]}`                                              |
 | `POST /household/invites`                                     | `201 {code, expiresAt}` (epoch ms); `409 {error}` at the invite limit         |
@@ -121,8 +123,7 @@ Woolworths cart.
 | `POST /household/leave`                                       | `204`; `409 {error}` for a sole member                                        |
 | `POST /auth/logout`                                           | `204`; revokes the presented token                                            |
 
-`PATCH /items/:word` (browser form: `POST /items/:word/edit`)
-changes only the fields sent, keeps every other entry and the item's position
+`PATCH /items/:word` changes only the fields sent, keeps every other entry and the item's position
 in the user's list, and saves atomically. `:word` is normalised like
 `word` on `POST`.
 
@@ -134,7 +135,7 @@ in the user's list, and saves atomically. `:word` is normalised like
 | `quantity`  | Positive integer                                                                |
 
 `listing` is the product's title as shown on woolworths.com.au (for example
-`Maleny Dairies Full Cream 2L`), shown under the trigger phrase. It is
+`Maleny Dairies Full Cream 2L`), shown as the product's title. It is
 read-only: the server looks it up when an item is added and when its
 stockcode changes, and clients cannot set it. It is absent when the lookup
 failed or has not run yet; a failed lookup never fails the request. Items
@@ -146,6 +147,23 @@ any `GET /items` or `GET /`, so a later list contains it.
 | `400`  | `{"error":"<message>"}`: a field is invalid; nothing is written |
 | `404`  | `{"error":"<message>"}`: no item for `:word`                    |
 | `409`  | `{"error":"<message>"}`: `word` is already used by another item |
+
+Items are stored per trigger word, in order, and `GET /items` lists them that
+way. A product is the set of words sharing a stockcode and quantity;
+clients list one row per product, titled with its `listing` (else the first
+word), with the words beneath it display-cased (`Full Cream Milk`, `Coca-Cola`;
+display only, the stored words stay lower-case). `POST /items` with a
+stockcode and quantity an existing product has adds the word to that product.
+
+`PATCH /products/:stockcode/:quantity` (browser form:
+`POST /products/:stockcode/:quantity/edit`) edits the whole product at once and
+saves atomically. It takes the fields of `PATCH /items/:word` except `word`,
+plus `words`, an array (or comma-separated string) that replaces the product's
+whole word set: absent words are removed, new ones are added after the
+product's last word. Changing the stockcode or quantity to another product's
+merges the two. The statuses are those above, with `404` for an unknown product
+and `409` when a word belongs to a different product. Deleting a product
+removes all its words.
 
 Browser form edits answer the same statuses by re-rendering `/` with the
 message, and redirect to `/` on success. They rely on the session
