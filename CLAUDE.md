@@ -97,6 +97,7 @@ pnpm run register-passkey     # one-off: register the passkey the server logs in
 pnpm run passkey-login        # HTTP passkey login, stores the session
 pnpm run capture-session      # manual Woolworths login, stores the session (only needed when the heartbeat refresh is rejected)
 pnpm run search-product <term>  # find a stockcode to map
+pnpm run package-extension    # writes dist/extension.zip for the Chrome Web Store (extension/README.md#publishing)
 cd ios && xcodegen generate     # writes the gitignored Xcode project from project.yml
 xcodebuild test -project ios/PersonalShopper.xcodeproj -scheme PersonalShopper -destination 'platform=iOS Simulator,name=iPhone 17'
 ```

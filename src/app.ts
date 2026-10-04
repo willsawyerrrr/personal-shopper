@@ -11,6 +11,7 @@ import { HouseholdStore } from './households.ts'
 import { ItemStore } from './items.ts'
 import { registerLogin } from './login.ts'
 import { registerPasskey, type PasskeyOptions } from './passkey.ts'
+import { registerPrivacy } from './privacy.ts'
 import { TokenStore } from './tokens.ts'
 import type { CartClient, ProductLookup } from './woolworths/client.ts'
 
@@ -93,6 +94,7 @@ export function buildApp(config: AppConfig, options: AppOptions): FastifyInstanc
     routes.get('/healthz', async () => ({ status: 'ok' }))
   })
 
+  void registerPrivacy(app)
   void registerLogin(app, { config, sql: options.sql, tokens, google, now })
   void registerAdmin(
     app,

@@ -4,9 +4,18 @@
   "name": "Personal Shopper — Add Item",
   "version": "1.0.0",
   "description": "Adds the current Woolworths product page to your personal-shopper items list.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Add to Personal Shopper"
+    "default_title": "Add to Personal Shopper",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png"
+    }
   },
   "options_page": "options.html",
   "permissions": ["activeTab", "debugger", "identity", "storage"],
