@@ -1,8 +1,9 @@
 import { chromium } from 'playwright'
-import { REQUIRED_COOKIES, SESSION_COOKIES, SessionStore } from '../src/woolworths/session.ts'
+import { REQUIRED_COOKIES, SESSION_COOKIES } from '../src/woolworths/session.ts'
+import { scriptUser } from './user.ts'
 
 async function main(): Promise<void> {
-  const sessionPath = process.env.SESSION_PATH ?? 'session.json'
+  const user = scriptUser()
   const browser = await chromium.launch({
     headless: false,
     args: ['--window-position=0,0', '--window-size=1280,900'],
@@ -30,13 +31,13 @@ async function main(): Promise<void> {
     )
   }
 
-  const store = new SessionStore(sessionPath)
-  await store.save({
+  await user.sessions.save({
     cookies: captured.map((cookie) => ({ name: cookie.name, value: cookie.value })),
     capturedAt: new Date().toISOString(),
   })
 
-  console.log(`Session saved to ${sessionPath}`)
+  console.log(`Session saved for ${user.email}`)
+  await user.close()
   await browser.close()
 }
 

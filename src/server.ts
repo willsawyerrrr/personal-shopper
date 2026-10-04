@@ -1,31 +1,55 @@
-import { existsSync } from 'node:fs'
 import { buildApp } from './app.ts'
 import { loadConfig } from './config.ts'
-import { loadItems } from './items.ts'
+import { connect } from './db.ts'
+import { ItemStore } from './items.ts'
 import { ICloudRemindersClient } from './reminders/client.ts'
 import { syncReminders } from './reminders/sync.ts'
-import { WoolworthsClient } from './woolworths/client.ts'
-import { passkeyLogin } from './woolworths/passkey.ts'
-import { SessionStore } from './woolworths/session.ts'
+import { CredentialStore, credentialsStored } from './users/credentials.ts'
+import { importLegacyFiles } from './users/import.ts'
+import { UserWoolworths } from './users/woolworths.ts'
 
 const config = loadConfig()
-// The passkey fallback is opt-in: without a registered credential an
-// expired session just fails until it is re-captured by hand.
-const sessions = new SessionStore(
-  config.sessionPath,
-  existsSync(config.passkeyCredentialsPath)
-    ? () => passkeyLogin(config.passkeyCredentialsPath)
-    : undefined,
-)
-const woolworths = new WoolworthsClient(sessions)
-const app = buildApp(config, { cart: woolworths, lookup: woolworths })
+const { ownerEmail } = config
+const sql = connect(config.databaseUrl)
+
+// The passkey fallback is opt-in: without credentials an expired session just
+// fails until it is re-captured by hand. Stored credentials are useless
+// without the key, so their presence makes it mandatory.
+if (!config.credentialsEncryptionKey && (await credentialsStored(sql))) {
+  throw new Error('CREDENTIALS_ENCRYPTION_KEY is required when passkey credentials exist')
+}
+const credentials = config.credentialsEncryptionKey
+  ? new CredentialStore(sql, config.credentialsEncryptionKey)
+  : undefined
+const imported = await importLegacyFiles(sql, config.legacyFiles, ownerEmail, credentials)
+
+const woolworths = new UserWoolworths(sql, credentials)
+const app = buildApp(config, {
+  sql,
+  cart: (email) => woolworths.clientFor(email),
+  lookup: (email) => woolworths.clientFor(email),
+})
+app.addHook('onClose', () => sql.end())
+if (imported.length > 0) {
+  app.log.info({ imported }, 'imported single-user files into the owner')
+}
 
 if (config.sessionKeepAliveIntervalMs > 0) {
-  const keepAlive = async (): Promise<void> => {
-    await sessions.refresh(await sessions.load())
+  // Users with no stored session have nothing to keep alive.
+  const keepAlive = async (email: string): Promise<void> => {
+    const sessions = woolworths.sessionsFor(email)
+    const session = await sessions.find()
+    if (session) {
+      await sessions.refresh(session)
+    }
   }
   setInterval(
-    () => void keepAlive().catch((error: unknown) => app.log.error(error)),
+    () =>
+      void (async () => {
+        for (const email of new Set([ownerEmail, ...(await app.tokens.emails())])) {
+          await keepAlive(email).catch((error: unknown) => app.log.error(error))
+        }
+      })().catch((error: unknown) => app.log.error(error)),
     config.sessionKeepAliveIntervalMs,
   )
 }
@@ -33,9 +57,10 @@ if (config.sessionKeepAliveIntervalMs > 0) {
 if (config.remindersSync) {
   const { icloudUsername, icloudAppSpecificPassword, listName, intervalMs } = config.remindersSync
   const reminders = new ICloudRemindersClient(icloudUsername, icloudAppSpecificPassword, listName)
+  const itemStore = new ItemStore(sql)
   const runSync = async (): Promise<void> => {
-    const items = await loadItems(config.itemsPath)
-    await syncReminders(reminders, items, woolworths, app.log)
+    const items = await itemStore.load(ownerEmail)
+    await syncReminders(reminders, items, woolworths.clientFor(ownerEmail), app.log)
   }
   setInterval(() => void runSync().catch((error: unknown) => app.log.error(error)), intervalMs)
   void runSync().catch((error: unknown) => app.log.error(error))

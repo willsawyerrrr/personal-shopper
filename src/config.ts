@@ -1,3 +1,6 @@
+import { parseEncryptionKey } from './users/credentials.ts'
+import { normalizeEmail } from './users/email.ts'
+
 export interface RemindersSyncConfig {
   icloudUsername: string
   icloudAppSpecificPassword: string
@@ -7,6 +10,13 @@ export interface RemindersSyncConfig {
 
 export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const
 export type LogLevel = (typeof LOG_LEVELS)[number]
+
+export interface LegacyFiles {
+  tokens: string
+  items: string
+  session: string
+  passkeyCredentials: string
+}
 
 export interface AppConfig {
   port: number
@@ -20,11 +30,15 @@ export interface AppConfig {
   publicBaseUrl: string
   /** Redirect URIs API clients may pass to `/auth/start`, matched exactly. */
   allowedClientRedirects: string[]
-  tokenStorePath: string
-  itemsPath: string
-  sessionPath: string
+  /** Postgres connection string of the privileged role the server connects as. */
+  databaseUrl: string
+  /** Files of a single-user deployment, imported into the owner's rows on first start. */
+  legacyFiles: LegacyFiles
+  /** The user the iCloud Reminders sync and the `scripts/` CLIs act for by default. */
+  ownerEmail: string
+  /** Key encrypting stored passkey credentials; required once any credential exists. */
+  credentialsEncryptionKey: Buffer | undefined
   sessionKeepAliveIntervalMs: number
-  passkeyCredentialsPath: string
   remindersSync: RemindersSyncConfig | undefined
 }
 
@@ -41,14 +55,33 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     allowedEmails: parseAllowedEmails(required(env, 'ALLOWED_EMAILS')),
     publicBaseUrl: parsePublicBaseUrl(required(env, 'PUBLIC_BASE_URL')),
     allowedClientRedirects: parseList(env.ALLOWED_CLIENT_REDIRECTS ?? DEFAULT_CLIENT_REDIRECT),
-    tokenStorePath: env.TOKEN_STORE_PATH ?? 'tokens.json',
-    itemsPath: env.ITEMS_PATH ?? 'items.yml',
-    sessionPath: env.SESSION_PATH ?? 'session.json',
+    databaseUrl: required(env, 'DATABASE_URL'),
+    legacyFiles: {
+      tokens: env.TOKEN_STORE_PATH ?? 'tokens.json',
+      items: env.ITEMS_PATH ?? 'items.yml',
+      session: env.SESSION_PATH ?? 'session.json',
+      passkeyCredentials: env.PASSKEY_CREDENTIALS_PATH ?? 'passkey-credentials.json',
+    },
+    ownerEmail: resolveOwnerEmail(env),
+    credentialsEncryptionKey: env.CREDENTIALS_ENCRYPTION_KEY?.trim()
+      ? parseEncryptionKey(env.CREDENTIALS_ENCRYPTION_KEY)
+      : undefined,
     // 0 disables the timer; the session then only refreshes on demand.
     sessionKeepAliveIntervalMs: Number(env.SESSION_KEEPALIVE_INTERVAL_MS ?? 6 * 60 * 60 * 1000),
-    passkeyCredentialsPath: env.PASSKEY_CREDENTIALS_PATH ?? 'passkey-credentials.json',
     remindersSync: loadRemindersSyncConfig(env),
   }
+}
+
+/**
+ * The email the Reminders sync and the `scripts/` CLIs act for by default:
+ * `REMINDERS_OWNER_EMAIL`, else the first of `ALLOWED_EMAILS`.
+ */
+export function resolveOwnerEmail(env: NodeJS.ProcessEnv = process.env): string {
+  const owner = env.REMINDERS_OWNER_EMAIL?.trim() || parseList(env.ALLOWED_EMAILS ?? '')[0]
+  if (!owner) {
+    throw new Error('REMINDERS_OWNER_EMAIL or ALLOWED_EMAILS is required')
+  }
+  return normalizeEmail(owner)
 }
 
 /** The iOS app's custom URL scheme; the Chrome extension's redirect URI is deployment-specific. */

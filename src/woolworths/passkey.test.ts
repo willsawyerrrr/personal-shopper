@@ -1,9 +1,7 @@
 import { createHash, generateKeyPairSync, verify } from 'node:crypto'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import type { PasskeyCredential } from '../users/credentials.ts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { loadCredentials, passkeyLogin, PASSKEY_REJECTED_MESSAGE } from './passkey.ts'
+import { passkeyLogin, PASSKEY_REJECTED_MESSAGE } from './passkey.ts'
 import { REQUIRED_COOKIES } from './session.ts'
 
 const AUTH_PAGE = 'https://auth.woolworths.com.au/u/login/identifier?state=st8'
@@ -44,37 +42,21 @@ function credentialFor(type: 'ed25519' | 'ec') {
 }
 
 describe('passkey login', () => {
-  let dir: string
-  let path: string
+  let credentials: PasskeyCredential[]
   const fetchMock = vi.fn<typeof fetch>()
 
-  async function writeCredential(credential: unknown) {
-    await writeFile(path, JSON.stringify([credential]))
+  function writeCredential(credential: unknown) {
+    credentials = [credential as PasskeyCredential]
   }
 
   beforeEach(async () => {
     fetchMock.mockReset()
     vi.stubGlobal('fetch', fetchMock)
-    dir = await mkdtemp(join(tmpdir(), 'personal-shopper-passkey-'))
-    path = join(dir, 'credentials.json')
-    await writeCredential(credentialFor('ed25519').credential)
+    writeCredential(credentialFor('ed25519').credential)
   })
 
-  afterEach(async () => {
+  afterEach(() => {
     vi.unstubAllGlobals()
-    await rm(dir, { recursive: true })
-  })
-
-  it('loads stored credentials', async () => {
-    await writeFile(path, JSON.stringify([{ credentialId: 'abc' }]))
-    await expect(loadCredentials(path)).resolves.toEqual([{ credentialId: 'abc' }])
-  })
-
-  it.each([
-    ['missing', () => join(dir, 'nope.json'), 'register-passkey'],
-    ['empty', async () => (await writeFile(path, '[]'), path), 'non-empty'],
-  ])('rejects %s credentials', async (_, resolve, message) => {
-    await expect(loadCredentials(await resolve())).rejects.toThrow(message)
   })
 
   function mockLogin(postResponse: () => Response, finalResponse = () => html('<html></html>')) {
@@ -95,10 +77,10 @@ describe('passkey login', () => {
     'signs the challenge with a %s key and returns the session cookies',
     async (type) => {
       const { credential, publicKey } = credentialFor(type)
-      await writeCredential(credential)
+      writeCredential(credential)
       mockLogin(successfulPost)
 
-      const session = await passkeyLogin(path)
+      const session = await passkeyLogin(credentials)
 
       expect(session.cookies.map((c) => c.name).sort()).toEqual(
         [...REQUIRED_COOKIES, 'ak_bmsc'].sort(),
@@ -139,72 +121,72 @@ describe('passkey login', () => {
 
   it('sends cookies set by earlier responses', async () => {
     mockLogin(successfulPost)
-    await passkeyLogin(path)
+    await passkeyLogin(credentials)
     const headers = fetchMock.mock.calls[1]![1]!.headers as Record<string, string>
     expect(headers.Cookie).toBe('ak_bmsc=akamai')
   })
 
   it('does not require the Akamai cookies', async () => {
     mockLogin(successfulPost)
-    const session = await passkeyLogin(path)
+    const session = await passkeyLogin(credentials)
     expect(session.cookies.map((c) => c.name)).not.toContain('_abck')
   })
 
   it('drops cookies the server deletes', async () => {
     mockLogin(() => redirect('/auth/callback', [...allCookies, 'ak_bmsc=; Max-Age=0; Path=/']))
-    const session = await passkeyLogin(path)
+    const session = await passkeyLogin(credentials)
     expect(session.cookies.map((c) => c.name)).not.toContain('ak_bmsc')
   })
 
   it('reports a rejected passkey when the auth page is shown again', async () => {
     mockLogin(() => html(identifierHtml))
-    await expect(passkeyLogin(path)).rejects.toThrow(PASSKEY_REJECTED_MESSAGE)
+    await expect(passkeyLogin(credentials)).rejects.toThrow(PASSKEY_REJECTED_MESSAGE)
   })
 
   it('reports an Akamai block on the login page', async () => {
     fetchMock.mockResolvedValueOnce(html('<h1>Access Denied</h1>', { status: 403 }))
-    await expect(passkeyLogin(path)).rejects.toThrow('Akamai blocked')
+    await expect(passkeyLogin(credentials)).rejects.toThrow('Akamai blocked')
   })
 
   it('reports an Akamai block with a non-HTML response', async () => {
     fetchMock.mockResolvedValueOnce(
       new Response('{}', { headers: { 'content-type': 'application/json' } }),
     )
-    await expect(passkeyLogin(path)).rejects.toThrow('non-HTML')
+    await expect(passkeyLogin(credentials)).rejects.toThrow('non-HTML')
   })
 
   it('reports a login page without a passkey challenge', async () => {
     fetchMock.mockResolvedValueOnce(html('<html></html>'))
-    await expect(passkeyLogin(path)).rejects.toThrow('no passkey challenge')
+    await expect(passkeyLogin(credentials)).rejects.toThrow('no passkey challenge')
   })
 
   it('reports a login page without a state', async () => {
     fetchMock
       .mockResolvedValueOnce(redirect('https://auth.woolworths.com.au/u/login/identifier'))
       .mockResolvedValueOnce(html(identifierHtml))
-    await expect(passkeyLogin(path)).rejects.toThrow('state')
+    await expect(passkeyLogin(credentials)).rejects.toThrow('state')
   })
 
   it('reports an Akamai block after submitting the passkey', async () => {
     mockLogin(() => html('Access Denied', { status: 403 }))
-    await expect(passkeyLogin(path)).rejects.toThrow('Akamai blocked')
+    await expect(passkeyLogin(credentials)).rejects.toThrow('Akamai blocked')
   })
 
   it('reports an unusable private key', async () => {
-    await writeCredential({ credentialId: 'a', userHandle: 'b', privateKey: 'AAAA' })
+    writeCredential({ credentialId: 'a', userHandle: 'b', privateKey: 'AAAA' })
     mockLogin(successfulPost)
-    await expect(passkeyLogin(path)).rejects.toThrow('no usable private key')
+    await expect(passkeyLogin(credentials)).rejects.toThrow('no usable private key')
   })
 
   it('reports an unsupported key type', async () => {
     const { privateKey } = generateKeyPairSync('x25519')
-    await writeCredential({
+    writeCredential({
       credentialId: 'a',
       userHandle: 'b',
       privateKey: privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64'),
     })
     mockLogin(successfulPost)
-    await expect(passkeyLogin(path)).rejects.toThrow('Unsupported passkey key type')
+    await expect(passkeyLogin(credentials)).rejects.toThrow('Unsupported passkey key type')
   })
 
   it('names the required cookies still missing after login', async () => {
@@ -214,11 +196,13 @@ describe('passkey login', () => {
         allCookies.filter((cookie) => !cookie.startsWith('w-aref')),
       ),
     )
-    await expect(passkeyLogin(path)).rejects.toThrow('Missing cookies after passkey login: w-aref')
+    await expect(passkeyLogin(credentials)).rejects.toThrow(
+      'Missing cookies after passkey login: w-aref',
+    )
   })
 
   it('gives up on a redirect loop', async () => {
     fetchMock.mockImplementation(async () => redirect('https://www.woolworths.com.au/loop'))
-    await expect(passkeyLogin(path)).rejects.toThrow('too many times')
+    await expect(passkeyLogin(credentials)).rejects.toThrow('too many times')
   })
 })

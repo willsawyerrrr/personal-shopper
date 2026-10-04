@@ -2,7 +2,7 @@ import formbody from '@fastify/formbody'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { authenticate, logAuthFailure, requestPath, sessionCookie } from './auth.ts'
 import type { AppConfig } from './config.ts'
-import { loadItems, normalizeWord, saveItems, type ItemMapping, type ItemsConfig } from './items.ts'
+import { normalizeWord, type ItemMapping, type ItemsConfig, type ItemStore } from './items.ts'
 import { createListingBackfill, lookupListing } from './listings.ts'
 import type { SessionSummary, TokenStore } from './tokens.ts'
 import type { ProductLookup } from './woolworths/client.ts'
@@ -11,17 +11,40 @@ export async function registerAdmin(
   app: FastifyInstance,
   config: AppConfig,
   tokens: TokenStore,
-  lookup?: ProductLookup,
+  store: ItemStore,
+  lookupFor?: (email: string) => ProductLookup,
 ): Promise<void> {
   const secureCookie = config.publicBaseUrl.startsWith('https:')
-  const backfill = createListingBackfill(config.itemsPath, lookup, app.log)
-  app.addHook('onReady', () => void backfill())
+  const backfills = new Map<string, () => Promise<void>>()
+  // One backfill per user, so a user's items are only ever filled in with
+  // listings looked up through that user's own session.
+  const backfillFor = (email: string): (() => Promise<void>) => {
+    let backfill = backfills.get(email)
+    if (!backfill) {
+      backfill = createListingBackfill(store, email, lookupFor?.(email), app.log)
+      backfills.set(email, backfill)
+    }
+    return backfill
+  }
+  app.addHook('onReady', async () => {
+    for (const email of new Set([config.ownerEmail, ...(await tokens.emails())])) {
+      void backfillFor(email)()
+    }
+  })
 
   await app.register(async (admin) => {
     await admin.register(formbody)
 
     // The token a request authenticated with, for marking and ending its own session.
-    const current = new WeakMap<FastifyRequest, { token: string; id: string }>()
+    const current = new WeakMap<FastifyRequest, { token: string; id: string; email: string }>()
+
+    // Set by the `onRequest` hook below for every authenticated request.
+    const emailOf = (request: FastifyRequest): string =>
+      (current.get(request) as { email: string }).email
+    const backfillOf = (request: FastifyRequest): Promise<void> => backfillFor(emailOf(request))()
+    // A user sees and revokes only their own sign-ins.
+    const sessionsOf = async (request: FastifyRequest): Promise<SessionSummary[]> =>
+      (await tokens.list()).filter((session) => session.email === emailOf(request))
 
     admin.addHook('onRequest', async (request, reply) => {
       if (requestPath(request) === '/admin/login') {
@@ -29,7 +52,11 @@ export async function registerAdmin(
       }
       const result = await authenticate(request, tokens, config.allowedEmails, true)
       if (result.ok) {
-        current.set(request, { token: result.token, id: tokens.sessionId(result.record) })
+        current.set(request, {
+          token: result.token,
+          id: tokens.sessionId(result.record),
+          email: result.record.email,
+        })
         return
       }
       logAuthFailure(request, result.failure)
@@ -55,7 +82,9 @@ export async function registerAdmin(
     })
 
     admin.post<{ Params: { id: string } }>('/admin/sessions/:id/revoke', async (request, reply) => {
-      await tokens.revokeById(request.params.id)
+      if ((await sessionsOf(request)).some((session) => session.id === request.params.id)) {
+        await tokens.revokeById(request.params.id)
+      }
       if (wantsJson(request)) {
         return reply.code(204).send()
       }
@@ -67,15 +96,15 @@ export async function registerAdmin(
     })
 
     admin.get('/admin', async (request, reply) => {
-      const items = await loadItems(config.itemsPath)
-      void backfill()
-      const sessions = await tokens.list()
+      const items = await store.load(emailOf(request))
+      void backfillOf(request)
+      const sessions = await sessionsOf(request)
       reply.type('text/html').send(renderPage(items, sessions, current.get(request)?.id))
     })
 
-    admin.get('/admin/items', async () => {
-      const items = await loadItems(config.itemsPath)
-      void backfill()
+    admin.get('/admin/items', async (request) => {
+      const items = await store.load(emailOf(request))
+      void backfillOf(request)
       return {
         items: Object.entries(items)
           .sort(([a], [b]) => a.localeCompare(b))
@@ -87,7 +116,7 @@ export async function registerAdmin(
       Body: { word?: string; url?: string; quantity?: string | number }
     }>('/admin/items', async (request, reply) => {
       const { word, url, quantity } = request.body
-      const items = await loadItems(config.itemsPath)
+      const items = await store.load(emailOf(request))
       const stockcode = parseStockcode(url ?? '')
       const error = !word?.trim()
         ? 'A trigger word is required.'
@@ -98,20 +127,20 @@ export async function registerAdmin(
         if (wantsJson(request)) {
           return reply.code(400).send({ error })
         }
-        const sessions = await tokens.list()
+        const sessions = await sessionsOf(request)
         return reply
           .code(400)
           .type('text/html')
           .send(renderPage(items, sessions, current.get(request)?.id, error))
       }
-      const listing = await lookupListing(lookup, stockcode, request.log)
+      const listing = await lookupListing(lookupFor?.(emailOf(request)), stockcode, request.log)
       const mapping: ItemMapping = {
         stockcode,
         quantity: Math.max(1, Number(quantity) || 1),
         ...(listing ? { listing } : {}),
       }
       items[normalizeWord(word)] = mapping
-      await saveItems(config.itemsPath, items)
+      await store.save(emailOf(request), items)
       if (wantsJson(request)) {
         return reply.code(201).send({ word: normalizeWord(word), ...mapping })
       }
@@ -122,9 +151,9 @@ export async function registerAdmin(
       request: FastifyRequest<{ Params: { word: string } }>,
       reply: FastifyReply,
     ) => {
-      const items = await loadItems(config.itemsPath)
+      const items = await store.load(emailOf(request))
       delete items[normalizeWord(request.params.word)]
-      await saveItems(config.itemsPath, items)
+      await store.save(emailOf(request), items)
       if (wantsJson(request)) {
         return reply.code(204).send()
       }
@@ -134,13 +163,13 @@ export async function registerAdmin(
       request: FastifyRequest<{ Params: { word: string }; Body: Record<string, unknown> | null }>,
       reply: FastifyReply,
     ) => {
-      const items = await loadItems(config.itemsPath)
+      const items = await store.load(emailOf(request))
       const result = applyEdit(items, normalizeWord(request.params.word), request.body ?? {})
       if (!result.ok) {
         if (wantsJson(request)) {
           return reply.code(result.status).send({ error: result.error })
         }
-        const sessions = await tokens.list()
+        const sessions = await sessionsOf(request)
         return reply
           .code(result.status)
           .type('text/html')
@@ -148,12 +177,16 @@ export async function registerAdmin(
       }
       const edited = result.items[result.word]
       if (edited && edited.stockcode !== items[normalizeWord(request.params.word)]?.stockcode) {
-        const listing = await lookupListing(lookup, edited.stockcode, request.log)
+        const listing = await lookupListing(
+          lookupFor?.(emailOf(request)),
+          edited.stockcode,
+          request.log,
+        )
         if (listing) {
           edited.listing = listing
         }
       }
-      await saveItems(config.itemsPath, result.items)
+      await store.save(emailOf(request), result.items)
       if (wantsJson(request)) {
         return reply.send({ word: result.word, ...result.items[result.word] })
       }

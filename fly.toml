@@ -6,6 +6,7 @@ primary_region = "syd"
 [env]
   PORT = "3000"
   TRUST_PROXY = "true"
+  # Files on the volume from before the database; imported on start, then renamed.
   ITEMS_PATH = "/data/items.yml"
   SESSION_PATH = "/data/session.json"
   TOKEN_STORE_PATH = "/data/tokens.json"

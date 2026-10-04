@@ -1,21 +1,26 @@
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { readdir } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { SESSION_EXPIRED_MESSAGE, SessionStore, type StoredSession } from './session.ts'
+import {
+  SESSION_EXPIRED_MESSAGE,
+  SessionRejectedError,
+  SessionStore,
+  type SessionStorage,
+  type StoredSession,
+} from './session.ts'
 
 describe('SessionStore', () => {
-  let dir: string
+  let stored: StoredSession | undefined
+  let storage: SessionStorage
   let store: SessionStore
 
-  beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'personal-shopper-session-'))
-    store = new SessionStore(join(dir, 'session.json'))
-  })
-
-  afterEach(async () => {
-    await rm(dir, { recursive: true, force: true })
+  beforeEach(() => {
+    stored = undefined
+    storage = {
+      load: async () => stored,
+      save: async (session) => {
+        stored = session
+      },
+    }
+    store = new SessionStore(storage)
   })
 
   it('round-trips a saved session', async () => {
@@ -25,6 +30,11 @@ describe('SessionStore', () => {
     }
     await store.save(session)
     await expect(store.load()).resolves.toEqual(session)
+  })
+
+  it('has no session until one is saved', async () => {
+    await expect(store.find()).resolves.toBeUndefined()
+    await expect(store.load()).rejects.toThrow(SessionRejectedError)
   })
 
   it('treats a freshly captured session as not expired', () => {
@@ -101,7 +111,6 @@ describe('SessionStore', () => {
       ])
       expect(store.isExpired(refreshed)).toBe(false)
       await expect(store.load()).resolves.toEqual(refreshed)
-      await expect(readdir(dir)).resolves.toEqual(['session.json'])
     })
 
     it('drops cookies the server clears', async () => {
@@ -143,7 +152,7 @@ describe('SessionStore', () => {
 
       it('logs in and persists the session when the heartbeat is rejected', async () => {
         const login = vi.fn().mockResolvedValue(loggedIn)
-        const withLogin = new SessionStore(join(dir, 'session.json'), login)
+        const withLogin = new SessionStore(storage, login)
         global.fetch = vi.fn().mockResolvedValue(heartbeat({}, [], 401))
 
         await expect(withLogin.refresh(stale)).resolves.toEqual(loggedIn)
@@ -151,9 +160,15 @@ describe('SessionStore', () => {
         await expect(withLogin.load()).resolves.toEqual(loggedIn)
       })
 
+      it('reports the session as expired when the login finds no passkey', async () => {
+        const withLogin = new SessionStore(storage, async () => undefined)
+        global.fetch = vi.fn().mockResolvedValue(heartbeat({}, [], 401))
+        await expect(withLogin.refresh(stale)).rejects.toThrow(SESSION_EXPIRED_MESSAGE)
+      })
+
       it('does not log in when the heartbeat succeeds', async () => {
         const login = vi.fn()
-        const withLogin = new SessionStore(join(dir, 'session.json'), login)
+        const withLogin = new SessionStore(storage, login)
         global.fetch = vi
           .fn()
           .mockResolvedValue(heartbeat({ refreshed: true }, ['w-aref=n; Path=/auth']))
@@ -163,7 +178,7 @@ describe('SessionStore', () => {
 
       it('does not log in on a network failure', async () => {
         const login = vi.fn()
-        const withLogin = new SessionStore(join(dir, 'session.json'), login)
+        const withLogin = new SessionStore(storage, login)
         global.fetch = vi.fn().mockRejectedValue(new Error('offline'))
         await expect(withLogin.refresh(stale)).rejects.toThrow('offline')
         expect(login).not.toHaveBeenCalled()
@@ -171,7 +186,7 @@ describe('SessionStore', () => {
 
       it('shares one login between concurrent refreshes', async () => {
         const login = vi.fn().mockResolvedValue(loggedIn)
-        const withLogin = new SessionStore(join(dir, 'session.json'), login)
+        const withLogin = new SessionStore(storage, login)
         global.fetch = vi.fn().mockImplementation(async () => heartbeat({}, [], 401))
         await Promise.all([withLogin.refresh(stale), withLogin.refresh(stale)])
         expect(login).toHaveBeenCalledTimes(1)
@@ -182,7 +197,7 @@ describe('SessionStore', () => {
           .fn()
           .mockRejectedValueOnce(new Error('passkey rejected'))
           .mockResolvedValueOnce(loggedIn)
-        const withLogin = new SessionStore(join(dir, 'session.json'), login)
+        const withLogin = new SessionStore(storage, login)
         global.fetch = vi.fn().mockImplementation(async () => heartbeat({}, [], 401))
         await expect(withLogin.refresh(stale)).rejects.toThrow('passkey rejected')
         await expect(withLogin.refresh(stale)).resolves.toEqual(loggedIn)

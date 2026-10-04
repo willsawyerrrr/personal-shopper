@@ -1,10 +1,25 @@
 import { createHash, randomBytes } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
+import { stringify } from 'yaml'
 import type { AppConfig } from '../config.ts'
+import type { Sql } from '../db.ts'
+import { ItemStore, parseItemsYaml } from '../items.ts'
 import { CLIENT_ID, CLIENT_SECRET, type FakeGoogle, type IdTokenOverrides } from './google.ts'
 
 export const IOS_REDIRECT = 'dev.willsawyerrrr.personalshopper://auth'
 export const EXTENSION_REDIRECT = 'https://abcdefghijklmnop.chromiumapp.org/'
+
+export const OWNER = 'me@example.com'
+
+/** Stores `yaml` as `email`'s (default: the owner's) items. */
+export async function seedItems(sql: Sql, yaml: string, email: string = OWNER): Promise<void> {
+  await new ItemStore(sql).save(email, parseItemsYaml(yaml))
+}
+
+/** `email`'s (default: the owner's) items as the YAML `items.yml` would hold. */
+export async function itemsYaml(sql: Sql, email: string = OWNER): Promise<string> {
+  return stringify(await new ItemStore(sql).load(email))
+}
 
 export function testConfig(dir: string, overrides: Partial<AppConfig> = {}): AppConfig {
   return {
@@ -13,14 +28,19 @@ export function testConfig(dir: string, overrides: Partial<AppConfig> = {}): App
     trustProxy: false,
     googleClientId: CLIENT_ID,
     googleClientSecret: CLIENT_SECRET,
-    allowedEmails: ['me@example.com'],
+    allowedEmails: [OWNER],
     publicBaseUrl: 'https://shop.example.com',
     allowedClientRedirects: [IOS_REDIRECT, EXTENSION_REDIRECT],
-    tokenStorePath: `${dir}/tokens.json`,
-    itemsPath: `${dir}/items.yml`,
-    sessionPath: `${dir}/session.json`,
+    databaseUrl: 'postgres://unused',
+    legacyFiles: {
+      tokens: `${dir}/tokens.json`,
+      items: `${dir}/items.yml`,
+      session: `${dir}/session.json`,
+      passkeyCredentials: `${dir}/passkey-credentials.json`,
+    },
+    ownerEmail: OWNER,
+    credentialsEncryptionKey: undefined,
     sessionKeepAliveIntervalMs: 0,
-    passkeyCredentialsPath: 'passkey-credentials.json',
     remindersSync: undefined,
     ...overrides,
   }

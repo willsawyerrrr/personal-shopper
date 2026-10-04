@@ -10,18 +10,22 @@ See [`docs/architecture.md`](docs/architecture.md) for how it fits together,
 and [`docs/deployment.md`](docs/deployment.md) for deploying to Fly.io and
 creating the Google OAuth client.
 
-The Woolworths login is captured once with `pnpm capture-session` and then
-kept alive by the server through Woolworths' `/auth/heartbeat` refresh. Set
+Each signed-in user drives their own Woolworths account: items, session and
+passkey are per user, in Postgres (`DATABASE_URL`; schema in
+`supabase/migrations`, applied with the Supabase CLI). A user's Woolworths login
+is captured once with `pnpm capture-session` (optionally `--user <email>`) and
+then kept alive by the server through Woolworths' `/auth/heartbeat` refresh. Set
 `SESSION_KEEPALIVE_INTERVAL_MS=0` to refresh only on demand.
 
 If the refresh is rejected, the server signs in again over plain HTTP with a
-passkey registered once via `pnpm register-passkey` (saved to
-`PASSKEY_CREDENTIALS_PATH`, gitignored; Chrome is needed only to register it).
+passkey registered once via `pnpm register-passkey` (encrypted with
+`CREDENTIALS_ENCRYPTION_KEY` and stored in the database; Chrome is needed only
+to register it).
 `pnpm passkey-login` does the same login by hand. Without a registered
 passkey, re-run `pnpm capture-session`.
 
-The server runs on Fly.io (`fly.toml`, `Dockerfile`) with its data on a
-volume; `GET /healthz` is the unauthenticated health check, and `/auth/*` is
+The server runs on Fly.io (`fly.toml`, `Dockerfile`) with its data in Supabase
+Postgres; `GET /healthz` is the unauthenticated health check, and `/auth/*` is
 rate limited per client IP.
 
 Sign-in is Google only, restricted to `ALLOWED_EMAILS`: the admin UI at
@@ -36,10 +40,13 @@ through `POST /cart/items`, authorised by the app's bearer token.
 
 ```bash
 pnpm install
-cp .env.example .env   # fill in the Google variables (docs/deployment.md#google-sign-in)
-cp items.example.yml items.yml
+cp .env.example .env   # Google variables (docs/deployment.md#google-sign-in) and DATABASE_URL
+supabase start         # local Postgres; `supabase db reset` applies supabase/migrations
 pnpm dev
 ```
+
+Tests run against a real Postgres at `TEST_DATABASE_URL` (default
+`postgres://postgres@localhost:54329/postgres`; each test uses its own schema):
 
 ```bash
 pnpm lint

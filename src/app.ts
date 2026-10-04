@@ -5,27 +5,38 @@ import { registerAdmin } from './admin.ts'
 import { requestPath } from './auth.ts'
 import { registerCart } from './cart.ts'
 import type { AppConfig } from './config.ts'
+import type { Sql } from './db.ts'
 import { GoogleOAuth } from './google.ts'
+import { ItemStore } from './items.ts'
 import { registerLogin } from './login.ts'
 import { TokenStore } from './tokens.ts'
 import type { CartClient, ProductLookup } from './woolworths/client.ts'
 
+declare module 'fastify' {
+  interface FastifyInstance {
+    /** The store of bearer tokens and admin sessions, which also tells who the users are. */
+    tokens: TokenStore
+  }
+}
+
 const HEALTH_CHECK_PATH = '/healthz'
 
 export interface AppOptions {
+  /** The database holding users, tokens and each user's data. */
+  sql: Sql
   /** Replaces stdout as the log destination (used by tests). */
   logStream?: Writable
   /** Replaces the global `fetch` for calls to Google (used by tests). */
   fetch?: typeof fetch
   /** Replaces the clock (used by tests). */
   now?: () => number
-  /** Enables `POST /cart/items`; without it the route does not exist. */
-  cart?: CartClient
-  /** Looks up listing text for items; without it items are stored without one. */
-  lookup?: ProductLookup
+  /** Resolves a user's cart; enables `POST /cart/items`, which does not exist without it. */
+  cart?: (email: string) => CartClient
+  /** Resolves a user's product lookup for listing text; without it items are stored without one. */
+  lookup?: (email: string) => ProductLookup
 }
 
-export function buildApp(config: AppConfig, options: AppOptions = {}): FastifyInstance {
+export function buildApp(config: AppConfig, options: AppOptions): FastifyInstance {
   const now = options.now ?? Date.now
   const app = Fastify({
     logger: {
@@ -38,7 +49,9 @@ export function buildApp(config: AppConfig, options: AppOptions = {}): FastifyIn
     trustProxy: config.trustProxy,
   })
 
-  const tokens = new TokenStore(config.tokenStorePath, now, (error) => app.log.error(error))
+  const tokens = new TokenStore(options.sql, now)
+  const items = new ItemStore(options.sql)
+  app.decorate('tokens', tokens)
   const google = new GoogleOAuth({
     clientId: config.googleClientId,
     clientSecret: config.googleClientSecret,
@@ -46,11 +59,6 @@ export function buildApp(config: AppConfig, options: AppOptions = {}): FastifyIn
     ...(options.fetch ? { fetch: options.fetch } : {}),
     now,
   })
-
-  // A corrupt token file fails startup instead of silently signing everyone out.
-  app.addHook('onReady', () => tokens.load())
-  // Lets a pending last-used write finish before the process exits.
-  app.addHook('onClose', () => tokens.flush())
 
   app.addHook('onResponse', async (request, reply) => {
     const path = requestPath(request)
@@ -80,9 +88,9 @@ export function buildApp(config: AppConfig, options: AppOptions = {}): FastifyIn
   })
 
   void registerLogin(app, { config, tokens, google, now })
-  void registerAdmin(app, config, tokens, options.lookup)
+  void registerAdmin(app, config, tokens, items, options.lookup)
   if (options.cart) {
-    void registerCart(app, config, tokens, options.cart)
+    void registerCart(app, config, tokens, items, options.cart)
   }
 
   return app
