@@ -1,5 +1,5 @@
 import { normalizeWord, type ItemMapping, type ItemsConfig } from './items.ts'
-import { parseStockcode } from './item-edit.ts'
+import { parseName, parseStockcode } from './item-edit.ts'
 
 /** The trigger words that share one product and quantity. */
 export interface ProductGroup {
@@ -9,6 +9,8 @@ export interface ProductGroup {
   quantity: number
   /** The first listing any of the words has. */
   listing?: string
+  /** The first custom name any of the words has. */
+  name?: string
 }
 
 /** Identifies a group in URLs. */
@@ -18,7 +20,7 @@ export const groupKey = (group: Pick<ProductGroup, 'stockcode' | 'quantity'>): s
 /** Groups items by stockcode and quantity, ordered by each group's first word's stored position. */
 export function groupItems(items: ItemsConfig): ProductGroup[] {
   const groups = new Map<string, ProductGroup>()
-  for (const [word, { stockcode, quantity, listing }] of Object.entries(items)) {
+  for (const [word, { stockcode, quantity, listing, name }] of Object.entries(items)) {
     const key = groupKey({ stockcode, quantity })
     const group = groups.get(key)
     if (group) {
@@ -26,8 +28,17 @@ export function groupItems(items: ItemsConfig): ProductGroup[] {
       if (listing && !group.listing) {
         group.listing = listing
       }
+      if (name && !group.name) {
+        group.name = name
+      }
     } else {
-      groups.set(key, { words: [word], stockcode, quantity, ...(listing ? { listing } : {}) })
+      groups.set(key, {
+        words: [word],
+        stockcode,
+        quantity,
+        ...(listing ? { listing } : {}),
+        ...(name ? { name } : {}),
+      })
     }
   }
   return [...groups.values()]
@@ -41,9 +52,13 @@ export function displayCase(word: string): string {
   )
 }
 
-/** The group's Woolworths listing, or its first word display-cased when there is none. */
+/** The group's custom name, else its Woolworths listing, else its first word display-cased. */
 export const groupTitle = (group: ProductGroup): string =>
-  group.listing ?? displayCase(group.words[0] ?? '')
+  group.name ?? group.listing ?? displayCase(group.words[0] ?? '')
+
+/** The Woolworths listing, shown beneath a custom name; undefined when the title is the listing. */
+export const groupSubtitle = (group: ProductGroup): string | undefined =>
+  group.name ? group.listing : undefined
 
 const titleCollator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
 
@@ -89,7 +104,9 @@ const membersOf = (items: ItemsConfig, stockcode: number, quantity: number): str
  * place and in order. `words` (an array or comma-separated string) replaces the group's whole
  * word set: removed words are deleted and new ones follow the group's last word. Blank `url`,
  * `stockcode` and `quantity` mean "unchanged"; `url` takes precedence over `stockcode`. A changed
- * stockcode drops the stored listing, which the caller looks up again.
+ * stockcode drops the stored listing, which the caller looks up again. A present `name` replaces
+ * the group's display name (blank clears it); otherwise the group keeps the name it has. Every
+ * word of the group carries the name.
  */
 export function applyGroupEdit(
   items: ItemsConfig,
@@ -142,12 +159,19 @@ export function applyGroupEdit(
     newQuantity = parsed
   }
 
+  const named = fields.name === undefined ? undefined : parseName(fields.name)
+  if (named && !named.ok) {
+    return invalid(named.error)
+  }
+  const name = named ? named.name : groupItemsName(items, members)
+
   const stockcodeChanged = newStockcode !== stockcode
   const listing = stockcodeChanged ? undefined : groupItemsListing(items, members)
-  const mapping: ItemMapping = {
+  const namedMapping: ItemMapping = {
     stockcode: newStockcode,
     quantity: newQuantity,
     ...(listing ? { listing } : {}),
+    ...(name ? { name } : {}),
   }
   const last = members[members.length - 1]
   const entries: [string, ItemMapping][] = []
@@ -155,13 +179,13 @@ export function applyGroupEdit(
     if (!members.includes(word)) {
       entries.push([word, item])
     } else if (words.includes(word)) {
-      entries.push([word, mapping])
+      entries.push([word, namedMapping])
     }
     if (word === last) {
       entries.push(
         ...words
           .filter((added) => !members.includes(added))
-          .map((added): [string, ItemMapping] => [added, mapping]),
+          .map((added): [string, ItemMapping] => [added, namedMapping]),
       )
     }
   }
@@ -171,6 +195,9 @@ export function applyGroupEdit(
   ) as ProductGroup
   return { ok: true, items: edited, group, stockcodeChanged }
 }
+
+const groupItemsName = (items: ItemsConfig, members: string[]): string | undefined =>
+  members.map((word) => items[word]?.name).find(Boolean)
 
 const groupItemsListing = (items: ItemsConfig, members: string[]): string | undefined =>
   members.map((word) => items[word]?.listing).find(Boolean)

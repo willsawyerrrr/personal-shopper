@@ -8,14 +8,17 @@ public struct ItemGroup: Decodable, Sendable, Equatable, Identifiable {
     public let quantity: Int
     /// The product's title on woolworths.com.au; absent until the server has looked it up.
     public let listing: String?
+    /// The household's own name for the product; absent when it has none.
+    public let name: String?
 
     public var id: String { "\(stockcode)/\(quantity)" }
 
-    public init(words: [String], stockcode: Int, quantity: Int, listing: String? = nil) {
+    public init(words: [String], stockcode: Int, quantity: Int, listing: String? = nil, name: String? = nil) {
         self.words = words
         self.stockcode = stockcode
         self.quantity = quantity
         self.listing = listing
+        self.name = name
     }
 
     /// Groups `items` by stockcode and quantity, ordered by each group's first word's position.
@@ -27,11 +30,12 @@ public struct ItemGroup: Decodable, Sendable, Equatable, Identifiable {
             if let group = groups[key] {
                 groups[key] = ItemGroup(
                     words: group.words + [item.word], stockcode: item.stockcode, quantity: item.quantity,
-                    listing: group.listing ?? item.listing)
+                    listing: group.listing ?? item.listing, name: group.name ?? item.name)
             } else {
                 order.append(key)
                 groups[key] = ItemGroup(
-                    words: [item.word], stockcode: item.stockcode, quantity: item.quantity, listing: item.listing)
+                    words: [item.word], stockcode: item.stockcode, quantity: item.quantity, listing: item.listing,
+                    name: item.name)
             }
         }
         return order.compactMap { groups[$0] }
@@ -48,8 +52,12 @@ public struct ItemGroup: Decodable, Sendable, Equatable, Identifiable {
         return result
     }
 
-    /// The most prominent row text: the Woolworths listing, else the first word display-cased.
-    public var title: String { listing ?? Self.displayCase(words.first ?? "") }
+    /// The most prominent row text: the custom name, else the Woolworths listing, else the first
+    /// word display-cased.
+    public var title: String { name ?? listing ?? Self.displayCase(words.first ?? "") }
+
+    /// The Woolworths listing, shown beneath a custom name; nil when the title is the listing.
+    public var subtitle: String? { name == nil ? nil : listing }
 
     /// The row's trigger words, display-cased and comma-separated.
     public var wordsText: String { words.map(Self.displayCase).joined(separator: ", ") }

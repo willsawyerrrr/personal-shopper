@@ -25,7 +25,8 @@
    are the signed-in user's own (the `items` table, `src/items.ts`), changed with no restart required. Items
    are stored and matched per trigger word, but listed one row per product
    (`src/products.ts`): words sharing a stockcode and quantity appear together,
-   display-cased, one per line under the product's listing, sorted by that title (case-insensitive, numbers
+   display-cased, one per line under the product's name (the household's own,
+   else its listing), sorted by that title (case-insensitive, numbers
    in natural order; storage order is untouched). It is behind Google sign-in
    (`/login` is a "Sign in with Google" button; routes in
    `src/login.ts`). Since
@@ -41,7 +42,9 @@
    item also stores its `listing`, the product's title on woolworths.com.au,
    looked up with `WoolworthsClient.listing` (below) when the item is added or
    its stockcode changes, and backfilled in the background for items without
-   one. A failed lookup is logged and never fails the request.
+   one. A failed lookup is logged and never fails the request. A product can
+   also carry a household-chosen `name` (max 80 characters), stored on every
+   word row of the product and shown as the title above the listing.
 3. **The `extension/` Chrome extension** and **the `ios/` app** are clients of
    that JSON API: from the Woolworths product page (extension) or share sheet
    (iOS) they add a product from its URL. See
@@ -113,7 +116,7 @@ the privileged role.
 | `households`          | A group of users sharing one Woolworths account; the key of the shared data.   |
 | `users`               | One row per email (lower-cased, unique), in one household.                     |
 | `tokens`              | Hashed bearer tokens and web sessions, per user, with client and expiry.       |
-| `items`               | A household's trigger phrase, stockcode, quantity and listing, in order.       |
+| `items`               | A household's trigger phrase, stockcode, quantity, listing and name, in order. |
 | `woolworths_sessions` | A household's Woolworths cookie jar.                                           |
 | `passkey_credentials` | A household's passkey credential, AES-256-GCM encrypted (IV, tag, ciphertext). |
 | `household_invites`   | Hashed single-use invite codes, with household, creator and expiry.            |

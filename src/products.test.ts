@@ -4,6 +4,7 @@ import {
   applyGroupEdit,
   displayCase,
   groupItems,
+  groupSubtitle,
   groupTitle,
   parseWords,
   removeGroup,
@@ -52,11 +53,33 @@ describe('groupItems', () => {
   })
 })
 
+describe('groupItems names', () => {
+  it('takes the name from the first word that has one', () => {
+    const grouped = groupItems({
+      a: { stockcode: 1, quantity: 1 },
+      b: { stockcode: 1, quantity: 1, name: 'Mine' },
+      c: { stockcode: 1, quantity: 1, name: 'Other' },
+    })
+    expect(grouped[0]?.name).toBe('Mine')
+  })
+})
+
 describe('groupTitle', () => {
-  it('is the listing, else the first word display-cased', () => {
+  it('is the name, else the listing, else the first word display-cased', () => {
     const [milk, bread] = groupItems(items)
     expect(groupTitle(milk!)).toBe('Full Cream Milk 2L')
     expect(groupTitle(bread!)).toBe('Bread')
+    expect(groupTitle({ ...milk!, name: 'Milk' })).toBe('Milk')
+    expect(groupTitle({ ...bread!, name: 'Loaf' })).toBe('Loaf')
+  })
+})
+
+describe('groupSubtitle', () => {
+  it('is the listing only when a name replaces it as the title', () => {
+    const [milk, bread] = groupItems(items)
+    expect(groupSubtitle(milk!)).toBeUndefined()
+    expect(groupSubtitle({ ...milk!, name: 'Milk' })).toBe('Full Cream Milk 2L')
+    expect(groupSubtitle({ ...bread!, name: 'Loaf' })).toBeUndefined()
   })
 })
 
@@ -95,6 +118,24 @@ describe('applyGroupEdit', () => {
     const changed = edit({ url: '9' })
     expect(changed.ok && changed.stockcodeChanged).toBe(true)
     expect(changed.ok && changed.items.milk).toEqual({ stockcode: 9, quantity: 1 })
+  })
+
+  it('sets, keeps and clears the name across every word', () => {
+    const named = edit({ name: '  Milk  ', words: ['milk', 'skim'] })
+    expect(named.ok && named.items.milk?.name).toBe('Milk')
+    expect(named.ok && named.items.skim?.name).toBe('Milk')
+    expect(named.ok && named.group.name).toBe('Milk')
+    const kept = applyGroupEdit(named.ok ? named.items : {}, 1, 1, { words: ['milk', 'oat'] })
+    expect(kept.ok && kept.items.oat?.name).toBe('Milk')
+    const cleared = applyGroupEdit(named.ok ? named.items : {}, 1, 1, { name: ' ' })
+    expect(cleared.ok && cleared.items.milk).not.toHaveProperty('name')
+    expect(cleared.ok && cleared.group.name).toBeUndefined()
+  })
+
+  it('rejects a name that is too long or not text', () => {
+    expect(edit({ name: 'x'.repeat(81) })).toMatchObject({ ok: false, status: 400 })
+    expect(edit({ name: 5 })).toMatchObject({ ok: false, status: 400 })
+    expect(edit({ name: 'x'.repeat(80) }).ok).toBe(true)
   })
 
   it('merges into another product with the same stockcode and quantity', () => {

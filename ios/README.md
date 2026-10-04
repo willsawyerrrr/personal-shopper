@@ -5,8 +5,9 @@ edit and remove items, plus a Share extension and an App Intent that add a
 Woolworths product without opening the web app.
 
 - **App** (`App/`): Items tab (one row per product, titled with its
-  Woolworths listing, its trigger words beneath it, pull to refresh, tap a
-  row to edit its trigger phrases (add one at a time; remove with swipe or
+  custom name (else its Woolworths listing), the listing beneath a custom
+  name, then its trigger words, pull to refresh, tap a
+  row to edit its name, trigger phrases (add one at a time; remove with swipe or
   Edit, keeping at least one), quantity and product link or stockcode,
   swipe to delete a product with all its words, add by pasted URL) and Settings tab (Sign in
   with Google / Sign out, test connection, and Household: members, create and

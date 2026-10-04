@@ -394,6 +394,23 @@ extension AdminClientTests {
         #expect(group.detail == "248608 · qty 2")
     }
 
+    @Test func rowTitleIsTheNameWithTheListingBeneath() {
+        let named = ItemGroup(words: ["milk"], stockcode: 1, quantity: 1, listing: "Maleny Dairies Full Cream 2L", name: "Milk")
+        #expect(named.title == "Milk")
+        #expect(named.subtitle == "Maleny Dairies Full Cream 2L")
+        #expect(group(words: ["milk"]).subtitle == nil)
+        #expect(ItemGroup(words: ["loaf"], stockcode: 1, quantity: 1, name: "Bread").title == "Bread")
+        #expect(ItemGroup(words: ["loaf"], stockcode: 1, quantity: 1, name: "Bread").subtitle == nil)
+    }
+
+    @Test func groupTakesTheFirstNameAnyWordHas() {
+        let items = [
+            Item(word: "milk", stockcode: 1, quantity: 1),
+            Item(word: "full cream milk", stockcode: 1, quantity: 1, name: "Milk"),
+        ]
+        #expect(ItemGroup.group(items).first?.name == "Milk")
+    }
+
     @Test func rowTitleFallsBackToTheFirstWord() {
         let group = group(words: ["ben & jerry's", "ice cream"], listing: nil)
         #expect(group.title == "Ben & Jerry's")
@@ -419,6 +436,20 @@ extension AdminClientTests {
         #expect(sent["words"] as? [String] == ["oat milk", "oats"])
         #expect(sent["url"] as? String == "654321")
         #expect(sent["quantity"] as? Int == 3)
+    }
+
+    @Test func updateSendsTheName() async throws {
+        StubURLProtocol.stub(body: #"{"words":["milk"],"stockcode":1,"quantity":2,"name":"Milk"}"#)
+        let updated = try await client.update(group(), name: "Milk")
+        #expect(updated.name == "Milk")
+        let sent = try body(of: try #require(StubURLProtocol.requests.withLock { $0.first }))
+        #expect(sent["name"] as? String == "Milk")
+        #expect(Set(sent.keys) == ["name"])
+    }
+
+    @Test func decodesItemNames() async throws {
+        StubURLProtocol.stub(body: #"{"items":[{"word":"milk","stockcode":1,"quantity":2,"name":"Milk"}]}"#)
+        #expect(try await client.items() == [Item(word: "milk", stockcode: 1, quantity: 2, name: "Milk")])
     }
 
     @Test func updateSendsOnlyGivenFields() async throws {
@@ -534,6 +565,22 @@ extension AdminClientTests {
         #expect(sent["words"] as? [String] == ["oat milk", "oats"])
         #expect(sent["url"] as? String == "https://www.woolworths.com.au/shop/productdetails/456/oat-milk")
         #expect(sent["quantity"] as? Int == 3)
+        #expect(sent["name"] as? String == "")
+    }
+
+    @MainActor @Test func editFormPrefillsTrimsAndValidatesTheName() async throws {
+        StubURLProtocol.stub(body: #"{"words":["milk"],"stockcode":123,"quantity":2,"name":"Milk"}"#)
+        let model = try editModel(
+            ItemGroup(words: ["milk"], stockcode: 123, quantity: 2, listing: "Milk 2L", name: "Old"))
+        #expect(model.name == "Old")
+        model.name = String(repeating: "x", count: 81)
+        #expect(model.nameError != nil)
+        #expect(!model.canSubmit)
+        model.name = "  Milk  "
+        #expect(model.nameError == nil)
+        await model.submit()
+        let sent = try body(of: try #require(StubURLProtocol.requests.withLock { $0.first }))
+        #expect(sent["name"] as? String == "Milk")
     }
 
     @MainActor @Test func editFormShowsServerErrorAndAllowsRetry() async throws {

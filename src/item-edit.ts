@@ -6,6 +6,25 @@ export type EditResult =
 
 const blank = (value: unknown) => value === undefined || value === null || value === ''
 
+export const MAX_NAME_LENGTH = 80
+
+export type NameResult = { ok: true; name?: string } | { ok: false; error: string }
+
+/** Validates a display name: trimmed, at most `MAX_NAME_LENGTH` characters; blank clears it. */
+export function parseName(value: unknown): NameResult {
+  if (blank(value)) {
+    return { ok: true }
+  }
+  if (typeof value !== 'string') {
+    return { ok: false, error: 'The name must be text.' }
+  }
+  const name = value.trim()
+  if ([...name].length > MAX_NAME_LENGTH) {
+    return { ok: false, error: `The name must be at most ${MAX_NAME_LENGTH} characters.` }
+  }
+  return name ? { ok: true, name } : { ok: true }
+}
+
 function positiveInteger(value: unknown): number | undefined {
   const number = typeof value === 'string' && /^\d+$/.test(value.trim()) ? Number(value) : value
   return typeof number === 'number' && Number.isSafeInteger(number) && number > 0
@@ -16,7 +35,8 @@ function positiveInteger(value: unknown): number | undefined {
 // Applies the editable fields in `fields` to the item for `word`, leaving every other entry in
 // place and in order. Blank `url`, `stockcode` and `quantity` mean "unchanged". `url` takes
 // precedence over `stockcode`. A changed stockcode drops the stored listing, which the caller
-// looks up again.
+// looks up again. A present `name` sets (or, when blank, clears) the display name on every word
+// sharing the item's stockcode and quantity.
 export function applyEdit(
   items: ItemsConfig,
   word: string,
@@ -70,10 +90,27 @@ export function applyEdit(
     mapping.quantity = quantity
   }
 
+  const named = fields.name === undefined ? undefined : parseName(fields.name)
+  if (named && !named.ok) {
+    return invalid(named.error)
+  }
   const edited = Object.fromEntries(
-    Object.entries(items).map(([key, value]) => (key === word ? [newWord, mapping] : [key, value])),
+    Object.entries(items).map(([key, value]) => {
+      if (key === word) {
+        return [newWord, named ? withName(mapping, named.name) : mapping]
+      }
+      const sibling =
+        named && value.stockcode === existing.stockcode && value.quantity === existing.quantity
+      return [key, sibling ? withName(value, named.name) : value]
+    }),
   )
   return { ok: true, items: edited, word: newWord }
+}
+
+/** `mapping` with `name` set, or removed when undefined. */
+export function withName(mapping: ItemMapping, name: string | undefined): ItemMapping {
+  const { name: _previous, ...rest } = mapping
+  return name ? { ...rest, name } : rest
 }
 
 export function parseStockcode(input: string): number | undefined {

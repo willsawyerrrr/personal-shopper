@@ -1,6 +1,13 @@
 import { escapeHtml } from './html.ts'
 import type { ItemsConfig } from './items.ts'
-import { displayCase, groupItems, groupKey, groupTitle, sortGroups } from './products.ts'
+import {
+  displayCase,
+  groupItems,
+  groupKey,
+  groupSubtitle,
+  groupTitle,
+  sortGroups,
+} from './products.ts'
 
 export interface ItemEdit {
   key: string
@@ -19,6 +26,7 @@ export function renderItemRows(items: ItemsConfig, edit?: ItemEdit): string {
         return escapeHtml(typeof value === 'string' ? value : String(fallback))
       }
       const title = groupTitle(group)
+      const subtitle = groupSubtitle(group)
       const words = group.words.map(displayCase)
       const id = `edit-${index}`
       return `
@@ -26,7 +34,11 @@ export function renderItemRows(items: ItemsConfig, edit?: ItemEdit): string {
           <input type="checkbox" class="edit-toggle" id="${id}" aria-label="Edit ${escapeHtml(title)}"${editing ? ' checked' : ''}>
           <div class="cell phrase">
             <strong class="view">${escapeHtml(title)}</strong>
+            ${subtitle ? `<div class="view words">${escapeHtml(subtitle)}</div>` : ''}
             <div class="view words">${words.map((word) => `<div>${escapeHtml(word)}</div>`).join('')}</div>
+            <label class="edit"><span class="field-name">Name</span>
+              <input aria-label="Name" name="name" maxlength="80" placeholder="${escapeHtml(group.listing ?? '')}" value="${field('name', group.name ?? '')}">
+            </label>
             <label class="edit"><span class="field-name">Trigger words, separated by commas</span>
               <input aria-label="Trigger words, separated by commas" name="words" required value="${field('words', words.join(', '))}">
             </label>
