@@ -23,8 +23,10 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   refreshes (on demand near token expiry, plus an opt-out timer) that persist
   the rotating `w-aref` cookie. When the refresh is rejected the server signs
   in over plain HTTP with the user's stored passkey credential
-  (`src/woolworths/passkey.ts`; no browser), which `pnpm register-passkey`
-  registers once by hand in Chrome. Credentials are AES-256-GCM encrypted in
+  (`src/woolworths/passkey.ts`; no browser), which a user registers from the
+  Chrome extension (virtual authenticator over `chrome.debugger`, uploaded to
+  `PUT /woolworths/passkey` in `src/passkey.ts`; bearer token only, rate
+  limited) or by hand with `pnpm register-passkey`. Credentials are AES-256-GCM encrypted in
   the app (`CREDENTIALS_ENCRYPTION_KEY`, required once any exists) before they
   reach the database, and never logged. Without a registered credential,
   `pnpm capture-session` (manual login) is the only recovery. No password or
@@ -57,7 +59,7 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
 
 `src/woolworths` is everything that talks to Woolworths' unofficial API;
 `src/app.ts` wires up Fastify, `src/login.ts` the Google sign-in routes,
-`src/admin.ts` the admin UI and JSON API, `src/cart.ts` the cart route,
+`src/admin.ts` the admin UI and JSON API, `src/cart.ts` the cart route, `src/passkey.ts` the passkey routes,
 `src/tokens.ts` the token store, `src/items.ts` the item store, `src/db.ts` the
 Postgres connection and `src/users/` the per-user credential store, session
 storage, Woolworths clients and legacy-file import; `supabase/migrations` is the

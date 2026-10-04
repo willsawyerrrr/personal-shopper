@@ -75,6 +75,17 @@ export class CredentialStore {
     }
   }
 
+  /** Whether the user has stored credentials, without decrypting them. */
+  async has(email: string): Promise<boolean> {
+    const [row] = await this.sql<{ stored: boolean }[]>`
+      select exists (
+        select 1 from passkey_credentials c
+        join users u on u.id = c.user_id
+        where u.email = ${normalizeEmail(email)}
+      ) as stored`
+    return row?.stored ?? false
+  }
+
   /** Replaces the user's credentials. */
   async put(email: string, credentials: PasskeyCredential[]): Promise<void> {
     parseCredentials(credentials)

@@ -90,7 +90,24 @@
         font-weight: 600;
         margin: 0 0 0.6rem;
       }
-      #accountState {
+      #passkey {
+        margin-top: 1.5rem;
+        padding-top: 1.25rem;
+        border-top: 1px solid var(--color-border);
+      }
+      #passkey .hint {
+        margin: 0 0 0.85rem;
+        font-size: 0.8rem;
+        color: var(--color-text-muted);
+      }
+      #passkeyState.error {
+        color: #b3261e;
+      }
+      #passkeyState.success {
+        color: var(--color-accent);
+      }
+      #accountState,
+      #passkeyState {
         margin: 0 0 0.85rem;
         font-size: 0.85rem;
         color: var(--color-text-muted);
@@ -123,6 +140,17 @@
       <button id="signIn" type="button">Sign in with Google</button>
       <button id="signOut" type="button" class="secondary" hidden>Sign out</button>
       <p id="accountError" class="error"></p>
+    </section>
+    <section id="passkey">
+      <h2>Woolworths passkey</h2>
+      <p class="hint">
+        Lets the server sign in to your Woolworths account when its session expires. Chrome shows a
+        debugging bar while you register.
+      </p>
+      <p id="passkeyState"></p>
+      <button id="registerPasskey" type="button">Register passkey</button>
+      <button id="cancelPasskey" type="button" class="secondary" hidden>Cancel</button>
+      <button id="removePasskey" type="button" class="secondary" hidden>Remove passkey</button>
     </section>
     <script type="module" src="options.js"></script>
   </body>

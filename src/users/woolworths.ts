@@ -28,6 +28,11 @@ export class UserWoolworths {
     return this.entry(email).client
   }
 
+  /** Drops the user's cached session store, so the next login reads their current credential. */
+  invalidate(email: string): void {
+    this.clients.delete(normalizeEmail(email))
+  }
+
   private entry(email: string) {
     const key = normalizeEmail(email)
     let entry = this.clients.get(key)

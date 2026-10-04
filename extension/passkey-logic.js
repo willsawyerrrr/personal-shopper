@@ -1,0 +1,75 @@
+export const RP_ID = 'auth.woolworths.com.au'
+export const LOGIN_URL = 'https://www.woolworths.com.au/shop/securelogin'
+export const REGISTRATION_TIMEOUT_MS = 10 * 60 * 1000
+export const POLL_INTERVAL_MS = 1000
+
+/** The virtual authenticator Woolworths' passkey prompt is answered by. */
+export const AUTHENTICATOR_OPTIONS = {
+  protocol: 'ctap2',
+  transport: 'internal',
+  hasResidentKey: true,
+  hasUserVerification: true,
+  isUserVerified: true,
+  automaticPresenceSimulation: true,
+}
+
+const filled = (value) => typeof value === 'string' && value !== ''
+
+/** Returns the first credential the server can sign in with: for Woolworths' RP ID, with an ID, user handle and private key. */
+export function selectCredential(credentials) {
+  return (credentials ?? []).find(
+    (credential) =>
+      credential?.rpId === RP_ID &&
+      filled(credential.credentialId) &&
+      filled(credential.userHandle) &&
+      filled(credential.privateKey),
+  )
+}
+
+/** Whether a registration started at `startedAt` (epoch ms) has run out of time. */
+export function isTimedOut(startedAt, now = Date.now()) {
+  return now - startedAt > REGISTRATION_TIMEOUT_MS
+}
+
+/**
+ * Describes a registration state (`{phase, error?}`, phase one of `idle`,
+ * `registering`, `uploading`, `failed`, `cancelled`) and the server's answer
+ * (`registered`: a boolean, or `undefined` when unknown) for display.
+ */
+export function describeStatus(state, registered) {
+  switch (state?.phase) {
+    case 'registering':
+      return {
+        text: 'Log in to Woolworths in the new tab and accept the prompt to create a passkey.',
+        variant: 'info',
+        busy: true,
+      }
+    case 'uploading':
+      return { text: 'Saving your passkey…', variant: 'info', busy: true }
+    case 'failed':
+      return { text: `Passkey error: ${state.error}`, variant: 'error', busy: false }
+    case 'cancelled':
+      return { text: 'Registration cancelled.', variant: 'error', busy: false }
+  }
+  if (registered === true) {
+    return { text: 'Passkey registered.', variant: 'success', busy: false }
+  }
+  if (registered === false) {
+    return { text: 'No passkey registered.', variant: 'info', busy: false }
+  }
+  return { text: '', variant: 'info', busy: false }
+}
+
+export class CancelledError extends Error {
+  constructor() {
+    super('Registration cancelled')
+    this.name = 'CancelledError'
+  }
+}
+
+export class UnauthorizedError extends Error {
+  constructor() {
+    super('Session expired. Sign in again')
+    this.name = 'UnauthorizedError'
+  }
+}

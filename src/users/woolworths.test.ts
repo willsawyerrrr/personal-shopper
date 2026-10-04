@@ -79,6 +79,14 @@ describe('UserWoolworths', () => {
     expect(woolworths.clientFor('me@example.com')).toBe(woolworths.clientFor('me@example.com'))
   })
 
+  it("drops a user's cached session store when invalidated", () => {
+    const mine = woolworths.sessionsFor('me@example.com')
+    const yours = woolworths.sessionsFor('you@example.com')
+    woolworths.invalidate('ME@example.com')
+    expect(woolworths.sessionsFor('me@example.com')).not.toBe(mine)
+    expect(woolworths.sessionsFor('you@example.com')).toBe(yours)
+  })
+
   it("adds to the cart with the signed-in user's own cookies", async () => {
     await new PgSessionStorage(db.sql, 'me@example.com').save(session('mine', now()))
     await new PgSessionStorage(db.sql, 'you@example.com').save(session('yours', now()))

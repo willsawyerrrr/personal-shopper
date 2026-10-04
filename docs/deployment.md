@@ -115,7 +115,8 @@ pnpm passkey-login      # signs in over plain HTTP and stores the session
 
 Each script acts for the owner (`REMINDERS_OWNER_EMAIL`, else the first of
 `ALLOWED_EMAILS`); pass `--user <email>` to act for another user, who must
-register their own passkey.
+register their own passkey, or they can register it from the Chrome
+extension ([`extension/README.md`](../extension/README.md#woolworths-passkey)).
 
 Use `pnpm capture-session` instead of `passkey-login` to pick your Direct to
 Boot store in a real browser; it carries the store selection and Akamai
