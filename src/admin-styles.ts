@@ -86,57 +86,68 @@ export const PAGE_STYLES = `
     border: 1px solid var(--color-border);
   }
   table button:hover { background: var(--color-bg); }
-  tr.item td { border-bottom: none; padding-bottom: 0.1rem; }
-  tr.item-edit td { padding-top: 0; }
-  details.edit summary {
-    cursor: pointer;
-    font-size: 0.8rem;
-    color: var(--color-link);
+  .items { --cols: minmax(0, 1fr) minmax(0, 9rem) 4.5rem 8.5rem; }
+  .item-head, form.item {
+    display: grid;
+    grid-template-columns: var(--cols);
+    gap: 0.5rem;
+    align-items: start;
   }
-  .edit-panel {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    gap: 0.6rem;
-    margin: 0.4rem 0 0.25rem;
-    padding: 0.7rem;
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
+  .item-head { padding-bottom: 0.4rem; font-size: 0.9rem; color: var(--color-text-muted); font-weight: 500; }
+  .item-head span { padding-left: 0.45rem; }
+  .item-head { border-bottom: 1px solid var(--color-border); margin-bottom: 0.25rem; }
+  form.item { padding: 0.5rem 0; }
+  form.item + form.item { border-top: 1px solid var(--color-border); }
+  form.item label { margin: 0; }
+  form.item .field-name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
-  .edit-panel label { margin: 0; font-size: 0.75rem; }
-  .edit-panel label.grow { flex: 1 1 8rem; }
-  .edit-panel label.qty { flex: 0 0 5rem; }
-  .edit-panel input {
-    margin-top: 0.2rem;
-    padding: 0.3rem 0.5rem;
-    font-size: 0.85rem;
-    background: var(--color-surface);
+  form.item input {
+    margin: 0;
+    padding: 0.3rem 0.4rem;
+    color: var(--color-text);
+    background: transparent;
+    border-color: transparent;
     border-radius: 6px;
   }
-  .edit-panel .actions { display: flex; gap: 0.5rem; }
-  .edit-panel button {
-    padding: 0.35rem 0.8rem;
-    font-size: 0.85rem;
-    font-weight: 600;
+  form.item input:hover { border-color: var(--color-border); }
+  form.item input:focus { background: var(--color-bg); border-color: var(--color-accent); }
+  form.item .phrase input { font-weight: 700; }
+  form.item .listing { padding: 0 0.4rem; margin-top: 0.1rem; overflow-wrap: anywhere; }
+  form.item .actions { display: flex; gap: 0.4rem; padding-top: 0.1rem; }
+  form.item button {
+    padding: 0.3rem 0.7rem;
+    font-size: 0.8rem;
     color: #fff;
     background: var(--color-accent);
     border: 1px solid var(--color-accent);
     border-radius: 6px;
   }
-  .edit-panel button:hover { background: var(--color-accent-hover); }
-  .edit-panel button.danger {
-    color: var(--color-danger);
-    background: transparent;
-    border-color: var(--color-danger);
-  }
-  .edit-panel button.danger:hover { background: var(--color-surface); }
-  @media (max-width: 30rem) {
-    .edit-panel label.grow, .edit-panel label.qty { flex: 1 1 100%; }
-  }
+  form.item button:hover { background: var(--color-accent-hover); }
+  form.item button.danger { color: var(--color-danger); background: transparent; border-color: var(--color-danger); }
+  form.item button.danger:hover { background: var(--color-bg); }
   @media (max-width: 30rem) {
     body { margin: 1.25rem auto; }
     .card { padding: 1rem; }
+    .item-head { display: none; }
+    form.item { display: flex; flex-direction: column; align-items: stretch; gap: 0.6rem; padding: 0.9rem 0; }
+    form.item .field-name {
+      position: static;
+      width: auto;
+      height: auto;
+      clip-path: none;
+      display: block;
+      margin-bottom: 0.2rem;
+      font-size: 0.75rem;
+    }
+    form.item input { border-color: var(--color-border); }
+    form.item .qty input { width: 6rem; }
+    form.item .actions { padding-top: 0; }
     table.sessions thead { display: none; }
     table.sessions, table.sessions tbody, table.sessions tr, table.sessions td { display: block; width: 100%; }
     table.sessions tr { padding: 0.6rem 0; border-bottom: 1px solid var(--color-border); }
