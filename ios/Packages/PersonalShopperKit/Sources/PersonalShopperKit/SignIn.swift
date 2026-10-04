@@ -3,7 +3,7 @@ import Foundation
 /// One Google sign-in attempt: the PKCE verifier and `state` it generated, the
 /// URL to open in the system browser, and the check of what comes back.
 public struct SignIn: Sendable {
-    public static let callbackScheme = "dev.willsawyerrrr.personalshopper"
+    public static let callbackScheme = "dev.willsawyerrrr.personal-shopper"
     public static let redirectURI = "\(callbackScheme)://auth"
 
     public let verifier: String

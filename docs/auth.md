@@ -14,7 +14,7 @@ sign in: the first sign-in creates its user. Abuse is bounded by
 | `GOOGLE_CLIENT_ID`           | Required. Google web OAuth client ID.                                                                                                                        |
 | `GOOGLE_CLIENT_SECRET`       | Required. Its secret.                                                                                                                                        |
 | `PUBLIC_BASE_URL`            | Required. Origin the server is reached at, e.g. `https://personal-shopper.willsawyerrrr.dev`. Google redirects to `${PUBLIC_BASE_URL}/auth/google/callback`. |
-| `ALLOWED_CLIENT_REDIRECTS`   | Comma-separated redirect URIs API clients may use, matched exactly. Default: `dev.willsawyerrrr.personalshopper://auth`.                                     |
+| `ALLOWED_CLIENT_REDIRECTS`   | Comma-separated redirect URIs API clients may use, matched exactly. Default: `dev.willsawyerrrr.personal-shopper://auth`.                                     |
 | `DATABASE_URL`               | Required. Postgres connection string; hashed tokens live in its `tokens` table.                                                                              |
 | `CREDENTIALS_ENCRYPTION_KEY` | Encrypts stored passkey credentials; required once any exists. See [`architecture.md`](architecture.md#data).                                                |
 | `REMINDERS_OWNER_EMAIL`      | The user the Reminders sync, single-user file import and `scripts/` act for. Required when the Reminders sync is enabled.                                    |
@@ -38,7 +38,7 @@ A user revokes a sign-in from `/admin` to free a token slot.
 
 `ALLOWED_CLIENT_REDIRECTS` entries:
 
-- iOS app: `dev.willsawyerrrr.personalshopper://auth` (a custom URL scheme).
+- iOS app: `dev.willsawyerrrr.personal-shopper://auth` (a custom URL scheme).
 - Chrome extension: `https://<extension-id>.chromiumapp.org/` (what
   `chrome.identity.getRedirectURL()` returns; add a path argument to it and
   list that exact URL instead). The extension ID is pinned

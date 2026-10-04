@@ -29,7 +29,7 @@ describe('loadConfig', () => {
       googleClientId: 'client-id',
       googleClientSecret: 'client-secret',
       publicBaseUrl: 'https://shop.example.com',
-      allowedClientRedirects: ['dev.willsawyerrrr.personalshopper://auth'],
+      allowedClientRedirects: ['dev.willsawyerrrr.personal-shopper://auth'],
       databaseUrl: 'postgres://db.example.com/postgres',
       legacyFiles: {
         tokens: 'tokens.json',

@@ -223,20 +223,20 @@ struct SignInTests {
         #expect(items?.path == "/auth/start")
         let query = Dictionary(uniqueKeysWithValues: (items?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
         #expect(query == [
-            "client": "ios", "redirect_uri": "dev.willsawyerrrr.personalshopper://auth",
+            "client": "ios", "redirect_uri": "dev.willsawyerrrr.personal-shopper://auth",
             "code_challenge": PKCE.challenge(for: "ver"), "code_challenge_method": "S256", "state": "st4te",
         ])
     }
 
     @Test func acceptsMatchingState() throws {
-        let url = try #require(URL(string: "dev.willsawyerrrr.personalshopper://auth?code=abc&state=st4te"))
+        let url = try #require(URL(string: "dev.willsawyerrrr.personal-shopper://auth?code=abc&state=st4te"))
         #expect(try attempt().code(from: url) == "abc")
     }
 
     @Test func rejectsWrongStateAndServerErrors() throws {
-        let wrong = try #require(URL(string: "dev.willsawyerrrr.personalshopper://auth?code=abc&state=evil"))
+        let wrong = try #require(URL(string: "dev.willsawyerrrr.personal-shopper://auth?code=abc&state=evil"))
         #expect(throws: AdminError.self) { try attempt().code(from: wrong) }
-        let denied = try #require(URL(string: "dev.willsawyerrrr.personalshopper://auth?error=signup_closed&state=st4te"))
+        let denied = try #require(URL(string: "dev.willsawyerrrr.personal-shopper://auth?error=signup_closed&state=st4te"))
         #expect(throws: AdminError.signInFailed("Sign-ups are closed.")) { try attempt().code(from: denied) }
     }
 }
