@@ -241,6 +241,7 @@ function renderLoginPage(): string {
 <html>
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>personal-shopper — sign in</title>
   <style>
     ${PAGE_STYLES}
@@ -332,6 +333,7 @@ function renderPage(
 <html>
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>personal-shopper — items</title>
   <style>${PAGE_STYLES}</style>
 </head>
@@ -375,7 +377,7 @@ function renderPage(
   }
   <div class="card">
     <h2>Signed-in sessions</h2>
-    <table>
+    <table class="sessions">
       <thead><tr><th>Client</th><th>Account</th><th>Last used</th><th>Expires</th><th></th></tr></thead>
       <tbody>${sessionRows}</tbody>
     </table>

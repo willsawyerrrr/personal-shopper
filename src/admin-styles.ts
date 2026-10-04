@@ -8,8 +8,24 @@ export const PAGE_STYLES = `
     --color-text-muted: #667066;
     --color-accent: #1f7a4d;
     --color-accent-hover: #17603c;
+    --color-link: #1f7a4d;
+    --color-focus-ring: rgb(31 122 77 / 15%);
     --color-danger: #b3261e;
     --radius: 10px;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --color-bg: #121714;
+      --color-surface: #1b231e;
+      --color-border: #34413a;
+      --color-text: #e8eee9;
+      --color-text-muted: #a3b0a7;
+      --color-link: #6fd6a2;
+      --color-focus-ring: rgb(111 214 162 / 30%);
+      --color-danger: #ff8f86;
+      color-scheme: dark;
+    }
   }
   * { box-sizing: border-box; }
   body {
@@ -47,7 +63,7 @@ export const PAGE_STYLES = `
   input:focus {
     outline: none;
     border-color: var(--color-accent);
-    box-shadow: 0 0 0 3px rgb(31 122 77 / 15%);
+    box-shadow: 0 0 0 3px var(--color-focus-ring);
   }
   button {
     padding: 0.5rem 1rem;
@@ -75,7 +91,7 @@ export const PAGE_STYLES = `
   details.edit summary {
     cursor: pointer;
     font-size: 0.8rem;
-    color: var(--color-accent);
+    color: var(--color-link);
   }
   .edit-panel {
     display: flex;
@@ -117,6 +133,30 @@ export const PAGE_STYLES = `
   .edit-panel button.danger:hover { background: var(--color-surface); }
   @media (max-width: 30rem) {
     .edit-panel label.grow, .edit-panel label.qty { flex: 1 1 100%; }
+  }
+  @media (max-width: 30rem) {
+    body { margin: 1.25rem auto; }
+    .card { padding: 1rem; }
+    table.sessions thead { display: none; }
+    table.sessions, table.sessions tbody, table.sessions tr, table.sessions td { display: block; width: 100%; }
+    table.sessions tr { padding: 0.6rem 0; border-bottom: 1px solid var(--color-border); }
+    table.sessions tr:last-child { border-bottom: none; }
+    table.sessions td {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: space-between;
+      padding: 0.2rem 0;
+      border-bottom: none;
+      overflow-wrap: anywhere;
+      text-align: right;
+    }
+    table.sessions td::before { flex: none; color: var(--color-text-muted); text-align: left; }
+    table.sessions td:nth-child(1) { font-weight: 600; }
+    table.sessions td:nth-child(1)::before { content: 'Client'; font-weight: 500; }
+    table.sessions td:nth-child(2)::before { content: 'Account'; }
+    table.sessions td:nth-child(3)::before { content: 'Last used'; }
+    table.sessions td:nth-child(4)::before { content: 'Expires'; }
+    table.sessions td:nth-child(5) { justify-content: flex-end; padding-top: 0.4rem; }
   }
   .listing { color: var(--color-text-muted); font-size: 0.8rem; margin-top: 0.15rem; }
   .error { color: var(--color-danger); margin: 0 0 1rem; font-size: 0.9rem; }

@@ -62,6 +62,18 @@ describe('admin', () => {
     expect(response.body).not.toContain('type="password"')
   })
 
+  it('adapts the pages to phone screens and the system colour scheme', async () => {
+    const login = await app.inject({ method: 'GET', url: '/admin/login' })
+    const admin = await app.inject({ method: 'GET', url: '/admin', headers: authHeader })
+    for (const page of [login, admin]) {
+      expect(page.body).toContain(
+        '<meta name="viewport" content="width=device-width, initial-scale=1">',
+      )
+      expect(page.body).toContain('prefers-color-scheme: dark')
+    }
+    expect(admin.body).toContain('<table class="sessions">')
+  })
+
   it('has no password login', async () => {
     const response = await app.inject({
       method: 'POST',
