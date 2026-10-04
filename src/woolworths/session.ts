@@ -1,5 +1,3 @@
-import { readFile, rename, writeFile } from 'node:fs/promises'
-
 const BASE_URL = 'https://www.woolworths.com.au'
 
 export const REFRESH_COOKIE = 'w-aref'
@@ -31,6 +29,13 @@ export const SESSION_EXPIRED_MESSAGE =
 
 export class SessionRejectedError extends Error {}
 
+/** Where a user's session is kept. */
+export interface SessionStorage {
+  /** The stored session, or `undefined` when there is none. */
+  load(): Promise<StoredSession | undefined>
+  save(session: StoredSession): Promise<void>
+}
+
 // wow-auth-token and prodwow-auth-token are short-lived JWTs (~1hr); treat
 // anything older as due for a refresh rather than let a cart call fail on an
 // expired token.
@@ -41,23 +46,29 @@ export class SessionStore {
 
   /**
    * `login`, when given, runs whenever the heartbeat refresh is rejected and
-   * must resolve to a fresh session.
+   * resolves to a fresh session, or `undefined` when no passkey is available.
    */
   constructor(
-    private readonly path: string,
-    private readonly login?: () => Promise<StoredSession>,
+    private readonly storage: SessionStorage,
+    private readonly login?: () => Promise<StoredSession | undefined>,
   ) {}
 
+  /** The stored session; throws the session-expired error when there is none. */
   async load(): Promise<StoredSession> {
-    const raw = await readFile(this.path, 'utf8')
-    return JSON.parse(raw) as StoredSession
+    const session = await this.find()
+    if (!session) {
+      throw new SessionRejectedError(SESSION_EXPIRED_MESSAGE)
+    }
+    return session
   }
 
-  /** Writes via a temp file and rename so a crash never leaves a truncated jar. */
-  async save(session: StoredSession): Promise<void> {
-    const tempPath = `${this.path}.tmp`
-    await writeFile(tempPath, JSON.stringify(session, null, 2), 'utf8')
-    await rename(tempPath, this.path)
+  /** The stored session, or `undefined` when there is none. */
+  find(): Promise<StoredSession | undefined> {
+    return this.storage.load()
+  }
+
+  save(session: StoredSession): Promise<void> {
+    return this.storage.save(session)
   }
 
   isExpired(session: StoredSession): boolean {
@@ -74,7 +85,7 @@ export class SessionStore {
    * one request (and one fallback login), since each call rotates `w-aref`.
    * A non-200, `refreshed: false`, or a response without a new `w-aref` is a
    * rejection: with a `login` configured it signs in again and persists the
-   * result, otherwise it throws the session-expired error.
+   * result, otherwise (or when `login` finds no passkey) it throws the session-expired error.
    */
   refresh(session: StoredSession): Promise<StoredSession> {
     this.refreshing ??= this.heartbeatOrLogin(session).finally(() => {
@@ -91,6 +102,9 @@ export class SessionStore {
         throw error
       }
       const fresh = await this.login()
+      if (!fresh) {
+        throw error
+      }
       await this.save(fresh)
       return fresh
     }

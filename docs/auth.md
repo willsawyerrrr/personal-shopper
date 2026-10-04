@@ -9,14 +9,16 @@ Google accounts in `ALLOWED_EMAILS` are accepted, and the ID token's
 
 ## Configuration
 
-| Variable                   | Meaning                                                                                                                                                      |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GOOGLE_CLIENT_ID`         | Required. Google web OAuth client ID.                                                                                                                        |
-| `GOOGLE_CLIENT_SECRET`     | Required. Its secret.                                                                                                                                        |
-| `ALLOWED_EMAILS`           | Required. Comma-separated, case-insensitive Google emails allowed to sign in.                                                                                |
-| `PUBLIC_BASE_URL`          | Required. Origin the server is reached at, e.g. `https://personal-shopper.willsawyerrrr.dev`. Google redirects to `${PUBLIC_BASE_URL}/auth/google/callback`. |
-| `ALLOWED_CLIENT_REDIRECTS` | Comma-separated redirect URIs API clients may use, matched exactly. Default: `dev.willsawyerrrr.personalshopper://auth`.                                     |
-| `TOKEN_STORE_PATH`         | JSON file for hashed tokens (default `tokens.json`; `/data/tokens.json` on Fly).                                                                             |
+| Variable                     | Meaning                                                                                                                                                      |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GOOGLE_CLIENT_ID`           | Required. Google web OAuth client ID.                                                                                                                        |
+| `GOOGLE_CLIENT_SECRET`       | Required. Its secret.                                                                                                                                        |
+| `ALLOWED_EMAILS`             | Required. Comma-separated, case-insensitive Google emails allowed to sign in.                                                                                |
+| `PUBLIC_BASE_URL`            | Required. Origin the server is reached at, e.g. `https://personal-shopper.willsawyerrrr.dev`. Google redirects to `${PUBLIC_BASE_URL}/auth/google/callback`. |
+| `ALLOWED_CLIENT_REDIRECTS`   | Comma-separated redirect URIs API clients may use, matched exactly. Default: `dev.willsawyerrrr.personalshopper://auth`.                                     |
+| `DATABASE_URL`               | Required. Postgres connection string; hashed tokens live in its `tokens` table.                                                                              |
+| `CREDENTIALS_ENCRYPTION_KEY` | Encrypts stored passkey credentials; required once any exists. See [`architecture.md`](architecture.md#data).                                                |
+| `REMINDERS_OWNER_EMAIL`      | The user the Reminders sync acts for. Default: the first of `ALLOWED_EMAILS`.                                                                                |
 
 The server refuses to start when a required variable is missing.
 
@@ -35,8 +37,9 @@ The server refuses to start when a required variable is missing.
 server sets the `ps_admin_session` cookie (`HttpOnly`, `SameSite=Lax`,
 `Secure` when `PUBLIC_BASE_URL` is `https`, 30 days) and redirects to
 `/admin`. The cookie value is an opaque server-issued token, the same kind
-API clients get. "Sign out" on `/admin` revokes it. `/admin` also lists every
-active session (web, iOS, extension) with a revoke button.
+API clients get. "Sign out" on `/admin` revokes it. `/admin` also lists the signed-in
+user's own active sessions (web, iOS, extension) with a revoke button; a user
+cannot revoke another user's.
 
 ## API client sign-in
 
@@ -85,7 +88,8 @@ sends `Authorization: Bearer <access_token>` on every API call.
 ### Using the token
 
 Bearer tokens authorise the JSON API on `/admin/items`; send
-`Accept: application/json`:
+`Accept: application/json`. Every call acts on the token's user: each user has
+their own items, and `POST /cart/items` adds to their own Woolworths cart.
 
 | Request                                                                  | Success                                                 |
 | ------------------------------------------------------------------------ | ------------------------------------------------------- |
@@ -98,7 +102,7 @@ Bearer tokens authorise the JSON API on `/admin/items`; send
 
 `PATCH /admin/items/:word` (browser form: `POST /admin/items/:word/edit`)
 changes only the fields sent, keeps every other entry and the item's position
-in `items.yml`, and writes the file atomically. `:word` is normalised like
+in the user's list, and saves atomically. `:word` is normalised like
 `word` on `POST`.
 
 | Field       | Meaning                                                                         |
@@ -140,15 +144,15 @@ Content-Type: application/json
 {"item": "milk"}
 ```
 
-| Status | Body                                                                                        |
-| ------ | ------------------------------------------------------------------------------------------- |
-| `200`  | `{"item": "<phrase as sent>", "stockcode": 123456, "quantity": 1}`; the item is in the cart |
-| `400`  | `{"error":"item is required"}`: `item` is missing, not a string or blank                    |
-| `401`  | `{"error":"unauthorized"}`                                                                  |
-| `404`  | `{"error":"no mapping configured for \"<item>\""}`: no `items.yml` entry for the phrase     |
-| `502`  | `{"error":"<message>"}`: the Woolworths session is expired or rejected                      |
+| Status | Body                                                                                           |
+| ------ | ---------------------------------------------------------------------------------------------- |
+| `200`  | `{"item": "<phrase as sent>", "stockcode": 123456, "quantity": 1}`; the item is in the cart    |
+| `400`  | `{"error":"item is required"}`: `item` is missing, not a string or blank                       |
+| `401`  | `{"error":"unauthorized"}`                                                                     |
+| `404`  | `{"error":"no mapping configured for \"<item>\""}`: no item for the phrase in the user's items |
+| `502`  | `{"error":"<message>"}`: the Woolworths session is expired or rejected                         |
 
-The phrase is matched against `items.yml` like a reminder title: trimmed,
+The phrase is matched against the user's items like a reminder title: trimmed,
 lower-cased, exact.
 
 A missing, malformed, expired, revoked or no-longer-allowed token gets
@@ -158,9 +162,8 @@ starts sign-in again.
 ### Token lifetime
 
 Tokens are 32 random bytes (`ps_` plus base64url), stored on the server only
-as SHA-256 hashes with email, client, created, last-used and expiry. Expiry is
-90 days from last use (sliding). The store is a JSON file written atomically
-with mode `0600`. Revoke with `POST /auth/logout` or from `/admin`.
+as SHA-256 hashes with email, client, created, last-used and expiry in the
+`tokens` table. Expiry is 90 days from last use (sliding). Revoke with `POST /auth/logout` or from `/admin`.
 Removing an email from `ALLOWED_EMAILS` disables all its tokens at once.
 
 ## Failure reasons

@@ -1,5 +1,5 @@
-import { chmod, writeFile } from 'node:fs/promises'
 import { chromium, type BrowserContext, type CDPSession, type Page } from 'playwright'
+import { scriptUser } from './user.ts'
 
 // Akamai Bot Manager answers "Access Denied" to default headless Chrome; it
 // accepts the installed Chrome channel with the automation flag hidden and a
@@ -31,7 +31,8 @@ async function addVirtualAuthenticator(
   return { cdp, authenticatorId }
 }
 
-const credentialsPath = process.env.PASSKEY_CREDENTIALS_PATH ?? 'passkey-credentials.json'
+const user = scriptUser()
+const credentialStore = user.credentials()
 const TIMEOUT_MS = 10 * 60 * 1000
 
 const browser = await chromium.launch({ headless: false, channel: 'chrome', args: BROWSER_ARGS })
@@ -46,9 +47,11 @@ try {
   for (;;) {
     const { credentials } = await cdp.send('WebAuthn.getCredentials', { authenticatorId })
     if (credentials.length > 0) {
-      await writeFile(credentialsPath, JSON.stringify(credentials, null, 2), { mode: 0o600 })
-      await chmod(credentialsPath, 0o600)
-      console.log(`Passkey saved to ${credentialsPath}`)
+      await credentialStore.put(
+        user.email,
+        credentials.map((credential) => ({ ...credential })),
+      )
+      console.log(`Passkey saved for ${user.email}`)
       break
     }
     if (Date.now() > deadline) {
@@ -58,4 +61,5 @@ try {
   }
 } finally {
   await browser.close()
+  await user.close()
 }

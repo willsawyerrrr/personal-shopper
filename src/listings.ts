@@ -1,5 +1,5 @@
 import type { FastifyBaseLogger } from 'fastify'
-import { loadItems, saveItems } from './items.ts'
+import type { ItemStore } from './items.ts'
 import type { ProductLookup } from './woolworths/client.ts'
 
 type Logger = Pick<FastifyBaseLogger, 'warn'>
@@ -19,18 +19,19 @@ export async function lookupListing(
 }
 
 /**
- * Returns a function that fills in the listing of every item lacking one, in the background.
+ * Returns a function that fills in the listing of every item of `email` lacking one, in the background.
  * Calls while a run is in progress are ignored. Items edited meanwhile are left as the edit
  * made them, and lookup failures are logged and retried by the next trigger.
  */
 export function createListingBackfill(
-  itemsPath: string,
+  items: ItemStore,
+  email: string,
   lookup: ProductLookup | undefined,
   log: Logger,
 ): () => Promise<void> {
   let running: Promise<void> | undefined
   const run = async (): Promise<void> => {
-    const missing = Object.entries(await loadItems(itemsPath)).filter(
+    const missing = Object.entries(await items.load(email)).filter(
       ([, mapping]) => !mapping.listing,
     )
     for (const [word, { stockcode }] of missing) {
@@ -38,11 +39,11 @@ export function createListingBackfill(
       if (!listing) {
         continue
       }
-      const items = await loadItems(itemsPath)
-      const current = items[word]
+      const stored = await items.load(email)
+      const current = stored[word]
       if (current && current.stockcode === stockcode && !current.listing) {
         current.listing = listing
-        await saveItems(itemsPath, items)
+        await items.save(email, stored)
       }
     }
   }

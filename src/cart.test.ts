@@ -1,21 +1,24 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Writable } from 'node:stream'
 import type { FastifyInstance } from 'fastify'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildApp } from './app.ts'
-import { signInClient, signInWeb, testConfig } from './testing/app.ts'
+import { seedItems, signInClient, signInWeb, testConfig } from './testing/app.ts'
+import { createTestDb } from './testing/db.ts'
 import { FakeGoogle } from './testing/google.ts'
 import type { CartClient } from './woolworths/client.ts'
 import { SESSION_EXPIRED_MESSAGE, SessionRejectedError } from './woolworths/session.ts'
 
 describe('POST /cart/items', () => {
   let dir: string
+  let db: Awaited<ReturnType<typeof createTestDb>>
   let google: FakeGoogle
   let app: FastifyInstance
   let output: string
   let addToCart: ReturnType<typeof vi.fn<CartClient['addToCart']>>
+  let cartFor: ReturnType<typeof vi.fn<(email: string) => CartClient>>
   let bearer: { authorization: string }
 
   const post = (payload: unknown, headers: Record<string, string> = bearer) =>
@@ -29,23 +32,34 @@ describe('POST /cart/items', () => {
   beforeEach(async () => {
     output = ''
     dir = await mkdtemp(join(tmpdir(), 'personal-shopper-cart-'))
-    const config = testConfig(dir, { logLevel: 'info' })
-    await writeFile(config.itemsPath, 'milk:\n  stockcode: 123456\n  quantity: 2\n')
+    db = await createTestDb()
+    const config = testConfig(dir, {
+      logLevel: 'info',
+      allowedEmails: ['me@example.com', 'you@example.com'],
+    })
+    await seedItems(db.sql, 'milk:\n  stockcode: 123456\n  quantity: 2\n')
     google = await FakeGoogle.create()
     addToCart = vi.fn<CartClient['addToCart']>().mockResolvedValue(undefined)
+    cartFor = vi.fn((_email: string) => ({ addToCart }))
     const logStream = new Writable({
       write(chunk: Buffer, _encoding, callback) {
         output += chunk.toString()
         callback()
       },
     })
-    app = buildApp(config, { logStream, fetch: google.fetch, cart: { addToCart } })
+    app = buildApp(config, {
+      sql: db.sql,
+      logStream,
+      fetch: google.fetch,
+      cart: cartFor,
+    })
     bearer = { authorization: `Bearer ${await signInClient(app, google)}` }
     output = ''
   })
 
   afterEach(async () => {
     await rm(dir, { recursive: true })
+    await db.close()
   })
 
   it('adds the mapped product to the cart', async () => {
@@ -53,6 +67,29 @@ describe('POST /cart/items', () => {
     expect(response.statusCode).toBe(200)
     expect(response.json()).toEqual({ item: '  Milk ', stockcode: 123456, quantity: 2 })
     expect(addToCart).toHaveBeenCalledWith(123456, 2)
+  })
+
+  it("uses the signed-in user's own items and Woolworths account", async () => {
+    await seedItems(db.sql, 'milk:\n  stockcode: 777\n  quantity: 4\n', 'you@example.com')
+    const other = {
+      authorization: `Bearer ${await signInClient(app, google, { overrides: { email: 'you@example.com' } })}`,
+    }
+    const response = await post({ item: 'milk' }, other)
+    expect(response.json()).toEqual({ item: 'milk', stockcode: 777, quantity: 4 })
+    expect(cartFor).toHaveBeenLastCalledWith('you@example.com')
+    expect(addToCart).toHaveBeenLastCalledWith(777, 4)
+
+    await post({ item: 'milk' })
+    expect(cartFor).toHaveBeenLastCalledWith('me@example.com')
+    expect(addToCart).toHaveBeenLastCalledWith(123456, 2)
+  })
+
+  it("does not fall back to another user's items", async () => {
+    const other = {
+      authorization: `Bearer ${await signInClient(app, google, { overrides: { email: 'you@example.com' } })}`,
+    }
+    expect((await post({ item: 'milk' }, other)).statusCode).toBe(404)
+    expect(addToCart).not.toHaveBeenCalled()
   })
 
   it('logs the request and the resolved stockcode without the token', async () => {

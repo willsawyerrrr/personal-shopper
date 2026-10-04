@@ -14,15 +14,38 @@ registered, below).
 ## What lives where
 
 - Secrets (`fly secrets set`): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
-  `ALLOWED_EMAILS`, `PUBLIC_BASE_URL`, optionally `ALLOWED_CLIENT_REDIRECTS`,
-  and optionally `ICLOUD_USERNAME` / `ICLOUD_APP_SPECIFIC_PASSWORD` for the
+  `ALLOWED_EMAILS`, `PUBLIC_BASE_URL`, `DATABASE_URL`,
+  `CREDENTIALS_ENCRYPTION_KEY` (`openssl rand -base64 32`; required once any
+  passkey credential exists, and never stored in the database), optionally
+  `REMINDERS_OWNER_EMAIL`, `ALLOWED_CLIENT_REDIRECTS`, and `ICLOUD_USERNAME` /
+  `ICLOUD_APP_SPECIFIC_PASSWORD` for the
   [Reminders queue](architecture.md#reminders-queue).
 - Config (`fly.toml` `[env]`): `PORT`, `TRUST_PROXY=true` (rate limiting keys
-  on the client IP from `X-Forwarded-For`), and the four data paths below.
-- Volume `data` mounted at `/data`: `items.yml`, `session.json` (rewritten as
-  the login refreshes), `passkey-credentials.json` and `tokens.json` (hashed
-  bearer tokens and admin sessions). A missing `items.yml` reads as no
-  mappings; add them through `/admin`.
+  on the client IP from `X-Forwarded-For`), and the paths of single-user files
+  to import (below).
+- Postgres (Supabase): users, tokens, items, Woolworths sessions and encrypted
+  passkey credentials, per user ([`architecture.md`](architecture.md#data)). A
+  user without items has none; they add them through `/admin`.
+- Volume `data` mounted at `/data`: only the single-user files `items.yml`,
+  `session.json`, `passkey-credentials.json` and `tokens.json`, if present, so
+  the server can import them into the owner's rows when it starts. Each is
+  renamed with an `.imported` suffix afterwards; once all are, the volume and
+  the four path variables can be removed.
+
+## Database
+
+The schema is `supabase/migrations/*.sql`. Apply it with the Supabase CLI
+(`supabase link --project-ref <ref>` then `supabase db push`, or
+`supabase db reset` against the local stack from `supabase start`); the server
+never migrates. Every table has row level security enabled with no policies,
+so only the privileged role in `DATABASE_URL` can read or write; the server is
+its only client and the Supabase client keys are not used. Use the pooler
+connection string for `DATABASE_URL`: the server does not use prepared
+statements, so transaction pooling works.
+
+Tests run against a real Postgres at `TEST_DATABASE_URL` (default
+`postgres://postgres@localhost:54329/postgres`), each in its own schema, which
+CI provides as a service container.
 
 Sign-in is Google only; see [`auth.md`](auth.md) for the flows and the client
 contract. The service is internet-reachable: only the accounts in
@@ -81,13 +104,18 @@ trailing slash (`redirect_uri_mismatch`); `PUBLIC_BASE_URL` has no path.
 
 ## Capture the Woolworths login
 
-On your own machine (Chrome is needed for the one-off registration):
+On your own machine (Chrome is needed for the one-off registration), with
+`DATABASE_URL` and `CREDENTIALS_ENCRYPTION_KEY` set to the production values:
 
 ```bash
 pnpm install
-pnpm register-passkey   # saves passkey-credentials.json
-pnpm passkey-login      # writes session.json over plain HTTP
+pnpm register-passkey   # encrypts the passkey and stores it for the owner
+pnpm passkey-login      # signs in over plain HTTP and stores the session
 ```
+
+Each script acts for the owner (`REMINDERS_OWNER_EMAIL`, else the first of
+`ALLOWED_EMAILS`); pass `--user <email>` to act for another user, who must
+register their own passkey.
 
 Use `pnpm capture-session` instead of `passkey-login` to pick your Direct to
 Boot store in a real browser; it carries the store selection and Akamai
@@ -97,31 +125,18 @@ cookies a passkey login lacks.
 
 ```bash
 fly apps create willsawyerrrr-personal-shopper   # names are global; must match `app` in fly.toml
-fly volumes create data --region syd --size 1
-fly secrets set GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... ALLOWED_EMAILS=... PUBLIC_BASE_URL=... ICLOUD_USERNAME=... ICLOUD_APP_SPECIFIC_PASSWORD=...
+fly volumes create data --region syd --size 1   # `[mounts]` in fly.toml needs it; holds single-user files to import
+fly secrets set GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... ALLOWED_EMAILS=... PUBLIC_BASE_URL=... DATABASE_URL=... CREDENTIALS_ENCRYPTION_KEY=... ICLOUD_USERNAME=... ICLOUD_APP_SPECIFIC_PASSWORD=...
 fly deploy
 ```
 
-Upload the passkey credentials to the volume. `sftp` creates the file
-root-owned with mode 0644, so hand it to the server user and lock it down:
+The passkey and session are stored by the scripts above, straight into the
+database, so nothing is uploaded to the machine. To bring over the files of a
+single-user deployment instead, put them on the volume at the paths in
+`fly.toml`; the next start imports them, and the passkey file needs
+`CREDENTIALS_ENCRYPTION_KEY`, which encrypts it.
 
-```bash
-fly ssh sftp shell
-> put passkey-credentials.json /data/passkey-credentials.json
-> exit
-fly ssh console -C "chown node:node /data/passkey-credentials.json"
-fly ssh console -C "chmod 600 /data/passkey-credentials.json"
-```
-
-Create `session.json` on the machine itself by signing in with those
-credentials as `node`, so it is owned correctly (uploading a local
-`session.json` with `put` also works, followed by the same `chown`):
-
-```bash
-fly ssh console -C "su node -s /bin/sh -c \"node --input-type=module -e \\\"import { passkeyLogin } from '/app/dist/src/woolworths/passkey.js'; import { SessionStore } from '/app/dist/src/woolworths/session.js'; await new SessionStore('/data/session.json').save(await passkeyLogin('/data/passkey-credentials.json'))\\\"\"\""
-```
-
-Restart so the server picks up the session. `fly machine restart` takes the
+Restart to import files placed on the volume. `fly machine restart` takes the
 machine id from `fly status`:
 
 ```bash
@@ -129,11 +144,10 @@ fly status
 fly machine restart <machine-id>
 ```
 
-`passkey-credentials.json` is a secret: it is uploaded over SSH rather than
-baked into the image or set as an env var, and `.dockerignore` keeps it and
-`session.json` out of the build context. Without it the server still
-refreshes the session through the heartbeat but cannot sign back in once
-`w-aref` is rejected.
+Passkey credentials are secrets: they reach the database only encrypted, the
+key is a Fly secret, and `.dockerignore` keeps the single-user files out of the
+build context. Without a credential the server still refreshes the session
+through the heartbeat but cannot sign back in once `w-aref` is rejected.
 
 Verify with `curl https://willsawyerrrr-personal-shopper.fly.dev/healthz`.
 
@@ -158,8 +172,9 @@ domain.
 
 ## Updating
 
-`fly deploy` rebuilds the image and rolls the machine; the volume, and so the
-items and session, persist.
+`fly deploy` rebuilds the image and rolls the machine; the data is in the
+database and persists. Apply new migrations with the Supabase CLI before
+deploying code that needs them.
 
 ## Logs
 

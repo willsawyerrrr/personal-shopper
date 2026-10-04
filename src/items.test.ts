@@ -1,8 +1,6 @@
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { loadItems, resolveItem, saveItems, type ItemsConfig } from './items.ts'
+import { ItemStore, parseItemsYaml, resolveItem, type ItemsConfig } from './items.ts'
+import { createTestDb } from './testing/db.ts'
 
 describe('resolveItem', () => {
   const items: ItemsConfig = {
@@ -22,65 +20,68 @@ describe('resolveItem', () => {
   })
 })
 
-describe('loadItems', () => {
-  let dir: string
-
-  beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'personal-shopper-'))
+describe('parseItemsYaml', () => {
+  it('parses a YAML mapping file', () => {
+    expect(parseItemsYaml('milk:\n  stockcode: 123456\n  quantity: 1\n')).toEqual({
+      milk: { stockcode: 123456, quantity: 1 },
+    })
   })
 
-  afterEach(async () => {
-    await rm(dir, { recursive: true, force: true })
+  it('treats an empty file as no items', () => {
+    expect(parseItemsYaml('')).toEqual({})
   })
 
-  it('parses a YAML mapping file', async () => {
-    const path = join(dir, 'items.yml')
-    await writeFile(path, 'milk:\n  stockcode: 123456\n  quantity: 1\n')
-    await expect(loadItems(path)).resolves.toEqual({ milk: { stockcode: 123456, quantity: 1 } })
-  })
-
-  it('treats a missing file as no items', async () => {
-    await expect(loadItems(join(dir, 'missing.yml'))).resolves.toEqual({})
-  })
-
-  it('treats an empty file as no items', async () => {
-    const path = join(dir, 'items.yml')
-    await writeFile(path, '')
-    await expect(loadItems(path)).resolves.toEqual({})
+  it('ignores fields other than stockcode, quantity and listing', () => {
+    expect(parseItemsYaml('milk:\n  stockcode: 1\n  quantity: 2\n  name: Milk\n')).toEqual({
+      milk: { stockcode: 1, quantity: 2 },
+    })
   })
 })
 
-describe('saveItems', () => {
-  let dir: string
+describe('ItemStore', () => {
+  let db: Awaited<ReturnType<typeof createTestDb>>
+  let store: ItemStore
 
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'personal-shopper-'))
+    db = await createTestDb()
+    store = new ItemStore(db.sql)
   })
 
   afterEach(async () => {
-    await rm(dir, { recursive: true, force: true })
+    await db.close()
   })
 
-  it('writes items back out as YAML loadItems can read', async () => {
-    const path = join(dir, 'items.yml')
+  it('reads no items for an unknown user', async () => {
+    await expect(store.load('nobody@example.com')).resolves.toEqual({})
+  })
+
+  it('round-trips items in order, with listings', async () => {
     const items: ItemsConfig = {
       milk: { stockcode: 123456, quantity: 1, listing: 'Maleny Dairies Full Cream 2L' },
+      bread: { stockcode: 2, quantity: 3 },
     }
-    await saveItems(path, items)
-    await expect(loadItems(path)).resolves.toEqual(items)
+    await store.save('me@example.com', items)
+    const loaded = await store.load('me@example.com')
+    expect(loaded).toEqual(items)
+    expect(Object.keys(loaded)).toEqual(['milk', 'bread'])
   })
 
-  it('ignores fields other than stockcode, quantity and listing', async () => {
-    const path = join(dir, 'items.yml')
-    await writeFile(path, 'milk:\n  stockcode: 1\n  quantity: 2\n  name: Milk\n')
-    await expect(loadItems(path)).resolves.toEqual({ milk: { stockcode: 1, quantity: 2 } })
+  it('replaces the previous items on save', async () => {
+    await store.save('me@example.com', { milk: { stockcode: 1, quantity: 1 } })
+    await store.save('me@example.com', { bread: { stockcode: 2, quantity: 1 } })
+    await expect(store.load('me@example.com')).resolves.toEqual({
+      bread: { stockcode: 2, quantity: 1 },
+    })
   })
 
-  it('replaces the file without leaving a temporary file behind', async () => {
-    const path = join(dir, 'items.yml')
-    await saveItems(path, { milk: { stockcode: 1, quantity: 1 } })
-    await saveItems(path, { bread: { stockcode: 2, quantity: 1 } })
-    await expect(loadItems(path)).resolves.toEqual({ bread: { stockcode: 2, quantity: 1 } })
-    await expect(readdir(dir)).resolves.toEqual(['items.yml'])
+  it('keeps each user their own items, whatever the email casing', async () => {
+    await store.save('Me@Example.com', { milk: { stockcode: 1, quantity: 1 } })
+    await store.save('you@example.com', { milk: { stockcode: 9, quantity: 2 } })
+    await expect(store.load('me@example.com')).resolves.toEqual({
+      milk: { stockcode: 1, quantity: 1 },
+    })
+    await expect(store.load('YOU@example.com')).resolves.toEqual({
+      milk: { stockcode: 9, quantity: 2 },
+    })
   })
 })

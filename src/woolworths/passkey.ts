@@ -1,5 +1,5 @@
 import { createHash, createPrivateKey, sign, type KeyObject } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import type { PasskeyCredential } from '../users/credentials.ts'
 import {
   mergeCookies,
   parseSetCookies,
@@ -21,39 +21,20 @@ const USER_AGENT =
 export const PASSKEY_REJECTED_MESSAGE =
   'Woolworths passkey login was rejected — the stored credential may have been removed; run `pnpm register-passkey` again'
 
-/** A credential as returned by CDP `WebAuthn.getCredentials`. */
-export type PasskeyCredential = Record<string, unknown>
-
-export async function loadCredentials(path: string): Promise<PasskeyCredential[]> {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(await readFile(path, 'utf8'))
-  } catch (error) {
-    throw new Error(
-      `Cannot read passkey credentials at ${path} — run \`pnpm register-passkey\` first (${(error as Error).message})`,
-      { cause: error },
-    )
-  }
-  if (!Array.isArray(parsed) || parsed.length === 0) {
-    throw new Error(`Passkey credentials at ${path} must be a non-empty JSON array`)
-  }
-  return parsed as PasskeyCredential[]
-}
-
 /**
  * Signs in to Woolworths over plain HTTP with the stored passkey and returns
  * the resulting cookies (every `REQUIRED_COOKIES` entry, including `w-aref`,
  * plus any Akamai cookies the responses set). It walks the Auth0 login
  * redirects, signs the WebAuthn challenge embedded in the identifier page with
- * the credential's private key (Ed25519, ES256 or RS256) and posts the
+ * the first credential's private key (Ed25519, ES256 or RS256) and posts the
  * assertion. Throws a descriptive error if Akamai blocks a request, the
  * passkey is rejected, or login completes without the required cookies.
  */
 export async function passkeyLogin(
-  credentialsPath: string,
+  credentials: PasskeyCredential[],
   timeoutMs = LOGIN_TIMEOUT_MS,
 ): Promise<StoredSession> {
-  const [credential] = await loadCredentials(credentialsPath)
+  const [credential] = credentials
   const http = new CookieClient(timeoutMs)
 
   const identifier = await http.follow(LOGIN_URL)

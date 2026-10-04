@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { buildApp } from './app.ts'
 import type { AppConfig } from './config.ts'
 import { IOS_REDIRECT, pkcePair, signInClient, signInWeb, testConfig } from './testing/app.ts'
+import { createTestDb } from './testing/db.ts'
 import { CLIENT_SECRET, FakeGoogle } from './testing/google.ts'
 
 type LogLine = Record<string, unknown>
@@ -13,6 +14,7 @@ type LogLine = Record<string, unknown>
 describe('logging', () => {
   let dir: string
   let config: AppConfig
+  let db: Awaited<ReturnType<typeof createTestDb>>
   let google: FakeGoogle
   let output: string
 
@@ -29,7 +31,10 @@ describe('logging', () => {
       .map((line) => JSON.parse(line) as LogLine)
   const rejections = (): LogLine[] => lines().filter((line) => line.msg === 'auth rejected')
   const build = (overrides: Partial<AppConfig> = {}) =>
-    buildApp({ ...config, logLevel: 'info', ...overrides }, { logStream, fetch: google.fetch })
+    buildApp(
+      { ...config, logLevel: 'info', ...overrides },
+      { sql: db.sql, logStream, fetch: google.fetch },
+    )
   const get = (app: ReturnType<typeof build>, headers: Record<string, string>) =>
     app.inject({
       method: 'GET',
@@ -42,11 +47,13 @@ describe('logging', () => {
     output = ''
     dir = await mkdtemp(join(tmpdir(), 'personal-shopper-logging-'))
     config = testConfig(dir)
+    db = await createTestDb()
     google = await FakeGoogle.create()
   })
 
   afterEach(async () => {
     await rm(dir, { recursive: true })
+    await db.close()
   })
 
   describe('auth rejections', () => {
@@ -114,7 +121,7 @@ describe('logging', () => {
       let clock = Date.now()
       const app = buildApp(
         { ...config, logLevel: 'info' },
-        { logStream, fetch: google.fetch, now: () => clock },
+        { sql: db.sql, logStream, fetch: google.fetch, now: () => clock },
       )
       const token = await signInClient(app, google)
       clock += 91 * 24 * 60 * 60 * 1000

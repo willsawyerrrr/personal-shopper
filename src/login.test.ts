@@ -12,6 +12,7 @@ import {
   signInWeb,
   testConfig,
 } from './testing/app.ts'
+import { createTestDb } from './testing/db.ts'
 import { FakeGoogle } from './testing/google.ts'
 
 const DAY = 24 * 60 * 60 * 1000
@@ -19,11 +20,15 @@ const DAY = 24 * 60 * 60 * 1000
 describe('Google sign-in', () => {
   let dir: string
   let config: AppConfig
+  let db: Awaited<ReturnType<typeof createTestDb>>
   let google: FakeGoogle
   let clock: number
   let apps: ReturnType<typeof buildApp>[]
   const build = (overrides: Partial<AppConfig> = {}) => {
-    const app = buildApp({ ...config, ...overrides }, { fetch: google.fetch, now: () => clock })
+    const app = buildApp(
+      { ...config, ...overrides },
+      { sql: db.sql, fetch: google.fetch, now: () => clock },
+    )
     apps.push(app)
     return app
   }
@@ -42,6 +47,7 @@ describe('Google sign-in', () => {
   beforeEach(async () => {
     apps = []
     dir = await mkdtemp(join(tmpdir(), 'personal-shopper-login-'))
+    db = await createTestDb()
     clock = Date.now()
     google = await FakeGoogle.create(() => clock)
     config = testConfig(dir)
@@ -50,6 +56,7 @@ describe('Google sign-in', () => {
   afterEach(async () => {
     await Promise.all(apps.map((app) => app.close()))
     await rm(dir, { recursive: true })
+    await db.close()
   })
 
   describe('browser flow', () => {
@@ -357,7 +364,7 @@ describe('Google sign-in', () => {
       it('refuses a code whose account has since left the allowlist', async () => {
         const stricter = buildApp(
           { ...config, allowedEmails: ['someone-else@example.com'] },
-          { fetch: google.fetch, now: () => clock },
+          { sql: db.sql, fetch: google.fetch, now: () => clock },
         )
         expect(
           (

@@ -1,8 +1,9 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ItemStore } from './items.ts'
+import { ItemStore as Items } from './items.ts'
 import { createListingBackfill, lookupListing } from './listings.ts'
+import { seedItems } from './testing/app.ts'
+import { createTestDb } from './testing/db.ts'
 
 const log = { warn: vi.fn() }
 
@@ -26,22 +27,23 @@ describe('lookupListing', () => {
 })
 
 describe('createListingBackfill', () => {
-  let dir: string
-  let path: string
+  let db: Awaited<ReturnType<typeof createTestDb>>
+  let items: ItemStore
+  const EMAIL = 'me@example.com'
 
   beforeEach(async () => {
     log.warn.mockClear()
-    dir = await mkdtemp(join(tmpdir(), 'personal-shopper-'))
-    path = join(dir, 'items.yml')
+    db = await createTestDb()
+    items = new Items(db.sql)
   })
 
   afterEach(async () => {
-    await rm(dir, { recursive: true })
+    await db.close()
   })
 
   it('fills only items without a listing and logs failures without throwing', async () => {
-    await writeFile(
-      path,
+    await seedItems(
+      db.sql,
       'milk:\n  stockcode: 1\n  quantity: 1\nbread:\n  stockcode: 2\n  quantity: 1\n  listing: Bread\neggs:\n  stockcode: 3\n  quantity: 1\n',
     )
     const lookup = {
@@ -52,44 +54,53 @@ describe('createListingBackfill', () => {
         return 'Milk 2L'
       }),
     }
-    await createListingBackfill(path, lookup, log)()
+    await createListingBackfill(items, EMAIL, lookup, log)()
     expect(lookup.listing).toHaveBeenCalledTimes(2)
-    const written = await readFile(path, 'utf8')
-    expect(written).toContain('listing: Milk 2L')
-    expect(written).toContain('listing: Bread')
+    const written = await items.load(EMAIL)
+    expect(written.milk?.listing).toBe('Milk 2L')
+    expect(written.bread?.listing).toBe('Bread')
+    expect(written.eggs?.listing).toBeUndefined()
     expect(log.warn).toHaveBeenCalledOnce()
   })
 
   it('does not overwrite an item whose stockcode changed during the lookup', async () => {
-    await writeFile(path, 'milk:\n  stockcode: 1\n  quantity: 1\n')
+    await seedItems(db.sql, 'milk:\n  stockcode: 1\n  quantity: 1\n')
     const lookup = {
       listing: vi.fn(async () => {
-        await writeFile(path, 'milk:\n  stockcode: 7\n  quantity: 1\n')
+        await seedItems(db.sql, 'milk:\n  stockcode: 7\n  quantity: 1\n')
         return 'Milk 2L'
       }),
     }
-    await createListingBackfill(path, lookup, log)()
-    expect(await readFile(path, 'utf8')).not.toContain('listing')
+    await createListingBackfill(items, EMAIL, lookup, log)()
+    expect((await items.load(EMAIL)).milk?.listing).toBeUndefined()
   })
 
   it('runs once for overlapping triggers', async () => {
-    await writeFile(path, 'milk:\n  stockcode: 1\n  quantity: 1\n')
+    await seedItems(db.sql, 'milk:\n  stockcode: 1\n  quantity: 1\n')
     const lookup = { listing: vi.fn().mockResolvedValue('Milk 2L') }
-    const backfill = createListingBackfill(path, lookup, log)
+    const backfill = createListingBackfill(items, EMAIL, lookup, log)
     await Promise.all([backfill(), backfill()])
     expect(lookup.listing).toHaveBeenCalledOnce()
   })
 
   it('does nothing without a lookup', async () => {
-    await writeFile(path, 'milk:\n  stockcode: 1\n  quantity: 1\n')
-    await createListingBackfill(path, undefined, log)()
-    expect(await readFile(path, 'utf8')).not.toContain('listing')
+    await seedItems(db.sql, 'milk:\n  stockcode: 1\n  quantity: 1\n')
+    await createListingBackfill(items, EMAIL, undefined, log)()
+    expect((await items.load(EMAIL)).milk?.listing).toBeUndefined()
   })
 
-  it('logs a failure to read the items file', async () => {
-    await writeFile(path, 'milk: [\n')
+  it('only touches the given user', async () => {
+    await seedItems(db.sql, 'milk:\n  stockcode: 1\n  quantity: 1\n')
+    await seedItems(db.sql, 'milk:\n  stockcode: 1\n  quantity: 1\n', 'you@example.com')
+    const lookup = { listing: vi.fn().mockResolvedValue('Milk 2L') }
+    await createListingBackfill(items, EMAIL, lookup, log)()
+    expect((await items.load('you@example.com')).milk?.listing).toBeUndefined()
+  })
+
+  it('logs a failure to read the items', async () => {
     const lookup = { listing: vi.fn() }
-    await createListingBackfill(path, lookup, log)()
+    const broken = { load: vi.fn().mockRejectedValue(new Error('down')) } as unknown as ItemStore
+    await createListingBackfill(broken, EMAIL, lookup, log)()
     expect(log.warn).toHaveBeenCalledOnce()
   })
 })

@@ -6,6 +6,7 @@ const BASE = {
   GOOGLE_CLIENT_SECRET: 'client-secret',
   ALLOWED_EMAILS: 'me@example.com',
   PUBLIC_BASE_URL: 'https://shop.example.com',
+  DATABASE_URL: 'postgres://db.example.com/postgres',
 }
 
 describe('loadConfig', () => {
@@ -31,11 +32,16 @@ describe('loadConfig', () => {
       allowedEmails: ['me@example.com'],
       publicBaseUrl: 'https://shop.example.com',
       allowedClientRedirects: ['dev.willsawyerrrr.personalshopper://auth'],
-      tokenStorePath: 'tokens.json',
-      itemsPath: 'items.yml',
-      sessionPath: 'session.json',
+      databaseUrl: 'postgres://db.example.com/postgres',
+      legacyFiles: {
+        tokens: 'tokens.json',
+        items: 'items.yml',
+        session: 'session.json',
+        passkeyCredentials: 'passkey-credentials.json',
+      },
+      ownerEmail: 'me@example.com',
+      credentialsEncryptionKey: undefined,
       sessionKeepAliveIntervalMs: 6 * 60 * 60 * 1000,
-      passkeyCredentialsPath: 'passkey-credentials.json',
       remindersSync: undefined,
     })
   })
@@ -53,11 +59,47 @@ describe('loadConfig', () => {
     })
     expect(config.port).toBe(4000)
     expect(config.trustProxy).toBe(true)
-    expect(config.itemsPath).toBe('/tmp/items.yml')
-    expect(config.sessionPath).toBe('/tmp/session.json')
+    expect(config.legacyFiles).toEqual({
+      tokens: '/tmp/tokens.json',
+      items: '/tmp/items.yml',
+      session: '/tmp/session.json',
+      passkeyCredentials: '/tmp/passkey.json',
+    })
     expect(config.sessionKeepAliveIntervalMs).toBe(0)
-    expect(config.passkeyCredentialsPath).toBe('/tmp/passkey.json')
-    expect(config.tokenStorePath).toBe('/tmp/tokens.json')
+  })
+
+  it('makes the first allowed email the owner by default', () => {
+    expect(
+      loadConfig({ ...BASE, ALLOWED_EMAILS: 'First@Example.com,second@example.com' }).ownerEmail,
+    ).toBe('first@example.com')
+  })
+
+  it('reads the owner from REMINDERS_OWNER_EMAIL', () => {
+    expect(
+      loadConfig({
+        ...BASE,
+        ALLOWED_EMAILS: 'a@example.com,b@example.com',
+        REMINDERS_OWNER_EMAIL: ' B@Example.com ',
+      }).ownerEmail,
+    ).toBe('b@example.com')
+  })
+
+  it('reads the credentials encryption key as base64 or hex', () => {
+    const key = Buffer.alloc(32, 7)
+    expect(
+      loadConfig({ ...BASE, CREDENTIALS_ENCRYPTION_KEY: key.toString('base64') })
+        .credentialsEncryptionKey,
+    ).toEqual(key)
+    expect(
+      loadConfig({ ...BASE, CREDENTIALS_ENCRYPTION_KEY: key.toString('hex') })
+        .credentialsEncryptionKey,
+    ).toEqual(key)
+  })
+
+  it('rejects a credentials encryption key of the wrong length', () => {
+    expect(() => loadConfig({ ...BASE, CREDENTIALS_ENCRYPTION_KEY: 'c2hvcnQ=' })).toThrow(
+      'CREDENTIALS_ENCRYPTION_KEY must be 32 bytes',
+    )
   })
 
   it('lower-cases and trims the allowed emails', () => {

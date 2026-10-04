@@ -1,6 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { ensureUser, type Sql } from './db.ts'
 
 export type TokenClient = 'web' | 'ios' | 'extension'
 
@@ -27,7 +26,7 @@ export const WEB_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
 /** Expired records are kept this long so a stale token reports `expired_token`. */
 const EXPIRED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
-/** Sliding-expiry bumps are written to disk at most this often per token. */
+/** Sliding-expiry bumps are written at most this often per token. */
 const PERSIST_INTERVAL_MS = 60 * 60 * 1000
 const SESSION_ID_LENGTH = 16
 
@@ -35,44 +34,35 @@ export function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex')
 }
 
+interface TokenRow {
+  hash: string
+  email: string
+  client: TokenClient
+  created_at: string
+  last_used_at: string
+  expires_at: string
+}
+
+function toRecord(row: TokenRow): TokenRecord {
+  return {
+    hash: row.hash,
+    email: row.email,
+    client: row.client,
+    createdAt: Number(row.created_at),
+    lastUsedAt: Number(row.last_used_at),
+    expiresAt: Number(row.expires_at),
+  }
+}
+
 /**
- * Opaque bearer tokens (32 random bytes) stored as SHA-256 hashes in a JSON
- * file, written atomically. Each use slides the token's expiry forward by its
- * lifetime.
+ * Opaque bearer tokens (32 random bytes) stored as SHA-256 hashes in
+ * Postgres. Each use slides the token's expiry forward by its lifetime.
  */
 export class TokenStore {
-  private records = new Map<string, TokenRecord>()
-  private loaded = false
-  private writing: Promise<void> = Promise.resolve()
-
   constructor(
-    private readonly path: string,
+    private readonly sql: Sql,
     private readonly now: () => number = Date.now,
-    private readonly onError: (error: unknown) => void = () => {},
   ) {}
-
-  /** Reads the file, treating a missing one as empty; a corrupt one throws. */
-  async load(): Promise<void> {
-    if (this.loaded) {
-      return
-    }
-    let text: string
-    try {
-      text = await readFile(this.path, 'utf8')
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        throw error
-      }
-      this.loaded = true
-      return
-    }
-    const parsed = JSON.parse(text) as { tokens?: TokenRecord[] }
-    if (!Array.isArray(parsed.tokens)) {
-      throw new Error(`${this.path} is not a token store`)
-    }
-    this.records = new Map(parsed.tokens.map((record) => [record.hash, record]))
-    this.loaded = true
-  }
 
   /** Mints a token for `email`; `ttlMs` is also the sliding window. */
   async issue(
@@ -80,101 +70,76 @@ export class TokenStore {
     client: TokenClient,
     ttlMs: number = DEFAULT_TOKEN_TTL_MS,
   ): Promise<{ token: string; expiresAt: number }> {
-    await this.load()
     const token = `ps_${randomBytes(32).toString('base64url')}`
     const now = this.now()
-    const record: TokenRecord = {
-      hash: hashToken(token),
-      email,
-      client,
-      createdAt: now,
-      lastUsedAt: now,
-      expiresAt: now + ttlMs,
-    }
-    for (const [hash, existing] of this.records) {
-      if (existing.expiresAt + EXPIRED_RETENTION_MS < now) {
-        this.records.delete(hash)
-      }
-    }
-    this.records.set(record.hash, record)
-    await this.persist()
-    return { token, expiresAt: record.expiresAt }
+    const userId = await ensureUser(this.sql, email)
+    const expiresAt = now + ttlMs
+    await this.sql`delete from tokens where expires_at + ${EXPIRED_RETENTION_MS} < ${now}`
+    await this.sql`
+      insert into tokens (hash, user_id, client, created_at, last_used_at, expires_at)
+      values (${hashToken(token)}, ${userId}, ${client}, ${now}, ${now}, ${expiresAt})`
+    return { token, expiresAt }
   }
 
   /** Checks `token` and, if valid, slides its expiry forward. */
   async verify(token: string): Promise<TokenCheck> {
-    await this.load()
-    const record = this.records.get(hashToken(token))
-    if (!record) {
+    const [row] = await this.sql<TokenRow[]>`
+      select t.hash, u.email, t.client, t.created_at, t.last_used_at, t.expires_at
+      from tokens t join users u on u.id = t.user_id
+      where t.hash = ${hashToken(token)}`
+    if (!row) {
       return { ok: false, reason: 'invalid_token' }
     }
+    const record = toRecord(row)
     const now = this.now()
     if (record.expiresAt <= now) {
       return { ok: false, reason: 'expired_token' }
     }
-    const ttlMs = record.expiresAt - record.lastUsedAt
-    const stale = now - record.lastUsedAt >= PERSIST_INTERVAL_MS
-    record.expiresAt = now + ttlMs
-    record.lastUsedAt = now
-    if (stale) {
-      this.persist().catch(this.onError)
+    if (now - record.lastUsedAt >= PERSIST_INTERVAL_MS) {
+      const expiresAt = now + (record.expiresAt - record.lastUsedAt)
+      await this.sql`
+        update tokens set last_used_at = ${now}, expires_at = ${expiresAt}
+        where hash = ${record.hash}`
+      record.lastUsedAt = now
+      record.expiresAt = expiresAt
     }
     return { ok: true, record }
   }
 
   /** Revokes the presented token; returns whether it existed. */
   async revoke(token: string): Promise<boolean> {
-    return this.revokeHash(hashToken(token))
+    const deleted = await this.sql`delete from tokens where hash = ${hashToken(token)}`
+    return deleted.count > 0
   }
 
   /** Revokes the session whose `id` came from `list`. */
   async revokeById(id: string): Promise<boolean> {
-    await this.load()
-    const match = [...this.records.keys()].find(
-      (hash) => id.length === SESSION_ID_LENGTH && hash.startsWith(id),
-    )
-    return match !== undefined && this.revokeHash(match)
+    if (!/^[0-9a-f]+$/.test(id) || id.length !== SESSION_ID_LENGTH) {
+      return false
+    }
+    const deleted = await this.sql`delete from tokens where starts_with(hash, ${id})`
+    return deleted.count > 0
   }
 
   /** Unexpired sessions, newest first. */
   async list(): Promise<SessionSummary[]> {
-    await this.load()
-    const now = this.now()
-    return [...this.records.values()]
-      .filter((record) => record.expiresAt > now)
-      .sort((a, b) => b.createdAt - a.createdAt)
-      .map(({ hash, ...rest }) => ({ id: hash.slice(0, SESSION_ID_LENGTH), ...rest }))
+    const rows = await this.sql<TokenRow[]>`
+      select t.hash, u.email, t.client, t.created_at, t.last_used_at, t.expires_at
+      from tokens t join users u on u.id = t.user_id
+      where t.expires_at > ${this.now()}
+      order by t.created_at desc`
+    return rows.map(toRecord).map(({ hash, ...rest }) => ({
+      id: hash.slice(0, SESSION_ID_LENGTH),
+      ...rest,
+    }))
   }
 
-  /** Resolves once every queued write has finished. */
-  async flush(): Promise<void> {
-    await this.writing
+  /** The distinct emails with an unexpired session. */
+  async emails(): Promise<string[]> {
+    return [...new Set((await this.list()).map((session) => session.email))]
   }
 
   sessionId(record: TokenRecord): string {
     return record.hash.slice(0, SESSION_ID_LENGTH)
-  }
-
-  private async revokeHash(hash: string): Promise<boolean> {
-    await this.load()
-    if (!this.records.delete(hash)) {
-      return false
-    }
-    await this.persist()
-    return true
-  }
-
-  // Writes are chained so a slow one never lands after a newer snapshot.
-  private persist(): Promise<void> {
-    const write = this.writing.then(async () => {
-      const temp = `${this.path}.tmp`
-      await mkdir(dirname(this.path), { recursive: true })
-      await writeFile(temp, JSON.stringify({ tokens: [...this.records.values()] }), {
-        mode: 0o600,
-      })
-      await rename(temp, this.path)
-    })
-    this.writing = write.catch(() => {})
-    return write
   }
 }

@@ -1,17 +1,20 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { parse } from 'yaml'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildApp } from './app.ts'
+import { TokenStore } from './tokens.ts'
 import type { ItemsConfig } from './items.ts'
 import type { AppConfig } from './config.ts'
-import { signInClient, signInWeb, testConfig } from './testing/app.ts'
+import { itemsYaml, seedItems, signInClient, signInWeb, testConfig } from './testing/app.ts'
+import { createTestDb } from './testing/db.ts'
 import { FakeGoogle } from './testing/google.ts'
 
 describe('admin', () => {
   let dir: string
+  let db: Awaited<ReturnType<typeof createTestDb>>
   let config: AppConfig
   let google: FakeGoogle
   let app: FastifyInstance
@@ -19,15 +22,17 @@ describe('admin', () => {
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'personal-shopper-admin-'))
+    db = await createTestDb()
     config = testConfig(dir)
-    await writeFile(config.itemsPath, 'milk:\n  stockcode: 123456\n  quantity: 1\n')
+    await seedItems(db.sql, 'milk:\n  stockcode: 123456\n  quantity: 1\n')
     google = await FakeGoogle.create()
-    app = buildApp(config, { fetch: google.fetch })
+    app = buildApp(config, { sql: db.sql, fetch: google.fetch })
     authHeader = { cookie: await signInWeb(app, google) }
   })
 
   afterEach(async () => {
     await rm(dir, { recursive: true })
+    await db.close()
   })
 
   it('serves a Google sign-in button instead of a password form', async () => {
@@ -58,7 +63,7 @@ describe('admin', () => {
   it('answers unauthenticated browser writes with 401', async () => {
     const response = await app.inject({ method: 'POST', url: '/admin/items/milk/delete' })
     expect(response.statusCode).toBe(401)
-    expect(await readFile(config.itemsPath, 'utf8')).toContain('milk:')
+    expect(await itemsYaml(db.sql)).toContain('milk:')
   })
 
   it('signs out by revoking the session and clearing the cookie', async () => {
@@ -154,7 +159,7 @@ describe('admin', () => {
       },
     })
     expect(response.statusCode).toBe(302)
-    const items = await readFile(config.itemsPath, 'utf8')
+    const items = await itemsYaml(db.sql)
     expect(items).toContain('bread:')
     expect(items).toContain('888137')
     expect(items).toContain('quantity: 2')
@@ -168,7 +173,7 @@ describe('admin', () => {
       payload: { word: 'eggs', url: '654321' },
     })
     expect(response.statusCode).toBe(302)
-    const items = await readFile(config.itemsPath, 'utf8')
+    const items = await itemsYaml(db.sql)
     expect(items).toContain('eggs:')
     expect(items).toContain('654321')
   })
@@ -182,7 +187,7 @@ describe('admin', () => {
     })
     expect(response.statusCode).toBe(400)
     expect(response.body).toContain('Could not find a stockcode')
-    const items = await readFile(config.itemsPath, 'utf8')
+    const items = await itemsYaml(db.sql)
     expect(items).not.toContain('bread:')
   })
 
@@ -203,14 +208,12 @@ describe('admin', () => {
     })
     expect(response.statusCode).toBe(302)
     expect(response.headers.location).toBe('/admin')
-    expect(await readFile(config.itemsPath, 'utf8')).toBe(
-      'oat milk:\n  stockcode: 654321\n  quantity: 3\n',
-    )
+    expect(await itemsYaml(db.sql)).toBe('oat milk:\n  stockcode: 654321\n  quantity: 3\n')
   })
 
   it('re-renders the page with the error when a web edit collides', async () => {
-    await writeFile(
-      config.itemsPath,
+    await seedItems(
+      db.sql,
       'milk:\n  stockcode: 1\n  quantity: 1\nbread:\n  stockcode: 2\n  quantity: 1\n',
     )
     const response = await app.inject({
@@ -221,7 +224,7 @@ describe('admin', () => {
     })
     expect(response.statusCode).toBe(409)
     expect(response.body).toContain('already used by another item')
-    expect(await readFile(config.itemsPath, 'utf8')).toContain('milk:')
+    expect(await itemsYaml(db.sql)).toContain('milk:')
   })
 
   it('answers unauthenticated web edits with 401', async () => {
@@ -232,7 +235,7 @@ describe('admin', () => {
       payload: 'word=oat&url=1',
     })
     expect(response.statusCode).toBe(401)
-    expect(await readFile(config.itemsPath, 'utf8')).toContain('milk:')
+    expect(await itemsYaml(db.sql)).toContain('milk:')
   })
 
   it('removes an item', async () => {
@@ -242,7 +245,7 @@ describe('admin', () => {
       headers: authHeader,
     })
     expect(response.statusCode).toBe(302)
-    const items = await readFile(config.itemsPath, 'utf8')
+    const items = await itemsYaml(db.sql)
     expect(items).not.toContain('milk:')
   })
 
@@ -289,7 +292,7 @@ describe('admin', () => {
         stockcode: 888137,
         quantity: 2,
       })
-      expect(await readFile(config.itemsPath, 'utf8')).toContain('bread:')
+      expect(await itemsYaml(db.sql)).toContain('bread:')
     })
 
     it('rejects a URL without a stockcode', async () => {
@@ -319,8 +322,8 @@ describe('admin', () => {
         await app.inject({ method: 'PATCH', url: `/admin/items/${word}`, headers: json, payload })
 
       beforeEach(async () => {
-        await writeFile(
-          config.itemsPath,
+        await seedItems(
+          db.sql,
           'milk:\n  stockcode: 1\n  quantity: 1\n  listing: Milk 2L\nbread:\n  stockcode: 2\n  quantity: 1\neggs:\n  stockcode: 3\n  quantity: 1\n',
         )
       })
@@ -329,27 +332,19 @@ describe('admin', () => {
         const response = await patch('bread', { quantity: 4, stockcode: 99 })
         expect(response.statusCode).toBe(200)
         expect(response.json()).toEqual({ word: 'bread', stockcode: 99, quantity: 4 })
-        expect(parse(await readFile(config.itemsPath, 'utf8'))).toEqual({
+        expect(parse(await itemsYaml(db.sql))).toEqual({
           milk: { stockcode: 1, quantity: 1, listing: 'Milk 2L' },
           bread: { stockcode: 99, quantity: 4 },
           eggs: { stockcode: 3, quantity: 1 },
         })
-        expect(Object.keys(parse(await readFile(config.itemsPath, 'utf8')))).toEqual([
-          'milk',
-          'bread',
-          'eggs',
-        ])
+        expect(Object.keys(parse(await itemsYaml(db.sql)))).toEqual(['milk', 'bread', 'eggs'])
       })
 
       it('renames the phrase in place, normalised', async () => {
         const response = await patch('bread', { word: '  Sourdough ' })
         expect(response.statusCode).toBe(200)
         expect(response.json().word).toBe('sourdough')
-        expect(Object.keys(parse(await readFile(config.itemsPath, 'utf8')))).toEqual([
-          'milk',
-          'sourdough',
-          'eggs',
-        ])
+        expect(Object.keys(parse(await itemsYaml(db.sql)))).toEqual(['milk', 'sourdough', 'eggs'])
       })
 
       it('accepts a rename that only changes case', async () => {
@@ -374,7 +369,7 @@ describe('admin', () => {
         const response = await patch('bread', { word: 'Milk' })
         expect(response.statusCode).toBe(409)
         expect(response.json().error).toContain('already used')
-        expect(parse(await readFile(config.itemsPath, 'utf8')).bread).toBeDefined()
+        expect(parse(await itemsYaml(db.sql)).bread).toBeDefined()
       })
 
       it('answers an unknown word with 404', async () => {
@@ -394,11 +389,11 @@ describe('admin', () => {
         { word: '   ' },
         { word: 5 },
       ])('rejects %j with 400 and writes nothing', async (payload) => {
-        const before = await readFile(config.itemsPath, 'utf8')
+        const before = await itemsYaml(db.sql)
         const response = await patch('bread', payload)
         expect(response.statusCode).toBe(400)
         expect(response.json().error).toEqual(expect.any(String))
-        expect(await readFile(config.itemsPath, 'utf8')).toBe(before)
+        expect(await itemsYaml(db.sql)).toBe(before)
       })
 
       it('answers unauthenticated requests with 401', async () => {
@@ -419,7 +414,7 @@ describe('admin', () => {
         headers: json,
       })
       expect(response.statusCode).toBe(204)
-      expect(await readFile(config.itemsPath, 'utf8')).not.toContain('milk:')
+      expect(await itemsYaml(db.sql)).not.toContain('milk:')
     })
 
     it('removes an item with 204', async () => {
@@ -429,13 +424,14 @@ describe('admin', () => {
         headers: json,
       })
       expect(response.statusCode).toBe(204)
-      expect(await readFile(config.itemsPath, 'utf8')).not.toContain('milk:')
+      expect(await itemsYaml(db.sql)).not.toContain('milk:')
     })
   })
 })
 
 describe('admin listing text', () => {
   let dir: string
+  let db: Awaited<ReturnType<typeof createTestDb>>
   let config: AppConfig
   let google: FakeGoogle
   let app: FastifyInstance
@@ -443,21 +439,23 @@ describe('admin listing text', () => {
   const listings: Record<number, string> = { 1: 'Milk 2L', 2: 'Bread 650g', 99: 'Rye 500g' }
   const lookup = { listing: vi.fn(async (stockcode: number) => listings[stockcode]) }
 
-  const readItems = async () => parse(await readFile(config.itemsPath, 'utf8')) as ItemsConfig
+  const readItems = async () => parse(await itemsYaml(db.sql)) as ItemsConfig
 
   beforeEach(async () => {
     lookup.listing.mockClear()
     dir = await mkdtemp(join(tmpdir(), 'personal-shopper-admin-'))
+    db = await createTestDb()
     config = testConfig(dir)
-    await writeFile(config.itemsPath, 'milk:\n  stockcode: 1\n  quantity: 1\n  name: Guess\n')
+    await seedItems(db.sql, 'milk:\n  stockcode: 1\n  quantity: 1\n  name: Guess\n')
     google = await FakeGoogle.create()
-    app = buildApp(config, { fetch: google.fetch, lookup })
+    app = buildApp(config, { sql: db.sql, fetch: google.fetch, lookup: () => lookup })
     json = { cookie: await signInWeb(app, google), accept: 'application/json' }
   })
 
   afterEach(async () => {
     await app.close()
     await rm(dir, { recursive: true })
+    await db.close()
   })
 
   it('stores the listing of an added item and returns it', async () => {
@@ -528,5 +526,92 @@ describe('admin listing text', () => {
     await vi.waitFor(async () => expect((await readItems()).milk?.listing).toBe('Milk 2L'))
     const response = await app.inject({ method: 'GET', url: '/admin', headers: json })
     expect(response.body).toContain('<div class="listing">Milk 2L</div>')
+  })
+})
+
+describe('admin with several users', () => {
+  let dir: string
+  let db: Awaited<ReturnType<typeof createTestDb>>
+  let google: FakeGoogle
+  let app: FastifyInstance
+  let me: { authorization: string; accept: string }
+  let you: { authorization: string; accept: string }
+  const lookupFor = vi.fn((email: string) => ({
+    listing: async () => `Listing for ${email}`,
+  }))
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'personal-shopper-admin-'))
+    db = await createTestDb()
+    const config = testConfig(dir, { allowedEmails: ['me@example.com', 'you@example.com'] })
+    google = await FakeGoogle.create()
+    app = buildApp(config, { sql: db.sql, fetch: google.fetch, lookup: lookupFor })
+    const bearer = async (email: string) => ({
+      authorization: `Bearer ${await signInClient(app, google, { overrides: { email } })}`,
+      accept: 'application/json',
+    })
+    me = await bearer('me@example.com')
+    you = await bearer('you@example.com')
+  })
+
+  afterEach(async () => {
+    await app.close()
+    await rm(dir, { recursive: true })
+    await db.close()
+  })
+
+  const add = (headers: typeof me, word: string, url: string) =>
+    app.inject({ method: 'POST', url: '/admin/items', headers, payload: { word, url } })
+  const list = async (headers: typeof me) =>
+    (await app.inject({ method: 'GET', url: '/admin/items', headers })).json()
+
+  it('keeps each user their own items, looked up through their own account', async () => {
+    await add(me, 'milk', '1')
+    await add(you, 'milk', '2')
+    await add(you, 'bread', '3')
+    expect(await list(me)).toEqual({
+      items: [{ word: 'milk', stockcode: 1, quantity: 1, listing: 'Listing for me@example.com' }],
+    })
+    expect((await list(you)).items).toHaveLength(2)
+    expect(lookupFor).toHaveBeenCalledWith('you@example.com')
+  })
+
+  it("edits and removes only the signed-in user's items", async () => {
+    await add(me, 'milk', '1')
+    await add(you, 'milk', '2')
+    await app.inject({
+      method: 'PATCH',
+      url: '/admin/items/milk',
+      headers: you,
+      payload: { quantity: 5 },
+    })
+    await app.inject({ method: 'DELETE', url: '/admin/items/milk', headers: me })
+    expect((await list(me)).items).toEqual([])
+    expect((await list(you)).items).toMatchObject([{ word: 'milk', stockcode: 2, quantity: 5 }])
+  })
+
+  it("shows the page only the signed-in user's items and sessions", async () => {
+    await add(me, 'milk', '1')
+    await add(you, 'oatmilk', '2')
+    const cookie = await signInWeb(app, google, { email: 'you@example.com' })
+    const page = (await app.inject({ method: 'GET', url: '/admin', headers: { cookie } })).body
+    expect(page).toContain('oatmilk')
+    expect(page).not.toContain('<strong>milk</strong>')
+    expect(page).toContain('you@example.com')
+    expect(page).not.toContain('me@example.com')
+  })
+
+  it("does not let a user revoke another user's session", async () => {
+    const cookie = await signInWeb(app, google, { email: 'you@example.com' })
+    const [mine] = (await new TokenStore(db.sql).list()).filter(
+      (session) => session.email === 'me@example.com',
+    )
+    const response = await app.inject({
+      method: 'POST',
+      url: `/admin/sessions/${mine?.id}/revoke`,
+      headers: { cookie, accept: 'application/json' },
+    })
+    expect(response.statusCode).toBe(204)
+    expect((await list(me)).items).toEqual([])
   })
 })
