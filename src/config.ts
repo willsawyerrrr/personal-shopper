@@ -22,8 +22,10 @@ export interface LegacyFiles {
 export interface Limits {
   /** Total users; a Google account beyond this cannot sign up. */
   maxUsers: number
-  /** Items a user may map. */
-  maxItemsPerUser: number
+  /** Items a household may map. */
+  maxItemsPerHousehold: number
+  /** Unexpired invites a household may hold at once. */
+  maxInvitesPerHousehold: number
   /** Unexpired tokens (sign-ins) a user may hold at once. */
   maxTokensPerUser: number
   /** Authenticated requests per minute per user on `/admin` and `/cart`. */
@@ -34,7 +36,8 @@ export interface Limits {
 
 export const DEFAULT_LIMITS: Limits = {
   maxUsers: 50,
-  maxItemsPerUser: 200,
+  maxItemsPerHousehold: 200,
+  maxInvitesPerHousehold: 5,
   maxTokensPerUser: 20,
   userRequestsPerMinute: 120,
   ipRequestsPerMinute: 30,
@@ -110,7 +113,16 @@ export function resolveOwnerEmail(env: NodeJS.ProcessEnv = process.env): string 
 function loadLimits(env: NodeJS.ProcessEnv): Limits {
   return {
     maxUsers: positiveInt(env, 'MAX_USERS', DEFAULT_LIMITS.maxUsers),
-    maxItemsPerUser: positiveInt(env, 'MAX_ITEMS_PER_USER', DEFAULT_LIMITS.maxItemsPerUser),
+    maxItemsPerHousehold: positiveInt(
+      env,
+      'MAX_ITEMS_PER_HOUSEHOLD',
+      DEFAULT_LIMITS.maxItemsPerHousehold,
+    ),
+    maxInvitesPerHousehold: positiveInt(
+      env,
+      'MAX_INVITES_PER_HOUSEHOLD',
+      DEFAULT_LIMITS.maxInvitesPerHousehold,
+    ),
     maxTokensPerUser: positiveInt(env, 'MAX_TOKENS_PER_USER', DEFAULT_LIMITS.maxTokensPerUser),
     userRequestsPerMinute: positiveInt(
       env,

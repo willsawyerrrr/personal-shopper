@@ -12,6 +12,7 @@ struct SettingsView: View {
             Form {
                 Section {
                     if session.signedIn {
+                        NavigationLink("Household") { HouseholdView(session: session) }
                         Button("Test connection") { Task { await test() } }
                         Button("Sign out", role: .destructive) { Task { await signOut() } }
                     } else {

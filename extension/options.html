@@ -94,6 +94,29 @@
         font-size: 0.85rem;
         color: #b3261e;
       }
+      #household {
+        margin-top: 1.5rem;
+        padding-top: 1.25rem;
+        border-top: 1px solid var(--color-border);
+      }
+      #household .hint,
+      #householdState,
+      #inviteState {
+        margin: 0 0 0.85rem;
+        font-size: 0.8rem;
+        color: var(--color-text-muted);
+      }
+      #members {
+        margin: 0 0 0.85rem;
+        padding-left: 1.1rem;
+        font-size: 0.85rem;
+      }
+      #householdState.error {
+        color: #b3261e;
+      }
+      #household button {
+        margin: 0 0.4rem 0.5rem 0;
+      }
     </style>
   </head>
   <body>
@@ -115,6 +138,21 @@
       <button id="registerPasskey" type="button">Register passkey</button>
       <button id="cancelPasskey" type="button" class="secondary" hidden>Cancel</button>
       <button id="removePasskey" type="button" class="secondary" hidden>Remove passkey</button>
+    </section>
+    <section id="household" hidden>
+      <h2>Household</h2>
+      <p class="hint">Members share the same items and one Woolworths account.</p>
+      <ul id="members"></ul>
+      <button id="createInvite" type="button">Create invite code</button>
+      <p id="inviteState"></p>
+      <label
+        >Invite code
+        <input id="inviteCode" autocomplete="off" />
+      </label>
+      <button id="joinHousehold" type="button">Join household</button>
+      <p class="hint">Joining discards your current items if nobody else is in your household.</p>
+      <button id="leaveHousehold" type="button" class="secondary" hidden>Leave household</button>
+      <p id="householdState"></p>
     </section>
     <script type="module" src="options.js"></script>
   </body>

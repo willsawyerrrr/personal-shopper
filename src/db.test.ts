@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { admitUser, ensureUser } from './db.ts'
+import { admitUser, ensureHousehold, ensureUser } from './db.ts'
 import { createTestDb } from './testing/db.ts'
 
 describe('migrations', () => {
@@ -18,6 +18,8 @@ describe('migrations', () => {
       select relname, relrowsecurity from pg_class
       where relkind = 'r' and relnamespace = current_schema()::regnamespace`
     expect(tables.map((table) => table.relname).sort()).toEqual([
+      'household_invites',
+      'households',
       'items',
       'passkey_credentials',
       'tokens',
@@ -47,8 +49,24 @@ describe('ensureUser', () => {
     expect(await ensureUser(db.sql, 'you@example.com')).not.toBe(id)
   })
 
+  it('puts each new user in a household of their own, leaving none orphaned', async () => {
+    await Promise.all(
+      ['a@example.com', 'a@example.com', 'b@example.com'].map((email) => ensureUser(db.sql, email)),
+    )
+    expect(await db.sql`select distinct household_id from users`).toHaveLength(2)
+    expect(await db.sql`select 1 from households`).toHaveLength(2)
+    expect(await ensureHousehold(db.sql, 'A@example.com')).toBe(
+      await ensureHousehold(db.sql, 'a@example.com'),
+    )
+  })
+
   it('refuses an email that is not lower-case when written directly', async () => {
-    await expect(db.sql`insert into users (email) values ('Me@Example.com')`).rejects.toThrow()
+    const [household] = await db.sql<
+      { id: string }[]
+    >`insert into households default values returning id`
+    await expect(
+      db.sql`insert into users (email, household_id) values ('Me@Example.com', ${household?.id ?? ''})`,
+    ).rejects.toThrow()
   })
 })
 
@@ -69,6 +87,7 @@ describe('admitUser', () => {
     expect(await admitUser(db.sql, 'c@example.com', 2)).toBe('closed')
     expect(await admitUser(db.sql, 'A@Example.com', 2)).toBe('admitted')
     expect(await db.sql`select 1 from users`).toHaveLength(2)
+    expect(await db.sql`select 1 from households`).toHaveLength(2)
   })
 
   it('never exceeds the cap under concurrent sign-ups', async () => {

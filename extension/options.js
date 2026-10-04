@@ -1,4 +1,5 @@
 import { clearSession, getSession, isExpired, SERVER_URL, signIn, signOut } from './auth.js'
+import { createInvite, fetchMembers, joinHousehold, leaveHousehold } from './household-api.js'
 import { fetchRegistered, removePasskey } from './passkey-api.js'
 import { describeStatus } from './passkey-logic.js'
 
@@ -29,12 +30,14 @@ async function init() {
       accountError.textContent = error.message
     }
     await renderAccount()
+    await renderHousehold()
   })
 
   signOutButton.addEventListener('click', async () => {
     accountError.textContent = ''
     await signOut()
     await renderAccount()
+    await renderHousehold()
   })
 
   const passkeyState = document.getElementById('passkeyState')
@@ -66,6 +69,66 @@ async function init() {
     removeButton.hidden = status.busy || !registered
   }
 
+  const householdSection = document.getElementById('household')
+  const membersList = document.getElementById('members')
+  const inviteState = document.getElementById('inviteState')
+  const householdState = document.getElementById('householdState')
+  const leaveButton = document.getElementById('leaveHousehold')
+
+  async function renderHousehold() {
+    const session = await getSession()
+    householdSection.hidden = isExpired(session)
+    if (householdSection.hidden) return
+    try {
+      const members = await fetchMembers(SERVER_URL, session.accessToken)
+      membersList.replaceChildren(
+        ...members.map(({ email, you }) => {
+          const item = document.createElement('li')
+          item.textContent = you ? `${email} (you)` : email
+          return item
+        }),
+      )
+      leaveButton.hidden = members.length < 2
+    } catch (error) {
+      householdState.textContent = `Could not load your household: ${error.message}`
+      householdState.className = 'error'
+    }
+  }
+
+  async function householdAction(action) {
+    householdState.textContent = ''
+    householdState.className = ''
+    try {
+      const session = await getSession()
+      await action(SERVER_URL, session.accessToken)
+    } catch (error) {
+      householdState.textContent = error.message
+      householdState.className = 'error'
+    }
+    await renderHousehold()
+  }
+
+  document.getElementById('createInvite').addEventListener('click', () =>
+    householdAction(async (serverUrl, token) => {
+      const { code, expiresAt } = await createInvite(serverUrl, token)
+      inviteState.textContent = `Code: ${code} (single use, expires ${new Date(expiresAt).toLocaleString()})`
+    }),
+  )
+  document.getElementById('joinHousehold').addEventListener('click', () =>
+    householdAction(async (serverUrl, token) => {
+      const input = document.getElementById('inviteCode')
+      await joinHousehold(serverUrl, token, input.value)
+      input.value = ''
+      inviteState.textContent = ''
+    }),
+  )
+  leaveButton.addEventListener('click', () =>
+    householdAction(async (serverUrl, token) => {
+      await leaveHousehold(serverUrl, token)
+      inviteState.textContent = ''
+    }),
+  )
+
   registerButton.addEventListener('click', async () => {
     await chrome.runtime.sendMessage({ type: 'passkey/start' })
     await renderPasskey()
@@ -88,6 +151,7 @@ async function init() {
 
   await renderAccount()
   await renderPasskey()
+  await renderHousehold()
 }
 
 init()

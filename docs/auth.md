@@ -14,7 +14,7 @@ sign in: the first sign-in creates its user. Abuse is bounded by
 | `GOOGLE_CLIENT_ID`           | Required. Google web OAuth client ID.                                                                                                                        |
 | `GOOGLE_CLIENT_SECRET`       | Required. Its secret.                                                                                                                                        |
 | `PUBLIC_BASE_URL`            | Required. Origin the server is reached at, e.g. `https://personal-shopper.willsawyerrrr.dev`. Google redirects to `${PUBLIC_BASE_URL}/auth/google/callback`. |
-| `ALLOWED_CLIENT_REDIRECTS`   | Comma-separated redirect URIs API clients may use, matched exactly. Default: `dev.willsawyerrrr.personal-shopper://auth`.                                     |
+| `ALLOWED_CLIENT_REDIRECTS`   | Comma-separated redirect URIs API clients may use, matched exactly. Default: `dev.willsawyerrrr.personal-shopper://auth`.                                    |
 | `DATABASE_URL`               | Required. Postgres connection string; hashed tokens live in its `tokens` table.                                                                              |
 | `CREDENTIALS_ENCRYPTION_KEY` | Encrypts stored passkey credentials; required once any exists. See [`architecture.md`](architecture.md#data).                                                |
 | `REMINDERS_OWNER_EMAIL`      | The user the Reminders sync, single-user file import and `scripts/` act for. Required when the Reminders sync is enabled.                                    |
@@ -26,13 +26,14 @@ The server refuses to start when a required variable is missing.
 Each limit has a default and an environment variable; all are positive
 integers.
 
-| Variable                     | Default | Meaning                                                                                                         |
-| ---------------------------- | ------- | --------------------------------------------------------------------------------------------------------------- |
-| `MAX_USERS`                  | 50      | Total users. Beyond it a new Google account cannot sign up (`signup_closed`); existing users are unaffected.    |
-| `MAX_ITEMS_PER_USER`         | 200     | Items a user may map. `POST /admin/items` for a new phrase beyond it gets `409`; replacing an item is allowed.  |
-| `MAX_TOKENS_PER_USER`        | 20      | Unexpired tokens (web sessions and API clients) a user may hold. A sign-in beyond it is refused (`user_limit`). |
-| `USER_RATE_LIMIT_PER_MINUTE` | 120     | Authenticated requests per minute per user on `/admin` and `/cart`; excess gets `429 {"error":"rate_limited"}`. |
-| `IP_RATE_LIMIT_PER_MINUTE`   | 30      | Requests per minute per client IP on each `/auth/*` route and on `POST /cart/items`; excess gets `429`.         |
+| Variable                     | Default | Meaning                                                                                                             |
+| ---------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------- |
+| `MAX_USERS`                  | 50      | Total users. Beyond it a new Google account cannot sign up (`signup_closed`); existing users are unaffected.        |
+| `MAX_ITEMS_PER_HOUSEHOLD`    | 200     | Items a household may map. `POST /admin/items` for a new phrase beyond it gets `409`; replacing an item is allowed. |
+| `MAX_INVITES_PER_HOUSEHOLD`  | 5       | Unexpired household invites at once. `POST /admin/household/invites` beyond it gets `409`.                          |
+| `MAX_TOKENS_PER_USER`        | 20      | Unexpired tokens (web sessions and API clients) a user may hold. A sign-in beyond it is refused (`user_limit`).     |
+| `USER_RATE_LIMIT_PER_MINUTE` | 120     | Authenticated requests per minute per user on `/admin` and `/cart`; excess gets `429 {"error":"rate_limited"}`.     |
+| `IP_RATE_LIMIT_PER_MINUTE`   | 30      | Requests per minute per client IP on each `/auth/*` route and on `POST /cart/items`; excess gets `429`.             |
 
 A user revokes a sign-in from `/admin` to free a token slot.
 
@@ -104,17 +105,22 @@ sends `Authorization: Bearer <access_token>` on every API call.
 ### Using the token
 
 Bearer tokens authorise the JSON API on `/admin/items`; send
-`Accept: application/json`. Every call acts on the token's user: each user has
-their own items, and `POST /cart/items` adds to their own Woolworths cart.
+`Accept: application/json`. Every call acts on the token's user and their
+household: members share items, and `POST /cart/items` adds to the household's
+Woolworths cart.
 
-| Request                                                                  | Success                                                 |
-| ------------------------------------------------------------------------ | ------------------------------------------------------- |
-| `GET /admin/items`                                                       | `200 {"items":[{word, stockcode, quantity, listing?}]}` |
-| `POST /admin/items` with `{word, url, quantity?}`                        | `201` with the stored item; `400 {error}` if invalid    |
-| `PATCH /admin/items/:word` with any of the fields below                  | `200` with the stored item; `400`, `404`, `409` below   |
-| `DELETE /admin/items/:word` (or `POST /admin/items/:word/delete`)        | `204`                                                   |
-| `GET /admin` (HTML), `POST /admin/sessions/:id/revoke` (`204` with JSON) | Browser UI and session revocation                       |
-| `POST /auth/logout`                                                      | `204`; revokes the presented token                      |
+| Request                                                                  | Success                                                                       |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `GET /admin/items`                                                       | `200 {"items":[{word, stockcode, quantity, listing?}]}`                       |
+| `POST /admin/items` with `{word, url, quantity?}`                        | `201` with the stored item; `400 {error}` if invalid                          |
+| `PATCH /admin/items/:word` with any of the fields below                  | `200` with the stored item; `400`, `404`, `409` below                         |
+| `DELETE /admin/items/:word` (or `POST /admin/items/:word/delete`)        | `204`                                                                         |
+| `GET /admin` (HTML), `POST /admin/sessions/:id/revoke` (`204` with JSON) | Browser UI and session revocation                                             |
+| `GET /admin/household`                                                   | `200 {"members":[{email, you}]}`                                              |
+| `POST /admin/household/invites`                                          | `201 {code, expiresAt}` (epoch ms); `409 {error}` at the invite limit         |
+| `POST /admin/household/join` with `{code}`                               | `204`; `400 {error}` invalid, expired or used; `409 {error}` already a member |
+| `POST /admin/household/leave`                                            | `204`; `409 {error}` for a sole member                                        |
+| `POST /auth/logout`                                                      | `204`; revokes the presented token                                            |
 
 `PATCH /admin/items/:word` (browser form: `POST /admin/items/:word/edit`)
 changes only the fields sent, keeps every other entry and the item's position
@@ -143,7 +149,7 @@ any `GET /admin/items` or `GET /admin`, so a later list contains it.
 | `409`  | `{"error":"<message>"}`: `word` is already used by another item |
 
 `POST /admin/items` also answers `409` when the user is at
-`MAX_ITEMS_PER_USER` and the phrase is new.
+`MAX_ITEMS_PER_HOUSEHOLD` and the phrase is new.
 
 Browser form edits answer the same statuses by re-rendering `/admin` with the
 message, and redirect to `/admin` on success. They rely on the session
@@ -242,6 +248,7 @@ The callback accepts a sign-in only if:
   on an unknown `kid`) and its `iss`, `aud`, `exp` and `nonce` match;
 - `email_verified` is `true`;
 - the lower-cased `email` belongs to an existing user, or there are fewer than
-  `MAX_USERS` users, in which case the user is created.
+  `MAX_USERS` users, in which case the user is created in a household of
+  their own.
 
 `/auth/*` routes are rate limited per client IP (`IP_RATE_LIMIT_PER_MINUTE`).

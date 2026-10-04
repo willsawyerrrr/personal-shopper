@@ -7,7 +7,8 @@
    of Google, accepts any verified Google account (up to `MAX_USERS`), and issues its own
    session cookie (browser) or opaque bearer token (clients). Each token
    belongs to a user (their lower-cased email), and everything below acts for
-   that user: their items, their Woolworths session, their passkey. Endpoints,
+   that user's household: its items, its Woolworths session, its passkey (see
+   [Households](#households)). Endpoints,
    token lifetime and the client contract are in [`auth.md`](auth.md).
 2. **`/admin`** (`src/admin.ts`): lists, adds, edits, and removes the signed-in
    user's items (the `items` table, `src/items.ts`), no restart required. It is behind Google sign-in
@@ -19,7 +20,7 @@
    Requests with `Accept: application/json` and a bearer token get JSON
    instead of the web UI's redirects: `GET /admin/items`,
    `POST /admin/items`, `PATCH /admin/items/:word`, `DELETE /admin/items/:word`,
-   and `401 {error}` when unauthenticated. Saving a user's items replaces
+   the household routes below, and `401 {error}` when unauthenticated. Saving a user's items replaces
    them in one transaction, so a reader never sees a partial list. Each
    item also stores its `listing`, the product's title on woolworths.com.au,
    looked up with `WoolworthsClient.listing` (below) when the item is added or
@@ -48,9 +49,39 @@
    authenticate with and refreshes it through `GET /auth/heartbeat`
    (Woolworths' endpoint, not this server's). `UserWoolworths`
    (`src/users/woolworths.ts`) creates one `SessionStore` and
-   `WoolworthsClient` per user on first use and caches them, so one user's
-   concurrent refreshes and logins share a request while users never share a
-   session.
+   `WoolworthsClient` per user on first use and caches them. The stored
+   session is the household's, so its members act on one Woolworths account;
+   households never share a session. The keepalive timer visits one member per
+   household.
+
+## Households
+
+A household (`src/households.ts`, `HouseholdStore`) is the unit that owns items,
+the Woolworths session and the passkey credential; its members each keep their
+own Google sign-in and tokens. The stores stay keyed by email and resolve it
+to the user's household, so everything that acts for a user (cart, Reminders
+sync, scripts, `/admin`) reads and writes the household's shared state. A new
+user starts in a household of their own.
+
+- Any member creates an invite code (`POST /admin/household/invites`): 16
+  random bytes, base64url, single use, valid 24 hours; only its SHA-256 is
+  stored. A household holds at most `MAX_INVITES_PER_HOUSEHOLD` unexpired
+  invites.
+- Joining (`POST /admin/household/join` with `{code}`) moves the joiner into
+  the inviter's household and consumes the code. Their previous household,
+  with its items, session and passkey, is deleted when they were its only
+  member. An unknown, expired or used code is `400`; a code to the joiner's
+  own household is `409`.
+- Leaving (`POST /admin/household/leave`) moves the user into a new, empty
+  household, deleting the old one if they were its last member. A user who
+  is their household's only member gets `409`, since there is nothing to
+  leave.
+- `GET /admin/household` lists the members (`{members:[{email, you}]}`).
+- `MAX_ITEMS_PER_HOUSEHOLD` caps items per household. Members edit one shared
+  list; concurrent edits replace the whole list, so the last save wins.
+
+Membership changes are serialised by a Postgres advisory lock, so a household
+is never deleted while someone joins it.
 
 ## Data
 
@@ -61,15 +92,17 @@ migrates. Every table has row level security enabled and no policies, so the
 `anon` and `authenticated` roles can read and write nothing; the server uses
 the privileged role.
 
-| Table                 | Holds                                                                     |
-| --------------------- | ------------------------------------------------------------------------- |
-| `users`               | One row per email (lower-cased, unique); the key of every other table.    |
-| `tokens`              | Hashed bearer tokens and admin sessions, with client and expiry.          |
-| `items`               | A user's trigger phrase, stockcode, quantity and listing, in order.       |
-| `woolworths_sessions` | A user's Woolworths cookie jar.                                           |
-| `passkey_credentials` | A user's passkey credential, AES-256-GCM encrypted (IV, tag, ciphertext). |
+| Table                 | Holds                                                                          |
+| --------------------- | ------------------------------------------------------------------------------ |
+| `households`          | A group of users sharing one Woolworths account; the key of the shared data.   |
+| `users`               | One row per email (lower-cased, unique), in one household.                     |
+| `tokens`              | Hashed bearer tokens and admin sessions, per user, with client and expiry.     |
+| `items`               | A household's trigger phrase, stockcode, quantity and listing, in order.       |
+| `woolworths_sessions` | A household's Woolworths cookie jar.                                           |
+| `passkey_credentials` | A household's passkey credential, AES-256-GCM encrypted (IV, tag, ciphertext). |
+| `household_invites`   | Hashed single-use invite codes, with household, creator and expiry.            |
 
-`CredentialStore` (`src/users/credentials.ts`: `get`, `put`, `has`, `delete` per user)
+`CredentialStore` (`src/users/credentials.ts`: `get`, `put`, `has`, `delete` per household)
 encrypts with `CREDENTIALS_ENCRYPTION_KEY` before the credential reaches the
 database, so the key is never stored there and the credential is never logged.
 The server refuses to start without the key when any credential exists.

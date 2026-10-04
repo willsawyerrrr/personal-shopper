@@ -31,6 +31,15 @@ this small and single-user.
 4. "Manage items" at the bottom of the popup opens `/admin` on the
    server in a new tab.
 
+## Household
+
+Below the passkey, the options page shows the household (members who share
+your items and Woolworths account). "Create invite code" shows a single-use
+code, valid 24 hours, to give to someone; "Join household" takes a code
+(discarding your items if nobody else is in your household); "Leave household"
+appears once there is more than one member. It calls `/admin/household*` with
+the bearer token (`household-api.js`, `household.test.js`).
+
 ## Woolworths passkey
 
 The options page registers the passkey the server signs in to Woolworths with

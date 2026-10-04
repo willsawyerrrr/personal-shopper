@@ -8,7 +8,8 @@ Woolworths product without opening the web admin.
   the product's Woolworths listing text beneath it, pull to refresh, tap an
   item to edit its trigger phrase, quantity and product link or stockcode,
   swipe to delete, add by pasted URL) and Settings tab (Sign in
-  with Google / Sign out, test connection).
+  with Google / Sign out, test connection, and Household: members, create and
+  share an invite code, join with a code, leave).
 - **Share extension** (`ShareExtension/`): appears in the iOS share sheet for
   URLs and text. Pulls the `woolworths.com.au/shop/productdetails/<stockcode>`
   link out of what was shared, shows trigger word and quantity, then
