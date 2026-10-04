@@ -125,8 +125,8 @@ export const PAGE_STYLES = `
   form.item strong.view, form.item span.view { padding: 0.3rem 0.4rem; overflow-wrap: anywhere; }
   form.item .view-name { display: none; }
   form.item input:not(.edit-toggle) { margin: 0; padding: 0.3rem 0.4rem; border-radius: 6px; }
-  form.item .phrase .view { font-weight: 700; }
-  form.item .listing { padding: 0 0.4rem; margin-top: 0.1rem; overflow-wrap: anywhere; }
+  form.item .phrase strong.view { font-weight: 700; }
+  form.item .words { padding: 0 0.4rem; margin-top: 0.1rem; color: var(--color-text-muted); font-size: 0.8rem; overflow-wrap: anywhere; }
   form.item .actions { display: flex; flex-wrap: wrap; gap: 0.4rem; padding-top: 0.1rem; }
   form.item button, form.item .button-label, form.item .button-link {
     display: inline-block;
@@ -174,7 +174,7 @@ export const PAGE_STYLES = `
     }
     form.item strong.view, form.item span.view { padding: 0; }
     form.item .view-name { display: inline; margin-right: 0.4rem; color: var(--color-text-muted); font-size: 0.8rem; }
-    form.item .listing { padding: 0; }
+    form.item .words { padding: 0; }
     form.item .edit-toggle:checked ~ .cell { margin-bottom: 0.4rem; }
     form.item .qty input { width: 6rem; }
     form.item .actions { padding-top: 0.3rem; }
@@ -199,7 +199,6 @@ export const PAGE_STYLES = `
     table.sessions td:nth-child(4)::before { content: 'Expires'; }
     table.sessions td:nth-child(5) { justify-content: flex-end; padding-top: 0.4rem; }
   }
-  .listing { color: var(--color-text-muted); font-size: 0.8rem; margin-top: 0.15rem; }
   .error { color: var(--color-danger); margin: 0 0 1rem; font-size: 0.9rem; }
   .hint { color: var(--color-text-muted); font-size: 0.85rem; margin: 0 0 1rem; }
   .top-bar { display: flex; align-items: center; justify-content: space-between; }

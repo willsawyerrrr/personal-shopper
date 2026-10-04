@@ -86,28 +86,29 @@ public struct AdminClient: Sendable {
         return try decode(Item.self, from: data)
     }
 
-    /// Changes the item for `word` and returns the stored item. Only the
-    /// arguments given change: `newWord` renames the trigger phrase, `product`
-    /// is a product URL or stockcode.
+    /// Changes the product `group` and returns it as stored. Only the arguments given
+    /// change: `words` replaces the group's whole set of trigger words, `product` is a
+    /// product URL or stockcode.
     @discardableResult
     public func update(
-        word: String, newWord: String? = nil, product: String? = nil, quantity: Int? = nil
-    ) async throws -> Item {
+        _ group: ItemGroup, words: [String]? = nil, product: String? = nil, quantity: Int? = nil
+    ) async throws -> ItemGroup {
         struct Body: Encodable {
-            let word: String?
+            let words: [String]?
             let url: String?
             let quantity: Int?
         }
-        let encoded = word.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? word
-        let body = Body(word: newWord, url: product, quantity: quantity)
-        let data = try await send("PATCH", path: "/items/\(encoded)", body: JSONEncoder().encode(body))
-        return try decode(Item.self, from: data)
+        let body = Body(words: words, url: product, quantity: quantity)
+        let data = try await send("PATCH", path: path(of: group), body: JSONEncoder().encode(body))
+        return try decode(ItemGroup.self, from: data)
     }
 
-    public func remove(word: String) async throws {
-        let encoded = word.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? word
-        _ = try await send("POST", path: "/items/\(encoded)/delete")
+    /// Removes every trigger word of `group`.
+    public func remove(_ group: ItemGroup) async throws {
+        _ = try await send("POST", path: path(of: group) + "/delete")
     }
+
+    private func path(of group: ItemGroup) -> String { "/products/\(group.stockcode)/\(group.quantity)" }
 
     /// The members of the signed-in user's household, the user included.
     public func household() async throws -> [HouseholdMember] {

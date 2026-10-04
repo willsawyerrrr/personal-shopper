@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// State behind the edit-item sheet.
+/// State behind the edit-item sheet, which edits a product and all its trigger words.
 @MainActor
 @Observable
 public final class EditItemModel {
@@ -14,8 +14,9 @@ public final class EditItemModel {
 
     public static let quantityRange = 1...99
 
-    public let item: Item
-    public var word: String
+    public let group: ItemGroup
+    /// The trigger words, separated by commas.
+    public var words: String
     /// A Woolworths product URL or a stockcode.
     public var product: String
     public var quantity: Int
@@ -25,11 +26,11 @@ public final class EditItemModel {
 
     private let makeClient: @MainActor () throws -> AdminClient
 
-    public init(item: Item, makeClient: @escaping @MainActor () throws -> AdminClient) {
-        self.item = item
-        self.word = item.word
-        self.product = String(item.stockcode)
-        self.quantity = item.quantity
+    public init(group: ItemGroup, makeClient: @escaping @MainActor () throws -> AdminClient) {
+        self.group = group
+        self.words = group.wordsText
+        self.product = String(group.stockcode)
+        self.quantity = group.quantity
         self.makeClient = makeClient
     }
 
@@ -44,12 +45,20 @@ public final class EditItemModel {
         productReference == nil ? "Enter a woolworths.com.au product link or a stockcode." : nil
     }
 
-    public var wordError: String? {
-        word.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Enter a trigger phrase." : nil
+    /// `words` split on commas, trimmed, lower-cased and de-duplicated.
+    public var parsedWords: [String] {
+        var seen = Set<String>()
+        return words.split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+
+    public var wordsError: String? {
+        parsedWords.isEmpty ? "Enter at least one trigger word." : nil
     }
 
     public var canSubmit: Bool {
-        wordError == nil && productError == nil && Self.quantityRange.contains(quantity) && phase != .submitting
+        wordsError == nil && productError == nil && Self.quantityRange.contains(quantity) && phase != .submitting
     }
 
     public func submit() async {
@@ -57,8 +66,8 @@ public final class EditItemModel {
         phase = .submitting
         do {
             try await makeClient().update(
-                word: item.word,
-                newWord: word.trimmingCharacters(in: .whitespacesAndNewlines),
+                group,
+                words: parsedWords,
                 product: productReference,
                 quantity: quantity
             )

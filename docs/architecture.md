@@ -11,7 +11,10 @@
    [Households](#households)). Endpoints,
    token lifetime and the client contract are in [`auth.md`](auth.md).
 2. **`/`** (`src/admin.ts`): lists, adds, edits, and removes the signed-in
-   user's items (the `items` table, `src/items.ts`), no restart required. It is behind Google sign-in
+   user's items (the `items` table, `src/items.ts`), no restart required. Items
+   are stored and matched per trigger word, but listed one row per product
+   (`src/products.ts`): words sharing a stockcode and quantity appear together,
+   display-cased, under the product's listing. It is behind Google sign-in
    (`/login` is a "Sign in with Google" button; routes in
    `src/login.ts`) and shows the user's own active sessions with a revoke button. Since
    Woolworths' search is broken (see risks below), there's no in-app product
@@ -20,7 +23,8 @@
    Requests with `Accept: application/json` and a bearer token get JSON
    instead of the web UI's redirects: `GET /items`,
    `POST /items`, `PATCH /items/:word`, `DELETE /items/:word`,
-   the household routes below, and `401 {error}` when unauthenticated. The web app owns the root-level paths `/`, `/login`, `/logout`, `/items`, `/household` and `/sessions`; everything else lives under `/auth`, `/cart`, `/woolworths` or `/healthz`. Saving a user's items replaces
+   `PATCH /products/:stockcode/:quantity`, `DELETE /products/:stockcode/:quantity`,
+   the household routes below, and `401 {error}` when unauthenticated. The web app owns the root-level paths `/`, `/login`, `/logout`, `/items`, `/products`, `/household` and `/sessions`; everything else lives under `/auth`, `/cart`, `/woolworths` or `/healthz`. Saving a user's items replaces
    them in one transaction, so a reader never sees a partial list. Each
    item also stores its `listing`, the product's title on woolworths.com.au,
    looked up with `WoolworthsClient.listing` (below) when the item is added or

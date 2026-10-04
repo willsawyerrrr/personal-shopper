@@ -5,23 +5,23 @@ struct EditItemSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var model: EditItemModel
 
-    init(item: Item, store: SettingsStore) {
-        _model = State(initialValue: EditItemModel(item: item) { try store.client() })
+    init(group: ItemGroup, store: SettingsStore) {
+        _model = State(initialValue: EditItemModel(group: group) { try store.client() })
     }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Trigger phrase, e.g. milk", text: $model.word)
-                        .textInputAutocapitalization(.never)
-                    if model.wordError != nil {
-                        Text(model.wordError ?? "").foregroundStyle(.red).font(.footnote)
+                    TextField("Trigger words, e.g. milk, full cream milk", text: $model.words)
+                        .textInputAutocapitalization(.words)
+                    if let error = model.wordsError {
+                        Text(error).foregroundStyle(.red).font(.footnote)
                     }
                     Stepper("Quantity: \(model.quantity)", value: $model.quantity, in: EditItemModel.quantityRange)
                 }
                 Section("Product") {
-                    if let listing = model.item.listing {
+                    if let listing = model.group.listing {
                         Text(listing).foregroundStyle(.secondary)
                     }
                     TextField("Woolworths product URL or stockcode", text: $model.product)

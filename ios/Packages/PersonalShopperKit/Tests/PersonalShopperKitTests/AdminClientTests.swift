@@ -138,12 +138,12 @@ struct AdminClientTests {
         #expect(body?["quantity"] as? Int == 2)
     }
 
-    @Test func removesItemWithEncodedWord() async throws {
+    @Test func removesEveryWordOfAGroup() async throws {
         StubURLProtocol.stub(status: 204)
-        try await client.remove(word: "ice cream/2")
+        try await client.remove(group())
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
         #expect(request.httpMethod == "POST")
-        #expect(request.url?.absoluteString == "https://example.test/items/ice%20cream%2F2/delete")
+        #expect(request.url?.absoluteString == "https://example.test/products/123/2/delete")
     }
 
     @Test func mapsUnauthorized() async {
@@ -331,17 +331,49 @@ struct SettingsStoreTests {
 }
 
 extension AdminClientTests {
-    @Test func rowTextShowsPhraseThenListing() {
-        let item = Item(word: "milk", stockcode: 248608, quantity: 2, listing: "Maleny Dairies Full Cream 2L")
-        #expect(item.title == "milk")
-        #expect(item.subtitle == "Maleny Dairies Full Cream 2L")
-        #expect(item.detail == "248608 · qty 2")
+    private func group(
+        words: [String] = ["milk", "full cream milk"], stockcode: Int = 123, quantity: Int = 2,
+        listing: String? = "Milk 2L"
+    ) -> ItemGroup {
+        ItemGroup(words: words, stockcode: stockcode, quantity: quantity, listing: listing)
     }
 
-    @Test func rowTextOmitsSubtitleWithoutListing() throws {
-        let item = try JSONDecoder().decode(Item.self, from: Data(#"{"word":"eggs","stockcode":3,"quantity":1}"#.utf8))
-        #expect(item.title == "eggs")
-        #expect(item.subtitle == nil)
+    @Test func groupsItemsByProductInStoredOrder() {
+        let items = [
+            Item(word: "milk", stockcode: 1, quantity: 1),
+            Item(word: "bread", stockcode: 2, quantity: 1, listing: "Bread 700g"),
+            Item(word: "full cream milk", stockcode: 1, quantity: 1, listing: "Milk 2L"),
+            Item(word: "two milks", stockcode: 1, quantity: 2),
+            Item(word: "loaf", stockcode: 2, quantity: 1),
+        ]
+        #expect(
+            ItemGroup.group(items) == [
+                ItemGroup(words: ["milk", "full cream milk"], stockcode: 1, quantity: 1, listing: "Milk 2L"),
+                ItemGroup(words: ["bread", "loaf"], stockcode: 2, quantity: 1, listing: "Bread 700g"),
+                ItemGroup(words: ["two milks"], stockcode: 1, quantity: 2),
+            ])
+        #expect(ItemGroup.group([]).isEmpty)
+    }
+
+    @Test(arguments: [
+        ("milk", "Milk"), ("full cream milk", "Full Cream Milk"), ("ben & jerry's", "Ben & Jerry's"),
+        ("7up", "7up"), ("coca-cola", "Coca-Cola"), ("école", "École"), ("", ""),
+    ])
+    func displayCasesWords(word: String, expected: String) {
+        #expect(ItemGroup.displayCase(word) == expected)
+    }
+
+    @Test func rowTextShowsListingThenWordsThenDetail() {
+        let group = group(words: ["milk", "full cream milk"], stockcode: 248608, listing: "Maleny Dairies Full Cream 2L")
+        #expect(group.title == "Maleny Dairies Full Cream 2L")
+        #expect(group.wordsText == "Milk, Full Cream Milk")
+        #expect(group.detail == "248608 · qty 2")
+    }
+
+    @Test func rowTitleFallsBackToTheFirstWord() {
+        let group = group(words: ["ben & jerry's", "ice cream"], listing: nil)
+        #expect(group.title == "Ben & Jerry's")
+        #expect(group.wordsText == "Ben & Jerry's, Ice Cream")
     }
 
     private func body(of request: URLRequest) throws -> [String: Any] {
@@ -349,24 +381,25 @@ extension AdminClientTests {
         return try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
-    @Test func updatesItemWithPatch() async throws {
-        StubURLProtocol.stub(body: #"{"word":"oat milk","stockcode":654321,"quantity":3,"listing":"Oat 1L"}"#)
-        let item = try await client.update(
-            word: "ice cream/2", newWord: "oat milk", product: "654321", quantity: 3)
-        #expect(item == Item(word: "oat milk", stockcode: 654321, quantity: 3, listing: "Oat 1L"))
+    @Test func updatesGroupWithPatch() async throws {
+        StubURLProtocol.stub(
+            body: #"{"words":["oat milk","oats"],"stockcode":654321,"quantity":3,"listing":"Oat 1L"}"#)
+        let updated = try await client.update(
+            group(), words: ["oat milk", "oats"], product: "654321", quantity: 3)
+        #expect(updated == ItemGroup(words: ["oat milk", "oats"], stockcode: 654321, quantity: 3, listing: "Oat 1L"))
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
         #expect(request.httpMethod == "PATCH")
-        #expect(request.url?.absoluteString == "https://example.test/items/ice%20cream%2F2")
+        #expect(request.url?.absoluteString == "https://example.test/products/123/2")
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer ps_tok")
         let sent = try body(of: request)
-        #expect(sent["word"] as? String == "oat milk")
+        #expect(sent["words"] as? [String] == ["oat milk", "oats"])
         #expect(sent["url"] as? String == "654321")
         #expect(sent["quantity"] as? Int == 3)
     }
 
     @Test func updateSendsOnlyGivenFields() async throws {
-        StubURLProtocol.stub(body: #"{"word":"milk","stockcode":1,"quantity":2}"#)
-        try await client.update(word: "milk", quantity: 2)
+        StubURLProtocol.stub(body: #"{"words":["milk"],"stockcode":1,"quantity":2}"#)
+        try await client.update(group(), quantity: 2)
         let sent = try body(of: try #require(StubURLProtocol.requests.withLock { $0.first }))
         #expect(Set(sent.keys) == ["quantity"])
     }
@@ -374,23 +407,24 @@ extension AdminClientTests {
     @Test func updateSurfacesCollisionAndValidationMessages() async {
         StubURLProtocol.stub(status: 409, body: #"{"error":"\"bread\" is already used by another item."}"#)
         await #expect(throws: AdminError.rejected("\"bread\" is already used by another item.")) {
-            try await client.update(word: "milk", newWord: "bread")
+            try await client.update(group(), words: ["bread"])
         }
         StubURLProtocol.stub(status: 400, body: #"{"error":"The quantity must be a positive integer."}"#)
         await #expect(throws: AdminError.rejected("The quantity must be a positive integer.")) {
-            try await client.update(word: "milk", quantity: 0)
+            try await client.update(group(), quantity: 0)
         }
-        StubURLProtocol.stub(status: 404, body: #"{"error":"No item for \"milk\"."}"#)
-        await #expect(throws: AdminError.notFound("No item for \"milk\".")) {
-            try await client.update(word: "milk", quantity: 1)
+        StubURLProtocol.stub(status: 404, body: #"{"error":"No such item."}"#)
+        await #expect(throws: AdminError.notFound("No such item.")) {
+            try await client.update(group(), quantity: 1)
         }
         StubURLProtocol.stub(status: 401)
-        await #expect(throws: AdminError.unauthorized) { try await client.update(word: "milk", quantity: 1) }
+        await #expect(throws: AdminError.unauthorized) { try await client.update(group(), quantity: 1) }
     }
 
     @MainActor
     private func editModel(
-        _ item: Item = Item(word: "milk", stockcode: 123, quantity: 2, listing: "Milk 2L"),
+        _ group: ItemGroup = ItemGroup(
+            words: ["milk", "full cream milk"], stockcode: 123, quantity: 2, listing: "Milk 2L"),
         onUnauthorized: @escaping @Sendable () -> Void = {}
     ) throws -> EditItemModel {
         let configuration = URLSessionConfiguration.ephemeral
@@ -398,13 +432,13 @@ extension AdminClientTests {
         let client = try AdminClient(
             serverURL: "https://example.test", token: "t", session: URLSession(configuration: configuration),
             onUnauthorized: onUnauthorized)
-        return EditItemModel(item: item) { client }
+        return EditItemModel(group: group) { client }
     }
 
-    @MainActor @Test func editFormStartsFromTheItem() throws {
+    @MainActor @Test func editFormStartsFromTheGroup() throws {
         let model = try editModel()
-        #expect(model.word == "milk")
-        #expect(model.item.listing == "Milk 2L")
+        #expect(model.words == "Milk, Full Cream Milk")
+        #expect(model.group.listing == "Milk 2L")
         #expect(model.product == "123")
         #expect(model.quantity == 2)
         #expect(model.canSubmit)
@@ -412,10 +446,12 @@ extension AdminClientTests {
 
     @MainActor @Test func editFormValidatesFields() throws {
         let model = try editModel()
-        model.word = "  "
-        #expect(model.wordError != nil)
-        #expect(!model.canSubmit)
-        model.word = "milk"
+        for empty in ["  ", " , ,"] {
+            model.words = empty
+            #expect(model.wordsError != nil, "\(empty)")
+            #expect(!model.canSubmit)
+        }
+        model.words = "milk"
         for invalid in ["", "abc", "0", "-5", "https://example.com/shop/productdetails/1/x"] {
             model.product = invalid
             #expect(model.productError != nil, "\(invalid)")
@@ -432,19 +468,24 @@ extension AdminClientTests {
         #expect(!model.canSubmit)
     }
 
-    @MainActor @Test func editFormSavesTrimmedFields() async throws {
-        StubURLProtocol.stub(body: #"{"word":"oat milk","stockcode":456,"quantity":3}"#)
+    @MainActor @Test func editFormParsesWords() throws {
         let model = try editModel()
-        model.word = " Oat milk "
+        model.words = " Oat Milk,, milk , OAT milk ,Oats"
+        #expect(model.parsedWords == ["oat milk", "milk", "oats"])
+    }
+
+    @MainActor @Test func editFormSavesTrimmedFields() async throws {
+        StubURLProtocol.stub(body: #"{"words":["oat milk","oats"],"stockcode":456,"quantity":3}"#)
+        let model = try editModel()
+        model.words = " Oat milk , Oats "
         model.product = "https://www.woolworths.com.au/shop/productdetails/456/oat-milk"
         model.quantity = 3
         await model.submit()
         #expect(model.phase == .saved)
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
-        #expect(request.url?.path == "/items/milk")
+        #expect(request.url?.path == "/products/123/2")
         let sent = try body(of: request)
-        #expect(sent["word"] as? String == "Oat milk")
-        #expect(sent["name"] == nil)
+        #expect(sent["words"] as? [String] == ["oat milk", "oats"])
         #expect(sent["url"] as? String == "https://www.woolworths.com.au/shop/productdetails/456/oat-milk")
         #expect(sent["quantity"] as? Int == 3)
     }
@@ -452,7 +493,7 @@ extension AdminClientTests {
     @MainActor @Test func editFormShowsServerErrorAndAllowsRetry() async throws {
         StubURLProtocol.stub(status: 409, body: #"{"error":"\"bread\" is already used by another item."}"#)
         let model = try editModel()
-        model.word = "bread"
+        model.words = "bread"
         await model.submit()
         #expect(model.phase == .failed("\"bread\" is already used by another item."))
         #expect(!model.signedOut)

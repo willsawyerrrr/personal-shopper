@@ -1,3 +1,5 @@
+import { escapeHtml } from './html.ts'
+
 export interface HouseholdView {
   members: string[]
   you: string
@@ -39,12 +41,4 @@ export function renderHousehold(household: HouseholdView): string {
 
 function formatTime(ms: number): string {
   return `${new Date(ms).toISOString().slice(0, 16).replace('T', ' ')} UTC`
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
 }

@@ -3,11 +3,11 @@ import SwiftUI
 
 struct ItemsView: View {
     let session: Session
-    @State private var items: [Item] = []
+    @State private var groups: [ItemGroup] = []
     @State private var error: String?
     @State private var loaded = false
     @State private var adding = false
-    @State private var editing: Item?
+    @State private var editing: ItemGroup?
 
     var body: some View {
         NavigationStack {
@@ -18,18 +18,16 @@ struct ItemsView: View {
                             .foregroundStyle(.red)
                     }
                 }
-                ForEach(items) { item in
-                    Button { editing = item } label: {
+                ForEach(groups) { group in
+                    Button { editing = group } label: {
                         VStack(alignment: .leading) {
-                            Text(item.title)
+                            Text(group.title)
                                 .font(.headline)
-                            if let subtitle = item.subtitle {
-                                Text(subtitle)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(2)
-                            }
-                            Text(item.detail)
+                            Text(group.wordsText)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                            Text(group.detail)
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
@@ -37,14 +35,14 @@ struct ItemsView: View {
                     .tint(.primary)
                 }
                 .onDelete { offsets in
-                    let removed = offsets.map { items[$0] }
+                    let removed = offsets.map { groups[$0] }
                     Task { await remove(removed) }
                 }
             }
             .overlay {
                 if !session.signedIn {
                     ContentUnavailableView("Signed out", systemImage: "person.crop.circle.badge.exclamationmark", description: Text("Sign in with Google in Settings."))
-                } else if loaded, items.isEmpty, error == nil {
+                } else if loaded, groups.isEmpty, error == nil {
                     ContentUnavailableView("No items", systemImage: "cart", description: Text("Tap + or share a Woolworths product to this app."))
                 }
             }
@@ -57,8 +55,8 @@ struct ItemsView: View {
             .sheet(isPresented: $adding, onDismiss: { Task { await load() } }) {
                 AddItemSheet(store: session.store)
             }
-            .sheet(item: $editing, onDismiss: { Task { await load() } }) { item in
-                EditItemSheet(item: item, store: session.store)
+            .sheet(item: $editing, onDismiss: { Task { await load() } }) { group in
+                EditItemSheet(group: group, store: session.store)
             }
         }
     }
@@ -69,21 +67,21 @@ struct ItemsView: View {
             session.refresh()
         }
         guard session.signedIn else {
-            items = []
+            groups = []
             return
         }
         do {
-            items = try await session.store.client().items()
+            groups = ItemGroup.group(try await session.store.client().items())
             error = nil
         } catch {
             self.error = error.localizedDescription
         }
     }
 
-    private func remove(_ removed: [Item]) async {
+    private func remove(_ removed: [ItemGroup]) async {
         do {
             let client = try session.store.client()
-            for item in removed { try await client.remove(word: item.word) }
+            for group in removed { try await client.remove(group) }
             error = nil
         } catch {
             self.error = error.localizedDescription
