@@ -1,0 +1,45 @@
+name: Deploy server
+
+# Runs once CI has finished on `main`, so a commit that failed CI never ships.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency: deploy-server
+
+permissions:
+  contents: read
+
+jobs:
+  fly:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 2
+      - name: Check for server changes
+        id: changes
+        if: github.event_name == 'workflow_run'
+        run: |
+          if git diff --quiet HEAD^ HEAD -- \
+            src scripts supabase package.json pnpm-lock.yaml pnpm-workspace.yaml \
+            tsconfig.json tsconfig.build.json Dockerfile docker-entrypoint.sh \
+            fly.toml .dockerignore .github/workflows/deploy-server.yml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.changed == 'true'
+        uses: superfly/flyctl-actions/setup-flyctl@master
+      - if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.changed == 'true'
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

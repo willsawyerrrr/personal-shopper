@@ -54,8 +54,10 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   which are imported into the owner's rows on start and renamed `.imported`.
   `/auth/*` is rate limited. Requests log one `request completed` line and
   every auth rejection a `warn` with a `reason` (never a token, code, ID
-  token, secret or cookie). See
-  [`docs/deployment.md`](docs/deployment.md).
+  token, secret or cookie). Merges to `main` deploy via
+  `.github/workflows/deploy-server.yml` after CI passes (repo secret
+  `FLY_API_TOKEN`); migrations stay manual, applied before merging code that
+  needs them. See [`docs/deployment.md`](docs/deployment.md).
 - Voice capture: a shared iCloud Reminders list is the queue the server
   syncs into the owner's cart (`REMINDERS_OWNER_EMAIL`, required when the sync
   is enabled; Siri's built-in "add X to my Shopping List"); the iOS
