@@ -231,6 +231,14 @@ describe('admin', () => {
     expect(response.body).toContain('name="quantity" type="number" min="1" value="1"')
   })
 
+  it('renders items read-only until Edit is pressed', async () => {
+    const response = await app.inject({ method: 'GET', url: '/admin', headers: authHeader })
+    expect(response.body).toContain('<strong class="view">milk</strong>')
+    expect(response.body).toContain('<label class="view button-label" for="edit-0">Edit</label>')
+    expect(response.body).toMatch(/class="edit-toggle" id="edit-0" aria-label="Edit milk">/)
+    expect(response.body).toContain('<button type="reset" class="edit secondary">Cancel</button>')
+  })
+
   it('edits an item from the web form and redirects', async () => {
     const response = await app.inject({
       method: 'POST',
@@ -256,6 +264,9 @@ describe('admin', () => {
     })
     expect(response.statusCode).toBe(409)
     expect(response.body).toContain('already used by another item')
+    expect(response.body).toMatch(/class="edit-toggle" id="edit-1" aria-label="Edit milk" checked>/)
+    expect(response.body).toContain('name="word" required value="bread"')
+    expect(response.body).toContain('<a class="edit button-link" href="/admin">Cancel</a>')
     expect(await itemsYaml(db.sql)).toContain('milk:')
   })
 

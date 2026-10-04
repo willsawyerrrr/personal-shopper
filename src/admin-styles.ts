@@ -96,9 +96,23 @@ export const PAGE_STYLES = `
   .item-head { padding-bottom: 0.4rem; font-size: 0.9rem; color: var(--color-text-muted); font-weight: 500; }
   .item-head span { padding-left: 0.45rem; }
   .item-head { border-bottom: 1px solid var(--color-border); margin-bottom: 0.25rem; }
-  form.item { padding: 0.5rem 0; }
+  form.item { position: relative; padding: 0.5rem 0; }
   form.item + form.item { border-top: 1px solid var(--color-border); }
   form.item label { margin: 0; }
+  form.item .edit-toggle {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+  form.item .cell .edit { display: none; }
+  form.item .edit-toggle:checked ~ .cell .view { display: none; }
+  form.item .edit-toggle:checked ~ .cell label.edit { display: block; }
+  form.item .edit-toggle:checked ~ .cell button.edit,
+  form.item .edit-toggle:checked ~ .cell a.edit { display: inline-block; }
   form.item .field-name {
     position: absolute;
     width: 1px;
@@ -107,35 +121,48 @@ export const PAGE_STYLES = `
     clip-path: inset(50%);
     white-space: nowrap;
   }
-  form.item input {
-    margin: 0;
-    padding: 0.3rem 0.4rem;
-    color: var(--color-text);
-    background: transparent;
-    border-color: transparent;
-    border-radius: 6px;
-  }
-  form.item input:hover { border-color: var(--color-border); }
-  form.item input:focus { background: var(--color-bg); border-color: var(--color-accent); }
-  form.item .phrase input { font-weight: 700; }
+  form.item .view { display: block; }
+  form.item strong.view, form.item span.view { padding: 0.3rem 0.4rem; overflow-wrap: anywhere; }
+  form.item .view-name { display: none; }
+  form.item input:not(.edit-toggle) { margin: 0; padding: 0.3rem 0.4rem; border-radius: 6px; }
+  form.item .phrase .view { font-weight: 700; }
   form.item .listing { padding: 0 0.4rem; margin-top: 0.1rem; overflow-wrap: anywhere; }
-  form.item .actions { display: flex; gap: 0.4rem; padding-top: 0.1rem; }
-  form.item button {
+  form.item .actions { display: flex; flex-wrap: wrap; gap: 0.4rem; padding-top: 0.1rem; }
+  form.item button, form.item .button-label, form.item .button-link {
+    display: inline-block;
     padding: 0.3rem 0.7rem;
     font-size: 0.8rem;
+    font-weight: 600;
+    line-height: normal;
+    text-decoration: none;
     color: #fff;
     background: var(--color-accent);
     border: 1px solid var(--color-accent);
     border-radius: 6px;
+    cursor: pointer;
   }
   form.item button:hover { background: var(--color-accent-hover); }
+  form.item .button-label, form.item .button-link, form.item button.secondary {
+    color: var(--color-text);
+    background: transparent;
+    border-color: var(--color-border);
+  }
+  form.item .button-label:hover, form.item .button-link:hover, form.item button.secondary:hover {
+    background: var(--color-bg);
+  }
   form.item button.danger { color: var(--color-danger); background: transparent; border-color: var(--color-danger); }
   form.item button.danger:hover { background: var(--color-bg); }
+  form.item .edit-toggle:focus-visible ~ .actions .button-label,
+  form.item button:focus-visible,
+  form.item .button-link:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
   @media (max-width: 30rem) {
     body { margin: 1.25rem auto; }
     .card { padding: 1rem; }
     .item-head { display: none; }
-    form.item { display: flex; flex-direction: column; align-items: stretch; gap: 0.6rem; padding: 0.9rem 0; }
+    form.item { display: flex; flex-direction: column; align-items: stretch; gap: 0.4rem; padding: 0.9rem 0; }
     form.item .field-name {
       position: static;
       width: auto;
@@ -145,9 +172,12 @@ export const PAGE_STYLES = `
       margin-bottom: 0.2rem;
       font-size: 0.75rem;
     }
-    form.item input { border-color: var(--color-border); }
+    form.item strong.view, form.item span.view { padding: 0; }
+    form.item .view-name { display: inline; margin-right: 0.4rem; color: var(--color-text-muted); font-size: 0.8rem; }
+    form.item .listing { padding: 0; }
+    form.item .edit-toggle:checked ~ .cell { margin-bottom: 0.4rem; }
     form.item .qty input { width: 6rem; }
-    form.item .actions { padding-top: 0; }
+    form.item .actions { padding-top: 0.3rem; }
     table.sessions thead { display: none; }
     table.sessions, table.sessions tbody, table.sessions tr, table.sessions td { display: block; width: 100%; }
     table.sessions tr { padding: 0.6rem 0; border-bottom: 1px solid var(--color-border); }
