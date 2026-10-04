@@ -159,6 +159,42 @@ A missing, malformed, expired, revoked or no-longer-allowed token gets
 `401 {"error":"unauthorized"}`. On `401` the client discards the token and
 starts sign-in again.
 
+### Registering a Woolworths passkey
+
+`/woolworths/passkey` stores the Woolworths passkey the server signs in with
+for the user the token belongs to. It accepts a bearer token only (the web
+session cookie is rejected), is rate limited to 10 requests per minute per
+client IP, and exists only when `CREDENTIALS_ENCRYPTION_KEY` is set (otherwise
+it answers `404`). The credential is never logged.
+
+```
+PUT {PUBLIC_BASE_URL}/woolworths/passkey
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{"credentialId": "…", "rpId": "auth.woolworths.com.au", "privateKey": "…", "userHandle": "…", …}
+```
+
+The body is a credential as returned by CDP `WebAuthn.getCredentials`, or an
+array of them, of which the first usable entry is stored. A credential is
+usable when its `rpId` is `auth.woolworths.com.au`, `credentialId`,
+`userHandle` and `privateKey` are non-empty strings, and `privateKey` is a
+base64 PKCS#8 Ed25519, EC or RSA key. It replaces any stored credential and
+drops the user's cached Woolworths session store, so the next login uses it.
+
+| Method   | Success                                       |
+| -------- | --------------------------------------------- |
+| `PUT`    | `200 {"registered": true}`                    |
+| `GET`    | `200 {"registered": <whether one is stored>}` |
+| `DELETE` | `200 {"registered": false}`                   |
+
+| Status | Body                                                       |
+| ------ | ---------------------------------------------------------- |
+| `400`  | `{"error":"<message>"}`: the body has no usable credential |
+| `401`  | `{"error":"unauthorized"}`                                 |
+
+`/admin` shows whether the signed-in user has a passkey registered.
+
 ### Token lifetime
 
 Tokens are 32 random bytes (`ps_` plus base64url), stored on the server only

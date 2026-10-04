@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -11,6 +12,7 @@ import type { AppConfig } from './config.ts'
 import { itemsYaml, seedItems, signInClient, signInWeb, testConfig } from './testing/app.ts'
 import { createTestDb } from './testing/db.ts'
 import { FakeGoogle } from './testing/google.ts'
+import { CredentialStore } from './users/credentials.ts'
 
 describe('admin', () => {
   let dir: string
@@ -33,6 +35,22 @@ describe('admin', () => {
   afterEach(async () => {
     await rm(dir, { recursive: true })
     await db.close()
+  })
+
+  it('shows whether a passkey is registered only when passkeys are enabled', async () => {
+    const page = () => app.inject({ method: 'GET', url: '/admin', headers: authHeader })
+    expect((await page()).body).not.toContain('Woolworths passkey')
+
+    const credentials = new CredentialStore(db.sql, randomBytes(32))
+    app = buildApp(config, {
+      sql: db.sql,
+      fetch: google.fetch,
+      passkeys: { credentials, invalidate: () => {} },
+    })
+    authHeader = { cookie: await signInWeb(app, google) }
+    expect((await page()).body).toContain('Not registered.')
+    await credentials.put('me@example.com', [{ credentialId: 'x' }])
+    expect((await page()).body).toContain('Registered.')
   })
 
   it('serves a Google sign-in button instead of a password form', async () => {

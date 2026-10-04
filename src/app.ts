@@ -9,6 +9,7 @@ import type { Sql } from './db.ts'
 import { GoogleOAuth } from './google.ts'
 import { ItemStore } from './items.ts'
 import { registerLogin } from './login.ts'
+import { registerPasskey, type PasskeyOptions } from './passkey.ts'
 import { TokenStore } from './tokens.ts'
 import type { CartClient, ProductLookup } from './woolworths/client.ts'
 
@@ -34,6 +35,8 @@ export interface AppOptions {
   cart?: (email: string) => CartClient
   /** Resolves a user's product lookup for listing text; without it items are stored without one. */
   lookup?: (email: string) => ProductLookup
+  /** Enables `/woolworths/passkey` and the admin page's passkey status; neither exists without it. */
+  passkeys?: PasskeyOptions
 }
 
 export function buildApp(config: AppConfig, options: AppOptions): FastifyInstance {
@@ -88,9 +91,13 @@ export function buildApp(config: AppConfig, options: AppOptions): FastifyInstanc
   })
 
   void registerLogin(app, { config, tokens, google, now })
-  void registerAdmin(app, config, tokens, items, options.lookup)
+  void registerAdmin(app, config, tokens, items, options.lookup, options.passkeys?.credentials)
   if (options.cart) {
     void registerCart(app, config, tokens, items, options.cart)
+  }
+
+  if (options.passkeys) {
+    void registerPasskey(app, config, tokens, options.passkeys)
   }
 
   return app

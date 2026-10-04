@@ -53,6 +53,13 @@ describe('CredentialStore', () => {
     expect(first?.encrypted.equals((second as { encrypted: Buffer }).encrypted)).toBe(false)
   })
 
+  it('reports whether a user has a credential', async () => {
+    await expect(store.has('me@example.com')).resolves.toBe(false)
+    await store.put('me@example.com', credentials)
+    await expect(store.has('ME@example.com')).resolves.toBe(true)
+    await expect(store.has('you@example.com')).resolves.toBe(false)
+  })
+
   it('keeps each user their own credential', async () => {
     await store.put('me@example.com', credentials)
     await store.put('you@example.com', [{ credentialId: 'other' }])

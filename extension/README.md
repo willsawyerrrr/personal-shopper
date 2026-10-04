@@ -7,7 +7,7 @@ exposes, without switching tabs to copy the URL across by hand.
 
 Plain browser-extension JS, no build step, nothing under `src/`. `pnpm lint`
 and `pnpm test` cover it (`auth.test.js`: PKCE vector, redirect `state`
-check, token exchange); `typecheck` and `coverage` do not.
+check, token exchange; `passkey.test.js`: credential selection, status, API calls and the registration flow against a fake debugger); `typecheck` and `coverage` do not.
 
 ## Load it
 
@@ -32,6 +32,31 @@ this small and single-user.
    out.
 4. "Manage items" at the bottom of the popup opens `/admin` on your
    configured server in a new tab, once a server URL is set.
+
+## Woolworths passkey
+
+The options page registers the passkey the server signs in to Woolworths with
+when its session expires, without the CLI. Needs the server URL, a Google
+sign-in, and `CREDENTIALS_ENCRYPTION_KEY` set on the server.
+
+1. Options → "Register passkey". The extension opens a new tab at the
+   Woolworths login and attaches a virtual authenticator to it with
+   `chrome.debugger` (CDP `WebAuthn.enable` and `addVirtualAuthenticator`: ctap2,
+   internal, resident key, user verified). Chrome shows its "started debugging
+   this browser" bar while it is attached.
+2. Log in to Woolworths in that tab and accept the prompt to create a passkey.
+3. The extension polls `WebAuthn.getCredentials`, uploads the first credential
+   for `auth.woolworths.com.au` with `PUT /woolworths/passkey`, then removes the
+   authenticator and detaches. It times out after 10 minutes.
+
+"Cancel" (or dismissing the debugging bar, or closing the tab) stops the
+registration and does the same cleanup. A failure is shown on the options page.
+Once registered the page offers "Replace passkey" and "Remove passkey"
+(`DELETE /woolworths/passkey`); `/admin` shows the registration too.
+
+The registration runs in the extension's service worker (`background.js`),
+which keeps going when the options page closes; the logic is in
+`passkey-logic.js`, `passkey-api.js` and `passkey-flow.js` (`passkey.test.js`).
 
 ## Sign-in
 
@@ -64,12 +89,15 @@ digit mapped `0-9a-f` to `a-p`).
 - `activeTab` — read the current tab's URL only when you open the popup, to
   prefill the form. No `tabs`, no broad host access
   to browse tabs you haven't opened the popup on.
+- `debugger` — attach a virtual authenticator to the Woolworths login tab you
+  open from the options page, only while registering a passkey.
 - `identity` — `chrome.identity.launchWebAuthFlow` and `getRedirectURL` for
   Google sign-in through the server.
 - `storage` — save your server URL and access token locally.
 - `host_permissions` — required for the popup's and options page's `fetch` to
   reach the server; this server sets no CORS headers. `https://*.willsawyerrrr.dev/*`
   covers the deployed server and `http://*/*` a local dev server.
+  `https://*.woolworths.com.au/*` covers the Woolworths login tab.
 
 ## What this doesn't cover
 

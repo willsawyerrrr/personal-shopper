@@ -69,7 +69,7 @@ the privileged role.
 | `woolworths_sessions` | A user's Woolworths cookie jar.                                           |
 | `passkey_credentials` | A user's passkey credential, AES-256-GCM encrypted (IV, tag, ciphertext). |
 
-`CredentialStore` (`src/users/credentials.ts`: `get`, `put`, `delete` per user)
+`CredentialStore` (`src/users/credentials.ts`: `get`, `put`, `has`, `delete` per user)
 encrypts with `CREDENTIALS_ENCRYPTION_KEY` before the credential reaches the
 database, so the key is never stored there and the credential is never logged.
 The server refuses to start without the key when any credential exists.
@@ -131,8 +131,20 @@ Akamai Bot Manager. Two paths produce a user's stored session:
   Collect store/pickup slot by hand, then extracts the required cookies into
   the user's session.
 
+The Chrome extension registers a user's passkey without the CLI
+([`extension/README.md`](../extension/README.md#woolworths-passkey)): its
+service worker attaches a virtual authenticator to a new tab with
+`chrome.debugger` (the same options as the script), the user logs in and
+accepts Woolworths' prompt, and the credential read with
+`WebAuthn.getCredentials` is uploaded with `PUT /woolworths/passkey`
+([`auth.md`](auth.md#registering-a-woolworths-passkey); `src/passkey.ts`),
+which stores it through `CredentialStore` and drops the user's cached session
+store so the next login uses it. `GET` and `DELETE` on the same path report and
+remove it, and `/admin` shows whether one is registered. These routes need
+`CREDENTIALS_ENCRYPTION_KEY`.
+
 `pnpm register-passkey` (`scripts/register-passkey.ts`) registers the
-credential once: it opens a headed Chrome (the only passkey step that needs a
+credential from a developer machine: it opens a headed Chrome (the only passkey step that needs a
 browser) with a virtual authenticator, you
 log in and accept Woolworths' prompt to create a passkey, and the credential
 (the output of `WebAuthn.getCredentials`) is encrypted and stored for the user
