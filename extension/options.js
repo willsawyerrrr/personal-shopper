@@ -1,19 +1,14 @@
-import { clearSession, getSession, isExpired, signIn, signOut } from './auth.js'
+import { clearSession, getSession, isExpired, SERVER_URL, signIn, signOut } from './auth.js'
 import { fetchRegistered, removePasskey } from './passkey-api.js'
 import { describeStatus } from './passkey-logic.js'
 
 const STATE_KEY = 'passkeyState'
 
 async function init() {
-  const serverUrlInput = document.getElementById('serverUrl')
-  const status = document.getElementById('status')
   const accountState = document.getElementById('accountState')
   const accountError = document.getElementById('accountError')
   const signInButton = document.getElementById('signIn')
   const signOutButton = document.getElementById('signOut')
-
-  const { serverUrl } = await chrome.storage.local.get('serverUrl')
-  if (serverUrl) serverUrlInput.value = serverUrl
 
   async function renderAccount() {
     const session = await getSession()
@@ -26,24 +21,10 @@ async function init() {
     signOutButton.hidden = !signedIn
   }
 
-  async function currentServerUrl() {
-    const url = serverUrlInput.value.trim()
-    if (!url) throw new Error('Enter and save your server URL first.')
-    await chrome.storage.local.set({ serverUrl: url })
-    return url
-  }
-
-  document.getElementById('form').addEventListener('submit', async (event) => {
-    event.preventDefault()
-    await chrome.storage.local.set({ serverUrl: serverUrlInput.value.trim() })
-    status.textContent = 'Saved.'
-    setTimeout(() => (status.textContent = ''), 2000)
-  })
-
   signInButton.addEventListener('click', async () => {
     accountError.textContent = ''
     try {
-      await signIn(await currentServerUrl())
+      await signIn()
     } catch (error) {
       accountError.textContent = error.message
     }
@@ -52,7 +33,7 @@ async function init() {
 
   signOutButton.addEventListener('click', async () => {
     accountError.textContent = ''
-    await signOut((await chrome.storage.local.get('serverUrl')).serverUrl ?? '')
+    await signOut()
     await renderAccount()
   })
 
@@ -64,12 +45,11 @@ async function init() {
   async function renderPasskey() {
     const { [STATE_KEY]: state } = await chrome.storage.session.get(STATE_KEY)
     const session = await getSession()
-    const { serverUrl } = await chrome.storage.local.get('serverUrl')
     let registered
     let error
-    if (serverUrl && !isExpired(session)) {
+    if (!isExpired(session)) {
       try {
-        registered = await fetchRegistered(serverUrl, session.accessToken)
+        registered = await fetchRegistered(SERVER_URL, session.accessToken)
       } catch (caught) {
         error = caught.message
       }
@@ -95,10 +75,9 @@ async function init() {
   )
   removeButton.addEventListener('click', async () => {
     const session = await getSession()
-    const { serverUrl } = await chrome.storage.local.get('serverUrl')
     await chrome.storage.session.remove(STATE_KEY)
     try {
-      await removePasskey(serverUrl, session.accessToken)
+      await removePasskey(SERVER_URL, session.accessToken)
     } catch (error) {
       await chrome.storage.session.set({ [STATE_KEY]: { phase: 'failed', error: error.message } })
     }

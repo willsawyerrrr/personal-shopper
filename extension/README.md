@@ -18,10 +18,8 @@ this small and single-user.
 1. `chrome://extensions` → enable Developer Mode → Load unpacked → this
    folder.
 2. Click the extension icon → "Options" (or right-click the icon → Options)
-   → set your server URL (`https://personal-shopper.willsawyerrrr.dev`, or
-   `http://localhost:3000` for local dev), Save, then "Sign in with Google".
-   The server URL and the access token are stored in `chrome.storage.local` —
-   this browser only, never synced to Google. "Sign out" revokes the token on
+   → "Sign in with Google". The access token is stored in
+   `chrome.storage.local` — this browser only, never synced to Google. "Sign out" revokes the token on
    the server and discards it.
 3. On any `woolworths.com.au/shop/productdetails/...` page, click the icon
    (or press `Ctrl+Shift+Y` / `Cmd+Shift+Y` on Mac — reassign at
@@ -30,13 +28,13 @@ this small and single-user.
    trigger word and quantity, then submit. Signed out, the popup shows a
    "Sign in with Google" button instead; a `401` from the server signs you
    out.
-4. "Manage items" at the bottom of the popup opens `/admin` on your
-   configured server in a new tab, once a server URL is set.
+4. "Manage items" at the bottom of the popup opens `/admin` on the
+   server in a new tab.
 
 ## Woolworths passkey
 
 The options page registers the passkey the server signs in to Woolworths with
-when its session expires, without the CLI. Needs the server URL, a Google
+when its session expires, without the CLI. Needs a Google
 sign-in, and `CREDENTIALS_ENCRYPTION_KEY` set on the server.
 
 1. Options → "Register passkey". The extension opens a new tab at the
@@ -93,10 +91,10 @@ digit mapped `0-9a-f` to `a-p`).
   open from the options page, only while registering a passkey.
 - `identity` — `chrome.identity.launchWebAuthFlow` and `getRedirectURL` for
   Google sign-in through the server.
-- `storage` — save your server URL and access token locally.
+- `storage` — save your access token locally.
 - `host_permissions` — required for the popup's and options page's `fetch` to
   reach the server; this server sets no CORS headers. `https://*.willsawyerrrr.dev/*`
-  covers the deployed server and `http://*/*` a local dev server.
+  covers the deployed server.
   `https://*.woolworths.com.au/*` covers the Woolworths login tab.
 
 ## What this doesn't cover

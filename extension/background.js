@@ -1,4 +1,4 @@
-import { clearSession, getSession, isExpired } from './auth.js'
+import { clearSession, getSession, isExpired, SERVER_URL } from './auth.js'
 import { uploadPasskey } from './passkey-api.js'
 import { registerPasskey } from './passkey-flow.js'
 import { CancelledError, UnauthorizedError } from './passkey-logic.js'
@@ -25,10 +25,9 @@ async function start() {
   const onDetach = (source) => source.tabId === tabId && abort()
   const onRemoved = (id) => id === tabId && abort()
   try {
-    const { serverUrl } = await chrome.storage.local.get('serverUrl')
     const session = await getSession()
-    if (!serverUrl || isExpired(session)) {
-      await setState({ phase: 'failed', error: 'Set your server URL and sign in first' })
+    if (isExpired(session)) {
+      await setState({ phase: 'failed', error: 'Sign in first' })
       return
     }
     chrome.debugger.onDetach.addListener(onDetach)
@@ -38,7 +37,7 @@ async function start() {
       openTab: async () => (tabId = (await chrome.tabs.create({ url: 'about:blank' })).id),
       navigate: (id, url) => chrome.tabs.update(id, { url }),
       debuggerApi,
-      upload: (credential) => uploadPasskey(serverUrl, session.accessToken, credential),
+      upload: (credential) => uploadPasskey(SERVER_URL, session.accessToken, credential),
       signal: controller.signal,
       onPhase: (phase) => setState({ phase }),
     })

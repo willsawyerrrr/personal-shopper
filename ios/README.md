@@ -7,7 +7,7 @@ Woolworths product without opening the web admin.
 - **App** (`App/`): Items tab (list with each trigger phrase as the title and
   the product's Woolworths listing text beneath it, pull to refresh, tap an
   item to edit its trigger phrase, quantity and product link or stockcode,
-  swipe to delete, add by pasted URL) and Settings tab (server URL, Sign in
+  swipe to delete, add by pasted URL) and Settings tab (Sign in
   with Google / Sign out, test connection).
 - **Share extension** (`ShareExtension/`): appears in the iOS share sheet for
   URLs and text. Pulls the `woolworths.com.au/shop/productdetails/<stockcode>`
@@ -65,15 +65,13 @@ cp Config/Local.xcconfig.example Config/Local.xcconfig
 xcodegen generate
 ```
 
-The App
-Group `group.dev.willsawyerrrr.personal-shopper` and Keychain group
-`dev.willsawyerrrr.personal-shopper` are created by automatic signing.
+The Keychain group
+`dev.willsawyerrrr.personal-shopper` is created by automatic signing.
 
-Open the app, then Settings: the server URL defaults to
-`https://personal-shopper.willsawyerrrr.dev`; tap Sign in with Google, then
-Test connection. The token lives in the Keychain, shared with the extension and
-intents through the Keychain access group; nothing is embedded in the app.
-Plain-HTTP servers work only on the local network.
+Open the app, then Settings: tap Sign in with Google, then Test connection.
+The app talks to `https://personal-shopper.willsawyerrrr.dev`. The token lives
+in the Keychain, shared with the extension and intents through the Keychain
+access group; nothing is embedded in the app.
 
 ## Share a product
 
