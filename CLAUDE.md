@@ -11,12 +11,16 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
 
 - Retailer: Woolworths Australia only.
 - Cart only — this never places an order. Checkout stays manual.
-- Multi-user: each signed-in user (keyed by lower-cased Google email) has
-  their own items, Woolworths session and passkey credential, so their cart is
-  driven by their own Woolworths account. Everything lives in Supabase Postgres
+- Multi-user: each signed-in user (keyed by lower-cased Google email) belongs
+  to a household, which has one set of items, one Woolworths session and one
+  passkey credential, so its members' carts are driven by the same Woolworths
+  account. A new user starts in a household of their own; members invite each
+  other with single-use, expiring codes (`src/households.ts`), and joining
+  discards the joiner's previous household if they were its only member.
+  Tokens stay per user. Everything lives in Supabase Postgres
   (`DATABASE_URL`, server-side only; schema in `supabase/migrations`, applied
   by the Supabase CLI, never auto-migrated; RLS on with no policies).
-- Item matching is exact, hand-maintained mapping (per user: spoken term →
+- Item matching is exact, hand-maintained mapping (per household: spoken term →
   stockcode + quantity), not fuzzy search or NLU. A user who wants a different
   brand edits their mapping.
 - Session auth is cookie replay, kept alive by `GET /auth/heartbeat`
@@ -39,7 +43,7 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   row is created on first sign-in), and it issues its own session cookie
   (`/admin`) or opaque bearer tokens (iOS app, Chrome extension; hashed in
   the `tokens` table, 90-day sliding expiry, revocable). Abuse is bounded by
-  env-configurable limits: `MAX_USERS`, per-user items and active tokens, and
+  env-configurable limits: `MAX_USERS`, per-household items and invites, per-user active tokens, and
   per-user plus per-IP rate limits (`docs/auth.md#limits`). The Google
   consent screen must be published "In production". See
   [`docs/auth.md`](docs/auth.md).

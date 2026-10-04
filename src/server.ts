@@ -1,6 +1,7 @@
 import { buildApp } from './app.ts'
 import { loadConfig } from './config.ts'
 import { connect } from './db.ts'
+import { HouseholdStore } from './households.ts'
 import { ItemStore } from './items.ts'
 import { ICloudRemindersClient } from './reminders/client.ts'
 import { syncReminders } from './reminders/sync.ts'
@@ -49,10 +50,12 @@ if (config.sessionKeepAliveIntervalMs > 0) {
   setInterval(
     () =>
       void (async () => {
-        for (const email of new Set([
+        // Members of a household share a session, so one of them stands for it.
+        const emails = new Set([
           ...(ownerEmail ? [ownerEmail] : []),
           ...(await app.tokens.emails()),
-        ])) {
+        ])
+        for (const email of await new HouseholdStore(sql).onePerHousehold([...emails])) {
           await keepAlive(email).catch((error: unknown) => app.log.error(error))
         }
       })().catch((error: unknown) => app.log.error(error)),

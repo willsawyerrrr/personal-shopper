@@ -10,8 +10,10 @@ See [`docs/architecture.md`](docs/architecture.md) for how it fits together,
 and [`docs/deployment.md`](docs/deployment.md) for deploying to Fly.io and
 creating the Google OAuth client.
 
-Each signed-in user drives their own Woolworths account: items, session and
-passkey are per user, in Postgres (`DATABASE_URL`; schema in
+Users belong to a household, which has one Woolworths account: items, session
+and passkey are per household, shared by its members (a new user starts in a
+household of their own; members invite each other with single-use codes from
+`/admin`, the iOS app or the Chrome extension). All of it is in Postgres (`DATABASE_URL`; schema in
 `supabase/migrations`, applied with the Supabase CLI). A user's Woolworths login
 is captured once with `pnpm capture-session` (optionally `--user <email>`) and
 then kept alive by the server through Woolworths' `/auth/heartbeat` refresh. Set

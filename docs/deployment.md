@@ -25,7 +25,7 @@ registered, below).
   the others in [`auth.md`](auth.md#limits)) and the paths of single-user
   files to import (below).
 - Postgres (Supabase): users, tokens, items, Woolworths sessions and encrypted
-  passkey credentials, per user ([`architecture.md`](architecture.md#data)). A
+  passkey credentials, per household ([`architecture.md`](architecture.md#data)). A
   user without items has none; they add them through `/admin`.
 - Volume `data` mounted at `/data`: only the single-user files `items.yml`,
   `session.json`, `passkey-credentials.json` and `tokens.json`, if present, so
@@ -52,7 +52,7 @@ Sign-in is Google only; see [`auth.md`](auth.md) for the flows and the client
 contract. The service is internet-reachable and sign-up is open: any Google
 account with a verified email can sign in and gets a user on first sign-in,
 bounded by the limits in [`auth.md`](auth.md#limits) (`MAX_USERS` total users,
-per-user items, tokens and request rates, and per-IP request rates on `/auth/*`
+per-household items and invites, per-user tokens and request rates, and per-IP request rates on `/auth/*`
 and `POST /cart/items`); excess requests get `429`. `GET /healthz` is
 unauthenticated and backs the Fly health check. The server refuses to start
 without the Google variables.

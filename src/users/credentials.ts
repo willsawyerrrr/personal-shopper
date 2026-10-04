@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
-import { ensureUser, type Sql } from '../db.ts'
+import { ensureHousehold, type Sql } from '../db.ts'
 import { normalizeEmail } from './email.ts'
 
 /** A credential as returned by CDP `WebAuthn.getCredentials`. */
@@ -37,7 +37,7 @@ export async function credentialsStored(sql: Sql): Promise<boolean> {
 }
 
 /**
- * Per-user passkey credentials. They are encrypted with AES-256-GCM (IV, auth
+ * Per-household passkey credentials, shared by the household's members. They are encrypted with AES-256-GCM (IV, auth
  * tag, ciphertext) before they reach the database, so the key never does.
  * Nothing here logs credential content.
  */
@@ -51,7 +51,7 @@ export class CredentialStore {
   async get(email: string): Promise<PasskeyCredential[] | undefined> {
     const [row] = await this.sql<{ encrypted: Buffer }[]>`
       select c.encrypted from passkey_credentials c
-      join users u on u.id = c.user_id
+      join users u on u.household_id = c.household_id
       where u.email = ${normalizeEmail(email)}`
     if (!row) {
       return undefined
@@ -80,7 +80,7 @@ export class CredentialStore {
     const [row] = await this.sql<{ stored: boolean }[]>`
       select exists (
         select 1 from passkey_credentials c
-        join users u on u.id = c.user_id
+        join users u on u.household_id = c.household_id
         where u.email = ${normalizeEmail(email)}
       ) as stored`
     return row?.stored ?? false
@@ -96,17 +96,17 @@ export class CredentialStore {
       cipher.final(),
     ])
     const encrypted = Buffer.concat([iv, cipher.getAuthTag(), ciphertext])
-    const userId = await ensureUser(this.sql, email)
+    const householdId = await ensureHousehold(this.sql, email)
     await this.sql`
-      insert into passkey_credentials (user_id, encrypted)
-      values (${userId}, ${encrypted})
-      on conflict (user_id) do update set encrypted = excluded.encrypted, updated_at = now()`
+      insert into passkey_credentials (household_id, encrypted)
+      values (${householdId}, ${encrypted})
+      on conflict (household_id) do update set encrypted = excluded.encrypted, updated_at = now()`
   }
 
   /** Removes the user's credentials; a no-op when there are none. */
   async delete(email: string): Promise<void> {
     await this.sql`
       delete from passkey_credentials
-      where user_id in (select id from users where email = ${normalizeEmail(email)})`
+      where household_id in (select household_id from users where email = ${normalizeEmail(email)})`
   }
 }

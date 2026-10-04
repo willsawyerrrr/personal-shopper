@@ -5,6 +5,8 @@ import { UserRateLimiter } from './rate-limit.ts'
 import { authenticate, logAuthFailure, requestPath, sessionCookie } from './auth.ts'
 import type { AppConfig } from './config.ts'
 import { applyEdit, parseStockcode } from './item-edit.ts'
+import { renderHousehold, type HouseholdView } from './admin-household.ts'
+import { InviteLimitError, type HouseholdStore } from './households.ts'
 import { normalizeWord, type ItemMapping, type ItemsConfig, type ItemStore } from './items.ts'
 import { createListingBackfill, lookupListing } from './listings.ts'
 import type { CredentialStore } from './users/credentials.ts'
@@ -16,6 +18,7 @@ export async function registerAdmin(
   config: AppConfig,
   tokens: TokenStore,
   store: ItemStore,
+  households: HouseholdStore,
   lookupFor?: (email: string) => ProductLookup,
   passkeys?: CredentialStore,
   now: () => number = Date.now,
@@ -115,9 +118,98 @@ export async function registerAdmin(
       void backfillOf(request)
       const sessions = await sessionsOf(request)
       const passkey = passkeys && (await passkeys.has(emailOf(request)))
-      reply
+      const members = await households.members(emailOf(request))
+      reply.type('text/html').send(
+        renderPage(items, sessions, current.get(request)?.id, undefined, passkey, undefined, {
+          members,
+          you: emailOf(request),
+        }),
+      )
+    })
+
+    // Members of the household the user's items, Woolworths session and passkey are shared with.
+    admin.get('/admin/household', async (request) => ({
+      members: (await households.members(emailOf(request))).map((email) => ({
+        email,
+        you: email === emailOf(request),
+      })),
+    }))
+
+    // Responds to a household action: JSON for API clients, else the admin page
+    // (with `notice` or `error` shown), which is also where an invite code appears.
+    const householdPage = async (
+      request: FastifyRequest,
+      reply: FastifyReply,
+      status: number,
+      extra: { error?: string; invite?: { code: string; expiresAt: number } },
+    ) => {
+      const email = emailOf(request)
+      const sessions = await sessionsOf(request)
+      const passkey = passkeys && (await passkeys.has(email))
+      return reply
+        .code(status)
         .type('text/html')
-        .send(renderPage(items, sessions, current.get(request)?.id, undefined, passkey))
+        .send(
+          renderPage(
+            await store.load(email),
+            sessions,
+            current.get(request)?.id,
+            extra.error,
+            passkey,
+            undefined,
+            { members: await households.members(email), you: email, invite: extra.invite },
+          ),
+        )
+    }
+
+    admin.post('/admin/household/invites', async (request, reply) => {
+      try {
+        const invite = await households.invite(emailOf(request))
+        if (wantsJson(request)) {
+          return reply.code(201).send(invite)
+        }
+        return householdPage(request, reply, 201, { invite })
+      } catch (error) {
+        if (!(error instanceof InviteLimitError)) {
+          throw error
+        }
+        const message = `Your household can have at most ${config.limits.maxInvitesPerHousehold} unexpired invites.`
+        return wantsJson(request)
+          ? reply.code(409).send({ error: message })
+          : householdPage(request, reply, 409, { error: message })
+      }
+    })
+
+    admin.post<{ Body: { code?: string } | null }>(
+      '/admin/household/join',
+      async (request, reply) => {
+        const code = request.body?.code
+        const result =
+          typeof code === 'string' && code.trim()
+            ? await households.join(emailOf(request), code)
+            : 'invalid_invite'
+        if (result === 'joined') {
+          return wantsJson(request) ? reply.code(204).send() : reply.redirect('/admin')
+        }
+        const [status, error] =
+          result === 'already_member'
+            ? [409, 'You are already in that household.']
+            : [400, 'That invite code is invalid, expired or already used.']
+        return wantsJson(request)
+          ? reply.code(status).send({ error })
+          : householdPage(request, reply, status, { error })
+      },
+    )
+
+    admin.post('/admin/household/leave', async (request, reply) => {
+      const result = await households.leave(emailOf(request))
+      if (result === 'left') {
+        return wantsJson(request) ? reply.code(204).send() : reply.redirect('/admin')
+      }
+      const error = 'You are the only member of your household, so there is nothing to leave.'
+      return wantsJson(request)
+        ? reply.code(409).send({ error })
+        : householdPage(request, reply, 409, { error })
     })
 
     admin.get('/admin/items', async (request) => {
@@ -139,13 +231,13 @@ export async function registerAdmin(
       const full =
         !!word?.trim() &&
         !(normalizeWord(word) in items) &&
-        Object.keys(items).length >= config.limits.maxItemsPerUser
+        Object.keys(items).length >= config.limits.maxItemsPerHousehold
       const error = !word?.trim()
         ? 'A trigger word is required.'
         : !stockcode
           ? 'Could not find a stockcode in that URL — paste a link like /shop/productdetails/123456/product-name, or the stockcode itself.'
           : full
-            ? `You can have at most ${config.limits.maxItemsPerUser} items.`
+            ? `You can have at most ${config.limits.maxItemsPerHousehold} items.`
             : undefined
       if (error || !word || !stockcode) {
         const status = error && full ? 409 : 400
@@ -280,6 +372,7 @@ function renderPage(
   error?: string,
   passkey?: boolean,
   edit?: { word: string; values: Record<string, unknown> },
+  household?: HouseholdView,
 ): string {
   const rows = Object.entries(items)
     .sort(([a], [b]) => a.localeCompare(b))
@@ -386,6 +479,7 @@ function renderPage(
     <p class="hint">${passkey ? 'Registered. The server signs in to Woolworths with it when your session expires.' : 'Not registered. Register one from the Chrome extension.'}</p>
   </div>`
   }
+  ${household ? renderHousehold(household) : ''}
   <div class="card">
     <h2>Signed-in sessions</h2>
     <table class="sessions">

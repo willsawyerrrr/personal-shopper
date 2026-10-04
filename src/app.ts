@@ -7,6 +7,7 @@ import { registerCart } from './cart.ts'
 import type { AppConfig } from './config.ts'
 import type { Sql } from './db.ts'
 import { GoogleOAuth } from './google.ts'
+import { HouseholdStore } from './households.ts'
 import { ItemStore } from './items.ts'
 import { registerLogin } from './login.ts'
 import { registerPasskey, type PasskeyOptions } from './passkey.ts'
@@ -54,6 +55,7 @@ export function buildApp(config: AppConfig, options: AppOptions): FastifyInstanc
 
   const tokens = new TokenStore(options.sql, now, config.limits.maxTokensPerUser)
   const items = new ItemStore(options.sql)
+  const households = new HouseholdStore(options.sql, now, config.limits.maxInvitesPerHousehold)
   app.decorate('tokens', tokens)
   const google = new GoogleOAuth({
     clientId: config.googleClientId,
@@ -92,7 +94,16 @@ export function buildApp(config: AppConfig, options: AppOptions): FastifyInstanc
   })
 
   void registerLogin(app, { config, sql: options.sql, tokens, google, now })
-  void registerAdmin(app, config, tokens, items, options.lookup, options.passkeys?.credentials, now)
+  void registerAdmin(
+    app,
+    config,
+    tokens,
+    items,
+    households,
+    options.lookup,
+    options.passkeys?.credentials,
+    now,
+  )
   if (options.cart) {
     void registerCart(app, config, tokens, items, options.cart, now)
   }

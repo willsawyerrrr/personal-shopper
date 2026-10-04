@@ -109,6 +109,36 @@ public struct AdminClient: Sendable {
         _ = try await send("POST", path: "/admin/items/\(encoded)/delete")
     }
 
+    /// The members of the signed-in user's household, the user included.
+    public func household() async throws -> [HouseholdMember] {
+        struct Response: Decodable { let members: [HouseholdMember] }
+        let data = try await send("GET", path: "/admin/household")
+        return try decode(Response.self, from: data).members
+    }
+
+    /// Creates a single-use invite code to the signed-in user's household.
+    public func createInvite() async throws -> HouseholdInvite {
+        struct Response: Decodable {
+            let code: String
+            let expiresAt: Double
+        }
+        let data = try await send("POST", path: "/admin/household/invites")
+        let response = try decode(Response.self, from: data)
+        return HouseholdInvite(code: response.code, expiresAt: Date(timeIntervalSince1970: response.expiresAt / 1000))
+    }
+
+    /// Moves the signed-in user into the household `code` invites to. Their
+    /// previous household and its items are discarded if nobody else is in it.
+    public func joinHousehold(code: String) async throws {
+        struct Body: Encodable { let code: String }
+        _ = try await send("POST", path: "/admin/household/join", body: JSONEncoder().encode(Body(code: code)))
+    }
+
+    /// Moves the signed-in user into a new, empty household.
+    public func leaveHousehold() async throws {
+        _ = try await send("POST", path: "/admin/household/leave")
+    }
+
     private func send(_ method: String, path: String, body: Data? = nil, authorized: Bool = true) async throws -> Data {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             throw AdminError.invalidURL

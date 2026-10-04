@@ -73,6 +73,56 @@ struct AdminClientTests {
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer ps_tok")
     }
 
+    @Test func listsHouseholdMembers() async throws {
+        StubURLProtocol.stub(body: #"{"members":[{"email":"a@example.com","you":true},{"email":"b@example.com","you":false}]}"#)
+        let members = try await client.household()
+        #expect(members == [HouseholdMember(email: "a@example.com", you: true), HouseholdMember(email: "b@example.com", you: false)])
+        let request = try #require(StubURLProtocol.requests.withLock { $0.first })
+        #expect(request.httpMethod == "GET")
+        #expect(request.url?.absoluteString == "https://example.test/admin/household")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer ps_tok")
+    }
+
+    @Test func createsInvite() async throws {
+        StubURLProtocol.stub(status: 201, body: #"{"code":"abc123","expiresAt":1700000000000}"#)
+        let invite = try await client.createInvite()
+        #expect(invite == HouseholdInvite(code: "abc123", expiresAt: Date(timeIntervalSince1970: 1_700_000_000)))
+        let request = try #require(StubURLProtocol.requests.withLock { $0.first })
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://example.test/admin/household/invites")
+    }
+
+    @Test func reportsTheInviteLimit() async throws {
+        StubURLProtocol.stub(status: 409, body: #"{"error":"Your household can have at most 5 unexpired invites."}"#)
+        await #expect(throws: AdminError.rejected("Your household can have at most 5 unexpired invites.")) {
+            try await client.createInvite()
+        }
+    }
+
+    @Test func joinsHousehold() async throws {
+        StubURLProtocol.stub(status: 204)
+        try await client.joinHousehold(code: "abc123")
+        let request = try #require(StubURLProtocol.requests.withLock { $0.first })
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://example.test/admin/household/join")
+        #expect(try #require(request.httpBody) == Data(#"{"code":"abc123"}"#.utf8))
+    }
+
+    @Test func reportsAnInvalidInviteCode() async throws {
+        StubURLProtocol.stub(status: 400, body: #"{"error":"That invite code is invalid, expired or already used."}"#)
+        await #expect(throws: AdminError.rejected("That invite code is invalid, expired or already used.")) {
+            try await client.joinHousehold(code: "nope")
+        }
+    }
+
+    @Test func leavesHousehold() async throws {
+        StubURLProtocol.stub(status: 204)
+        try await client.leaveHousehold()
+        let request = try #require(StubURLProtocol.requests.withLock { $0.first })
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://example.test/admin/household/leave")
+    }
+
     @Test func addsItem() async throws {
         StubURLProtocol.stub(status: 201, body: #"{"word":"milk","stockcode":888137,"quantity":2,"listing":"Milk 2L"}"#)
         let url = try #require(URL(string: "https://www.woolworths.com.au/shop/productdetails/888137/milk"))

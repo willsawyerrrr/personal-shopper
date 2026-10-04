@@ -660,7 +660,7 @@ describe('admin with several users', () => {
 
   it('limits the items a user can map, replacing an existing one still allowed', async () => {
     const strict = buildApp(
-      testConfig(dir, { limits: { ...DEFAULT_LIMITS, maxItemsPerUser: 2 } }),
+      testConfig(dir, { limits: { ...DEFAULT_LIMITS, maxItemsPerHousehold: 2 } }),
       {
         sql: db.sql,
         fetch: google.fetch,
@@ -679,6 +679,125 @@ describe('admin with several users', () => {
     expect(full.json()).toEqual({ error: 'You can have at most 2 items.' })
     expect((await post('Milk')).statusCode).toBe(201)
     await strict.close()
+  })
+
+  describe('household', () => {
+    const json = (token: string) => ({
+      authorization: `Bearer ${token}`,
+      accept: 'application/json',
+    })
+    let mine: ReturnType<typeof json>
+    let yours: ReturnType<typeof json>
+
+    beforeEach(async () => {
+      await seedItems(db.sql, 'milk:\n  stockcode: 123456\n  quantity: 1\n')
+      mine = json(await signInClient(app, google))
+      yours = json(await signInClient(app, google, { overrides: { email: 'you@example.com' } }))
+    })
+
+    const post = (headers: typeof mine, url: string, payload?: object) =>
+      app.inject({
+        method: 'POST',
+        url: `/admin/household${url}`,
+        headers,
+        ...(payload && { payload }),
+      })
+
+    it('lists members, invites one, and shares items on joining', async () => {
+      const invite = await post(mine, '/invites')
+      expect(invite.statusCode).toBe(201)
+      const { code } = invite.json<{ code: string; expiresAt: number }>()
+      expect((await post(yours, '/join', { code })).statusCode).toBe(204)
+      const members = await app.inject({ method: 'GET', url: '/admin/household', headers: yours })
+      expect(members.json()).toEqual({
+        members: [
+          { email: 'me@example.com', you: false },
+          { email: 'you@example.com', you: true },
+        ],
+      })
+      const items = await app.inject({ method: 'GET', url: '/admin/items', headers: yours })
+      expect(items.json<{ items: { word: string }[] }>().items.map((item) => item.word)).toEqual([
+        'milk',
+      ])
+    })
+
+    it('rejects an invalid, missing or reused code', async () => {
+      expect((await post(yours, '/join', { code: 'nope' })).statusCode).toBe(400)
+      expect((await post(yours, '/join', {})).statusCode).toBe(400)
+      const { code } = (await post(mine, '/invites')).json<{ code: string }>()
+      expect((await post(mine, '/join', { code })).statusCode).toBe(409)
+      expect((await post(yours, '/join', { code })).statusCode).toBe(204)
+      expect((await post(yours, '/join', { code })).statusCode).toBe(400)
+    })
+
+    it('caps unexpired invites', async () => {
+      const strict = buildApp(
+        testConfig(dir, { limits: { ...DEFAULT_LIMITS, maxInvitesPerHousehold: 1 } }),
+        { sql: db.sql, fetch: google.fetch },
+      )
+      const headers = json(await signInClient(strict, google))
+      const create = () =>
+        strict.inject({ method: 'POST', url: '/admin/household/invites', headers })
+      expect((await create()).statusCode).toBe(201)
+      expect((await create()).statusCode).toBe(409)
+      await strict.close()
+    })
+
+    it('lets a member leave, but not a sole member', async () => {
+      expect((await post(mine, '/leave')).statusCode).toBe(409)
+      const { code } = (await post(mine, '/invites')).json<{ code: string }>()
+      await post(yours, '/join', { code })
+      expect((await post(yours, '/leave')).statusCode).toBe(204)
+      const items = await app.inject({ method: 'GET', url: '/admin/items', headers: yours })
+      expect(items.json()).toEqual({ items: [] })
+      const members = await app.inject({ method: 'GET', url: '/admin/household', headers: mine })
+      expect(members.json()).toEqual({ members: [{ email: 'me@example.com', you: true }] })
+    })
+
+    it('requires authentication', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/admin/household/invites',
+        headers: { accept: 'application/json' },
+      })
+      expect(response.statusCode).toBe(401)
+    })
+
+    it('drives the household from the admin page', async () => {
+      const cookie = { cookie: await signInWeb(app, google) }
+      const form = (url: string, body = '') =>
+        app.inject({
+          method: 'POST',
+          url,
+          headers: { ...cookie, 'content-type': 'application/x-www-form-urlencoded' },
+          payload: body,
+        })
+      const page = await form('/admin/household/invites')
+      expect(page.statusCode).toBe(201)
+      const code = /<code>([^<]+)<\/code>/.exec(page.body)?.[1] ?? ''
+      expect(code).not.toBe('')
+      const yourCookie = { cookie: await signInWeb(app, google, { email: 'you@example.com' }) }
+      const join = await app.inject({
+        method: 'POST',
+        url: '/admin/household/join',
+        headers: { ...yourCookie, 'content-type': 'application/x-www-form-urlencoded' },
+        payload: `code=${code}`,
+      })
+      expect(join.statusCode).toBe(302)
+      const shown = await app.inject({ method: 'GET', url: '/admin', headers: yourCookie })
+      expect(shown.body).toContain('me@example.com')
+      expect(shown.body).toContain('Leave household')
+      const bad = await form('/admin/household/join', 'code=nope')
+      expect(bad.statusCode).toBe(400)
+      expect(bad.body).toContain('invalid, expired or already used')
+      const left = await app.inject({
+        method: 'POST',
+        url: '/admin/household/leave',
+        headers: yourCookie,
+      })
+      expect(left.statusCode).toBe(302)
+      expect((await form('/admin/household/leave')).statusCode).toBe(409)
+    })
   })
 
   it('limits each user per minute across /admin', async () => {

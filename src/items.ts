@@ -1,5 +1,5 @@
 import { parse } from 'yaml'
-import { ensureUser, type Sql } from './db.ts'
+import { ensureHousehold, type Sql } from './db.ts'
 import { normalizeEmail } from './users/email.ts'
 
 export interface ItemMapping {
@@ -22,17 +22,17 @@ export function parseItemsYaml(raw: string): ItemsConfig {
   )
 }
 
-/** Each user's spoken-term mappings, kept in Postgres. */
+/** Each household's spoken-term mappings, kept in Postgres and shared by its members. */
 export class ItemStore {
   constructor(private readonly sql: Sql) {}
 
-  /** The user's items in their stored order; none for a user without any. */
+  /** The user's household's items in their stored order; none when it has none. */
   async load(email: string): Promise<ItemsConfig> {
     const rows = await this.sql<
       { word: string; stockcode: number; quantity: number; listing: string | null }[]
     >`
       select i.word, i.stockcode, i.quantity, i.listing from items i
-      join users u on u.id = i.user_id
+      join users u on u.household_id = i.household_id
       where u.email = ${normalizeEmail(email)}
       order by i.position`
     return Object.fromEntries(
@@ -43,11 +43,11 @@ export class ItemStore {
     )
   }
 
-  /** Replaces the user's items with `items`, atomically. */
+  /** Replaces the user's household's items with `items`, atomically. */
   async save(email: string, items: ItemsConfig): Promise<void> {
-    const userId = await ensureUser(this.sql, email)
+    const householdId = await ensureHousehold(this.sql, email)
     const rows = Object.entries(items).map(([word, mapping], position) => ({
-      user_id: userId,
+      household_id: householdId,
       word,
       position,
       stockcode: mapping.stockcode,
@@ -55,7 +55,7 @@ export class ItemStore {
       listing: mapping.listing ?? null,
     }))
     await this.sql.begin(async (tx) => {
-      await tx`delete from items where user_id = ${userId}`
+      await tx`delete from items where household_id = ${householdId}`
       if (rows.length > 0) {
         await tx`insert into items ${tx(rows)}`
       }
