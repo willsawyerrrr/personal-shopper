@@ -52,7 +52,7 @@ export function buildApp(config: AppConfig, options: AppOptions): FastifyInstanc
     trustProxy: config.trustProxy,
   })
 
-  const tokens = new TokenStore(options.sql, now)
+  const tokens = new TokenStore(options.sql, now, config.limits.maxTokensPerUser)
   const items = new ItemStore(options.sql)
   app.decorate('tokens', tokens)
   const google = new GoogleOAuth({
@@ -81,7 +81,8 @@ export function buildApp(config: AppConfig, options: AppOptions): FastifyInstanc
   })
 
   // Routes opt in via `config.rateLimit`; the app is internet-reachable, so
-  // the sign-in routes are throttled per client IP.
+  // the sign-in and cart routes are throttled per client IP, and the
+  // authenticated ones also per user.
   void app.register(rateLimit, { global: false })
 
   // Registered as plugins so they load after the rate limiter and pick up
@@ -90,14 +91,14 @@ export function buildApp(config: AppConfig, options: AppOptions): FastifyInstanc
     routes.get('/healthz', async () => ({ status: 'ok' }))
   })
 
-  void registerLogin(app, { config, tokens, google, now })
-  void registerAdmin(app, config, tokens, items, options.lookup, options.passkeys?.credentials)
+  void registerLogin(app, { config, sql: options.sql, tokens, google, now })
+  void registerAdmin(app, config, tokens, items, options.lookup, options.passkeys?.credentials, now)
   if (options.cart) {
-    void registerCart(app, config, tokens, items, options.cart)
+    void registerCart(app, config, tokens, items, options.cart, now)
   }
 
   if (options.passkeys) {
-    void registerPasskey(app, config, tokens, options.passkeys)
+    void registerPasskey(app, tokens, options.passkeys)
   }
 
   return app

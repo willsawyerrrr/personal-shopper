@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify'
 import { parse } from 'yaml'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildApp } from './app.ts'
+import { DEFAULT_LIMITS } from './config.ts'
 import { TokenStore } from './tokens.ts'
 import type { ItemsConfig } from './items.ts'
 import type { AppConfig } from './config.ts'
@@ -561,7 +562,7 @@ describe('admin with several users', () => {
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'personal-shopper-admin-'))
     db = await createTestDb()
-    const config = testConfig(dir, { allowedEmails: ['me@example.com', 'you@example.com'] })
+    const config = testConfig(dir)
     google = await FakeGoogle.create()
     app = buildApp(config, { sql: db.sql, fetch: google.fetch, lookup: lookupFor })
     const bearer = async (email: string) => ({
@@ -631,5 +632,52 @@ describe('admin with several users', () => {
     })
     expect(response.statusCode).toBe(204)
     expect((await list(me)).items).toEqual([])
+  })
+
+  it('limits the items a user can map, replacing an existing one still allowed', async () => {
+    const strict = buildApp(
+      testConfig(dir, { limits: { ...DEFAULT_LIMITS, maxItemsPerUser: 2 } }),
+      {
+        sql: db.sql,
+        fetch: google.fetch,
+      },
+    )
+    const headers = {
+      authorization: `Bearer ${await signInClient(strict, google)}`,
+      accept: 'application/json',
+    }
+    const post = (word: string) =>
+      strict.inject({ method: 'POST', url: '/admin/items', headers, payload: { word, url: '1' } })
+    expect((await post('milk')).statusCode).toBe(201)
+    expect((await post('bread')).statusCode).toBe(201)
+    const full = await post('eggs')
+    expect(full.statusCode).toBe(409)
+    expect(full.json()).toEqual({ error: 'You can have at most 2 items.' })
+    expect((await post('Milk')).statusCode).toBe(201)
+    await strict.close()
+  })
+
+  it('limits each user per minute across /admin', async () => {
+    const strict = buildApp(
+      testConfig(dir, { limits: { ...DEFAULT_LIMITS, userRequestsPerMinute: 2 } }),
+      { sql: db.sql, fetch: google.fetch },
+    )
+    const mine = {
+      authorization: `Bearer ${await signInClient(strict, google)}`,
+      accept: 'application/json',
+    }
+    const get = (headers: typeof mine) =>
+      strict.inject({ method: 'GET', url: '/admin/items', headers })
+    expect((await get(mine)).statusCode).toBe(200)
+    expect((await get(mine)).statusCode).toBe(200)
+    const limited = await get(mine)
+    expect(limited.statusCode).toBe(429)
+    expect(limited.headers['retry-after']).toBeDefined()
+    const yours = {
+      authorization: `Bearer ${await signInClient(strict, google, { overrides: { email: 'you@example.com' } })}`,
+      accept: 'application/json',
+    }
+    expect((await get(yours)).statusCode).toBe(200)
+    await strict.close()
   })
 })

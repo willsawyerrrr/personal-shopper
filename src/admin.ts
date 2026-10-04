@@ -1,8 +1,10 @@
 import formbody from '@fastify/formbody'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { PAGE_STYLES } from './admin-styles.ts'
+import { UserRateLimiter } from './rate-limit.ts'
 import { authenticate, logAuthFailure, requestPath, sessionCookie } from './auth.ts'
 import type { AppConfig } from './config.ts'
+import { applyEdit, parseStockcode } from './item-edit.ts'
 import { normalizeWord, type ItemMapping, type ItemsConfig, type ItemStore } from './items.ts'
 import { createListingBackfill, lookupListing } from './listings.ts'
 import type { CredentialStore } from './users/credentials.ts'
@@ -16,6 +18,7 @@ export async function registerAdmin(
   store: ItemStore,
   lookupFor?: (email: string) => ProductLookup,
   passkeys?: CredentialStore,
+  now: () => number = Date.now,
 ): Promise<void> {
   const secureCookie = config.publicBaseUrl.startsWith('https:')
   const backfills = new Map<string, () => Promise<void>>()
@@ -30,13 +33,15 @@ export async function registerAdmin(
     return backfill
   }
   app.addHook('onReady', async () => {
-    for (const email of new Set([config.ownerEmail, ...(await tokens.emails())])) {
+    const owner = config.ownerEmail ? [config.ownerEmail] : []
+    for (const email of new Set([...owner, ...(await tokens.emails())])) {
       void backfillFor(email)()
     }
   })
 
   await app.register(async (admin) => {
     await admin.register(formbody)
+    const userLimiter = new UserRateLimiter(config.limits.userRequestsPerMinute, now)
 
     // The token a request authenticated with, for marking and ending its own session.
     const current = new WeakMap<FastifyRequest, { token: string; id: string; email: string }>()
@@ -53,8 +58,15 @@ export async function registerAdmin(
       if (requestPath(request) === '/admin/login') {
         return
       }
-      const result = await authenticate(request, tokens, config.allowedEmails, true)
+      const result = await authenticate(request, tokens, true)
       if (result.ok) {
+        const limit = userLimiter.hit(result.record.email)
+        if (!limit.ok) {
+          return reply
+            .code(429)
+            .header('retry-after', limit.retryAfterSeconds)
+            .send({ error: 'rate_limited' })
+        }
         current.set(request, {
           token: result.token,
           id: tokens.sessionId(result.record),
@@ -124,18 +136,25 @@ export async function registerAdmin(
       const { word, url, quantity } = request.body
       const items = await store.load(emailOf(request))
       const stockcode = parseStockcode(url ?? '')
+      const full =
+        !!word?.trim() &&
+        !(normalizeWord(word) in items) &&
+        Object.keys(items).length >= config.limits.maxItemsPerUser
       const error = !word?.trim()
         ? 'A trigger word is required.'
         : !stockcode
           ? 'Could not find a stockcode in that URL — paste a link like /shop/productdetails/123456/product-name, or the stockcode itself.'
-          : undefined
+          : full
+            ? `You can have at most ${config.limits.maxItemsPerUser} items.`
+            : undefined
       if (error || !word || !stockcode) {
+        const status = error && full ? 409 : 400
         if (wantsJson(request)) {
-          return reply.code(400).send({ error })
+          return reply.code(status).send({ error })
         }
         const sessions = await sessionsOf(request)
         return reply
-          .code(400)
+          .code(status)
           .type('text/html')
           .send(renderPage(items, sessions, current.get(request)?.id, error))
       }
@@ -215,87 +234,6 @@ export async function registerAdmin(
 // JSON bodies and status codes instead of the browser flow's redirects.
 function wantsJson(request: FastifyRequest): boolean {
   return request.headers.accept?.includes('application/json') ?? false
-}
-
-type EditResult =
-  | { ok: true; items: ItemsConfig; word: string }
-  | { ok: false; status: 400 | 404 | 409; error: string }
-
-const blank = (value: unknown) => value === undefined || value === null || value === ''
-
-function positiveInteger(value: unknown): number | undefined {
-  const number = typeof value === 'string' && /^\d+$/.test(value.trim()) ? Number(value) : value
-  return typeof number === 'number' && Number.isSafeInteger(number) && number > 0
-    ? number
-    : undefined
-}
-
-// Applies the editable fields in `fields` to the item for `word`, leaving every other entry in
-// place and in order. Blank `url`, `stockcode` and `quantity` mean "unchanged". `url` takes
-// precedence over `stockcode`. A changed stockcode drops the stored listing, which the caller
-// looks up again.
-function applyEdit(items: ItemsConfig, word: string, fields: Record<string, unknown>): EditResult {
-  const existing = items[word]
-  if (!existing) {
-    return { ok: false, status: 404, error: `No item for "${word}".` }
-  }
-  const invalid = (error: string): EditResult => ({ ok: false, status: 400, error })
-  const mapping: ItemMapping = { ...existing }
-
-  let newWord = word
-  if (fields.word !== undefined) {
-    newWord = typeof fields.word === 'string' ? normalizeWord(fields.word) : ''
-    if (!newWord) {
-      return invalid('A trigger word is required.')
-    }
-    if (newWord !== word && items[newWord]) {
-      return { ok: false, status: 409, error: `"${newWord}" is already used by another item.` }
-    }
-  }
-
-  if (!blank(fields.url)) {
-    const stockcode = typeof fields.url === 'string' ? parseStockcode(fields.url) : undefined
-    if (!stockcode) {
-      return invalid(
-        'Could not find a stockcode in that URL — paste a link like /shop/productdetails/123456/product-name, or the stockcode itself.',
-      )
-    }
-    if (stockcode !== mapping.stockcode) {
-      delete mapping.listing
-    }
-    mapping.stockcode = stockcode
-  } else if (!blank(fields.stockcode)) {
-    const stockcode = positiveInteger(fields.stockcode)
-    if (!stockcode) {
-      return invalid('The stockcode must be a positive integer.')
-    }
-    if (stockcode !== mapping.stockcode) {
-      delete mapping.listing
-    }
-    mapping.stockcode = stockcode
-  }
-
-  if (!blank(fields.quantity)) {
-    const quantity = positiveInteger(fields.quantity)
-    if (!quantity) {
-      return invalid('The quantity must be a positive integer.')
-    }
-    mapping.quantity = quantity
-  }
-
-  const edited = Object.fromEntries(
-    Object.entries(items).map(([key, value]) => (key === word ? [newWord, mapping] : [key, value])),
-  )
-  return { ok: true, items: edited, word: newWord }
-}
-
-function parseStockcode(input: string): number | undefined {
-  const trimmed = input.trim()
-  const fromPath = trimmed.match(/productdetails\/(\d+)/)
-  if (fromPath?.[1]) {
-    return Number(fromPath[1])
-  }
-  return /^\d+$/.test(trimmed) ? Number(trimmed) : undefined
 }
 
 function renderLoginPage(): string {

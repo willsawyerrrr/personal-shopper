@@ -96,20 +96,17 @@ describe('/woolworths/passkey', () => {
     google = await FakeGoogle.create()
     credentials = new CredentialStore(db.sql, randomBytes(32))
     invalidate = vi.fn()
-    app = buildApp(
-      testConfig(dir, { logLevel: 'info', allowedEmails: ['me@example.com', 'you@example.com'] }),
-      {
-        sql: db.sql,
-        fetch: google.fetch,
-        passkeys: { credentials, invalidate },
-        logStream: new Writable({
-          write(chunk: Buffer, _encoding, callback) {
-            output += chunk.toString()
-            callback()
-          },
-        }),
-      },
-    )
+    app = buildApp(testConfig(dir, { logLevel: 'info' }), {
+      sql: db.sql,
+      fetch: google.fetch,
+      passkeys: { credentials, invalidate },
+      logStream: new Writable({
+        write(chunk: Buffer, _encoding, callback) {
+          output += chunk.toString()
+          callback()
+        },
+      }),
+    })
     bearer = { authorization: `Bearer ${await signInClient(app, google)}` }
   })
 

@@ -10,7 +10,8 @@ import type { TokenRecord, TokenStore } from './tokens.ts'
  * - `empty_token`: the credentials are empty.
  * - `invalid_token`: the token is not one the server issued, or was revoked.
  * - `expired_token`: the token was issued by the server but has expired.
- * - `email_not_allowed`: a valid sign-in or token for an email not in `ALLOWED_EMAILS`.
+ * - `signup_closed`: a new Google account tried to sign up while the user cap (`MAX_USERS`) is reached.
+ * - `user_limit`: a sign-in would exceed the user's cap of active tokens (`MAX_TOKENS_PER_USER`).
  * - `invalid_state`: the Google callback's `state` is unknown, expired or already used.
  * - `login_failed`: Google sign-in did not complete (see `detail`).
  * - `invalid_request`: `/auth/start` called with missing or malformed parameters.
@@ -22,7 +23,8 @@ export type AuthFailureReason =
   | 'empty_token'
   | 'invalid_token'
   | 'expired_token'
-  | 'email_not_allowed'
+  | 'signup_closed'
+  | 'user_limit'
   | 'invalid_state'
   | 'login_failed'
   | 'invalid_request'
@@ -57,12 +59,10 @@ function parseAuthorization(header: string): { scheme: AuthScheme; credentials: 
 /**
  * Authenticates a request by its `Authorization: Bearer <token>` header or,
  * with `acceptCookie`, the admin session cookie when there is no header.
- * Tokens for an email outside `allowedEmails` are rejected.
  */
 export async function authenticate(
   request: FastifyRequest,
   tokens: TokenStore,
-  allowedEmails: readonly string[],
   acceptCookie: boolean,
 ): Promise<Authentication> {
   const header = request.headers.authorization
@@ -91,12 +91,6 @@ export async function authenticate(
     return {
       ok: false,
       failure: { reason: check.reason, authScheme: scheme, token: credentials },
-    }
-  }
-  if (!allowedEmails.includes(check.record.email)) {
-    return {
-      ok: false,
-      failure: { reason: 'email_not_allowed', authScheme: scheme, token: credentials },
     }
   }
   return { ok: true, record: check.record, token: credentials }

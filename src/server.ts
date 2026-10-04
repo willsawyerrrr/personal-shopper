@@ -49,7 +49,10 @@ if (config.sessionKeepAliveIntervalMs > 0) {
   setInterval(
     () =>
       void (async () => {
-        for (const email of new Set([ownerEmail, ...(await app.tokens.emails())])) {
+        for (const email of new Set([
+          ...(ownerEmail ? [ownerEmail] : []),
+          ...(await app.tokens.emails()),
+        ])) {
           await keepAlive(email).catch((error: unknown) => app.log.error(error))
         }
       })().catch((error: unknown) => app.log.error(error)),
@@ -61,9 +64,11 @@ if (config.remindersSync) {
   const { icloudUsername, icloudAppSpecificPassword, listName, intervalMs } = config.remindersSync
   const reminders = new ICloudRemindersClient(icloudUsername, icloudAppSpecificPassword, listName)
   const itemStore = new ItemStore(sql)
+  // `loadConfig` requires an owner whenever the sync is enabled.
+  const owner = ownerEmail as string
   const runSync = async (): Promise<void> => {
-    const items = await itemStore.load(ownerEmail)
-    await syncReminders(reminders, items, woolworths.clientFor(ownerEmail), app.log)
+    const items = await itemStore.load(owner)
+    await syncReminders(reminders, items, woolworths.clientFor(owner), app.log)
   }
   setInterval(() => void runSync().catch((error: unknown) => app.log.error(error)), intervalMs)
   void runSync().catch((error: unknown) => app.log.error(error))

@@ -34,22 +34,27 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   the keepalive timer visits every user. See
   [`docs/architecture.md`](docs/architecture.md#session-capture).
 - Auth: Google is the only way to sign in; no shared secret exists. The
-  server is the OAuth client of Google (authorization code with PKCE), only
-  `ALLOWED_EMAILS` may sign in, and it issues its own session cookie
+  server is the OAuth client of Google (authorization code with PKCE), any
+  Google account with `email_verified` true may sign up (no allowlist; a user
+  row is created on first sign-in), and it issues its own session cookie
   (`/admin`) or opaque bearer tokens (iOS app, Chrome extension; hashed in
-  the `tokens` table, 90-day sliding expiry, revocable). See
+  the `tokens` table, 90-day sliding expiry, revocable). Abuse is bounded by
+  env-configurable limits: `MAX_USERS`, per-user items and active tokens, and
+  per-user plus per-IP rate limits (`docs/auth.md#limits`). The Google
+  consent screen must be published "In production". See
   [`docs/auth.md`](docs/auth.md).
 - Deployment: one always-on Fly.io machine (`fly.toml`, `Dockerfile`) in
   `syd`, publicly reachable over HTTPS, state in Supabase Postgres; no browser
   at runtime. A `/data` volume is only needed to hold single-user files
   (`items.yml`, `session.json`, `tokens.json`, `passkey-credentials.json`),
   which are imported into the owner's rows on start and renamed `.imported`.
-  `/auth/*` is rate limited. Requests log one `request completed` line and every auth rejection a `warn` with a `reason` (never a token,
-  code, ID token, secret or cookie). See
+  `/auth/*` is rate limited. Requests log one `request completed` line and
+  every auth rejection a `warn` with a `reason` (never a token, code, ID
+  token, secret or cookie). See
   [`docs/deployment.md`](docs/deployment.md).
 - Voice capture: a shared iCloud Reminders list is the queue the server
-  syncs into the owner's cart (`REMINDERS_OWNER_EMAIL`, default the first of
-  `ALLOWED_EMAILS`; Siri's built-in "add X to my Shopping List"); the iOS
+  syncs into the owner's cart (`REMINDERS_OWNER_EMAIL`, required when the sync
+  is enabled; Siri's built-in "add X to my Shopping List"); the iOS
   app's App Intent is the other Siri path, calling `POST /cart/items`
   (`src/cart.ts`, bearer token only, rate limited). See
   [`docs/siri-setup.md`](docs/siri-setup.md) and
@@ -64,7 +69,7 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
 Postgres connection and `src/users/` the per-user credential store, session
 storage, Woolworths clients and legacy-file import; `supabase/migrations` is the
 schema; `scripts/` are one-off CLIs run by hand (session capture, product
-lookup), each taking an optional `--user <email>` (default the owner); `extension/` is the Chrome
+lookup), each taking `--user <email>` (default `REMINDERS_OWNER_EMAIL`); `extension/` is the Chrome
 extension and `ios/` the SwiftUI admin app with its Share extension and App
 Intents (clients of `/admin/items` and `/cart/items`). See
 [`docs/architecture.md`](docs/architecture.md) for how the pieces fit and the
@@ -75,7 +80,7 @@ pnpm run lint
 pnpm run typecheck
 pnpm run coverage               # needs Postgres at TEST_DATABASE_URL (default localhost:54329)
 pnpm run build
-# the scripts below take an optional `--user <email>` (default the owner)
+# the scripts below take `--user <email>` (default REMINDERS_OWNER_EMAIL)
 pnpm run register-passkey     # one-off: register the passkey the server logs in with
 pnpm run passkey-login        # HTTP passkey login, stores the session
 pnpm run capture-session      # manual Woolworths login, stores the session (only needed when the heartbeat refresh is rejected)

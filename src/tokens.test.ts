@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createTestDb } from './testing/db.ts'
-import { DEFAULT_TOKEN_TTL_MS, hashToken, TokenStore } from './tokens.ts'
+import { DEFAULT_TOKEN_TTL_MS, hashToken, TokenLimitError, TokenStore } from './tokens.ts'
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -124,5 +124,28 @@ describe('TokenStore', () => {
     await tokens.issue('me@example.com', 'web')
     await tokens.issue('you@example.com', 'ios')
     expect((await tokens.emails()).sort()).toEqual(['me@example.com', 'you@example.com'])
+  })
+
+  it("refuses to issue beyond the user's cap of unexpired tokens", async () => {
+    const tokens = new TokenStore(db.sql, () => clock, 2)
+    await tokens.issue('me@example.com', 'ios')
+    await tokens.issue('me@example.com', 'web')
+    await expect(tokens.issue('me@example.com', 'ios')).rejects.toBeInstanceOf(TokenLimitError)
+    await tokens.issue('you@example.com', 'ios')
+  })
+
+  it('does not count expired tokens against the cap', async () => {
+    const tokens = new TokenStore(db.sql, () => clock, 1)
+    await tokens.issue('me@example.com', 'ios', DAY)
+    clock += 2 * DAY
+    await tokens.issue('me@example.com', 'ios')
+  })
+
+  it('holds the cap under concurrent sign-ins', async () => {
+    const tokens = new TokenStore(db.sql, () => clock, 3)
+    const results = await Promise.allSettled(
+      Array.from({ length: 8 }, () => tokens.issue('me@example.com', 'ios')),
+    )
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(3)
   })
 })

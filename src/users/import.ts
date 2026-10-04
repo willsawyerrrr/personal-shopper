@@ -24,7 +24,7 @@ const markImported = (path: string) => rename(path, `${path}${IMPORTED_SUFFIX}`)
 
 /**
  * Imports the files of a single-user deployment into the database: tokens
- * keep their emails, everything else becomes `owner`'s. Each file is imported
+ * keep their emails, everything else becomes `owner`'s (and is left alone without one). Each file is imported
  * only into an empty destination (no tokens at all, or none of that kind for
  * the owner) and then renamed with a `.imported` suffix. The passkey file
  * needs `credentials`, which encrypts it. Returns the kinds imported.
@@ -32,7 +32,7 @@ const markImported = (path: string) => rename(path, `${path}${IMPORTED_SUFFIX}`)
 export async function importLegacyFiles(
   sql: Sql,
   files: LegacyFiles,
-  owner: string,
+  owner: string | undefined,
   credentials: CredentialStore | undefined,
 ): Promise<string[]> {
   const imported: string[] = []
@@ -68,7 +68,7 @@ export async function importLegacyFiles(
   }
 
   const items = await readIfPresent(files.items)
-  if (items !== undefined) {
+  if (items !== undefined && owner) {
     const store = new ItemStore(sql)
     if (Object.keys(await store.load(owner)).length === 0) {
       await store.save(owner, parseItemsYaml(items))
@@ -78,7 +78,7 @@ export async function importLegacyFiles(
   }
 
   const session = await readIfPresent(files.session)
-  if (session !== undefined) {
+  if (session !== undefined && owner) {
     const storage = new PgSessionStorage(sql, owner)
     if (!(await storage.load())) {
       await storage.save(JSON.parse(session) as StoredSession)
@@ -88,7 +88,7 @@ export async function importLegacyFiles(
   }
 
   const passkey = await readIfPresent(files.passkeyCredentials)
-  if (passkey !== undefined) {
+  if (passkey !== undefined && owner) {
     if (!credentials) {
       throw new Error(
         `${files.passkeyCredentials} needs importing: set CREDENTIALS_ENCRYPTION_KEY to encrypt it`,
