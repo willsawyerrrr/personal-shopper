@@ -17,6 +17,8 @@ export async function challengeFor(verifier) {
   return base64url(new Uint8Array(digest))
 }
 
+export const SERVER_URL = 'https://personal-shopper.willsawyerrrr.dev'
+
 export function normalizeServerUrl(serverUrl) {
   return serverUrl.trim().replace(/\/+$/, '')
 }
@@ -68,7 +70,7 @@ export async function exchangeCode(serverUrl, code, verifier, fetchImpl = fetch)
   return { accessToken, expiresAt }
 }
 
-export async function signIn(serverUrl) {
+export async function signIn(serverUrl = SERVER_URL) {
   const verifier = randomString()
   const state = randomString(32)
   const redirectUrl = await chrome.identity.launchWebAuthFlow({
@@ -85,7 +87,7 @@ export async function signIn(serverUrl) {
   return session
 }
 
-export async function signOut(serverUrl, fetchImpl = fetch) {
+export async function signOut(serverUrl = SERVER_URL, fetchImpl = fetch) {
   const session = await getSession()
   await clearSession()
   if (!session) return

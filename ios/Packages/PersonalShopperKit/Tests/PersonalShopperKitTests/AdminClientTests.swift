@@ -250,17 +250,17 @@ struct SettingsStoreTests {
     }
 
     func store() -> SettingsStore {
-        SettingsStore(defaults: UserDefaults(suiteName: UUID().uuidString)!, tokens: MemoryTokens())
+        SettingsStore(tokens: MemoryTokens())
     }
 
-    @Test func defaultsToProductionServer() {
-        #expect(store().serverURL == "https://personal-shopper.willsawyerrrr.dev")
+    @Test func usesProductionServer() {
+        #expect(SharedConfig.serverURL == "https://personal-shopper.willsawyerrrr.dev")
     }
 
     @Test func requiresSignIn() throws {
         #expect(throws: AdminError.notSignedIn) { try store().client() }
         let tokens = MemoryTokens()
-        let configured = SettingsStore(defaults: UserDefaults(suiteName: UUID().uuidString)!, tokens: tokens)
+        let configured = SettingsStore(tokens: tokens)
         try tokens.write("ps_tok")
         #expect(configured.isSignedIn)
         _ = try configured.client()
@@ -269,7 +269,7 @@ struct SettingsStoreTests {
     @Test func unauthorizedClearsToken() async throws {
         let tokens = MemoryTokens()
         try tokens.write("ps_tok")
-        let configured = SettingsStore(defaults: UserDefaults(suiteName: UUID().uuidString)!, tokens: tokens)
+        let configured = SettingsStore(tokens: tokens)
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubURLProtocol.self]
         StubURLProtocol.stub(status: 401)

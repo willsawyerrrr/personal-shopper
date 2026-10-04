@@ -1,4 +1,11 @@
-import { clearSession, getSession, isExpired, normalizeServerUrl, signIn } from './auth.js'
+import {
+  clearSession,
+  getSession,
+  isExpired,
+  normalizeServerUrl,
+  SERVER_URL,
+  signIn,
+} from './auth.js'
 
 const PRODUCT_PATTERN = /woolworths\.com\.au\/shop\/productdetails\/(\d+)/
 const WOOLWORTHS_URL = 'https://www.woolworths.com.au/'
@@ -22,11 +29,7 @@ async function init() {
 
   const signInButton = document.getElementById('signIn')
 
-  const { serverUrl } = await chrome.storage.local.get('serverUrl')
-  if (serverUrl) {
-    adminLink.href = `${normalizeServerUrl(serverUrl)}/admin`
-    adminLink.hidden = false
-  }
+  adminLink.href = `${normalizeServerUrl(SERVER_URL)}/admin`
 
   const tab = await getActiveTab()
   if (!tab.url || !PRODUCT_PATTERN.test(tab.url)) {
@@ -36,12 +39,6 @@ async function init() {
     openWoolworths.addEventListener('click', () => {
       chrome.tabs.create({ url: WOOLWORTHS_URL })
     })
-    return
-  }
-
-  if (!serverUrl) {
-    setStatus(status, "Set your server URL in the extension's options first.")
-    form.hidden = true
     return
   }
 
@@ -57,7 +54,7 @@ async function init() {
   signInButton.addEventListener('click', async () => {
     signInButton.disabled = true
     try {
-      session = await signIn(serverUrl)
+      session = await signIn()
       signInButton.hidden = true
       form.hidden = false
       setStatus(status, '')
@@ -83,7 +80,7 @@ async function init() {
       quantity: Number(document.getElementById('quantity').value) || 1,
     })
     try {
-      const response = await fetch(`${normalizeServerUrl(serverUrl)}/admin/items`, {
+      const response = await fetch(`${normalizeServerUrl(SERVER_URL)}/admin/items`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
