@@ -175,9 +175,18 @@ domain.
 
 ## Updating
 
-`fly deploy` rebuilds the image and rolls the machine; the data is in the
-database and persists. Apply new migrations with the Supabase CLI before
-deploying code that needs them.
+Merging to `main` deploys the server: `.github/workflows/deploy-server.yml`
+runs `flyctl deploy --remote-only` once CI has passed on the merge commit, and
+only when it changed server code, the `Dockerfile`, `fly.toml` or the
+dependencies. It can also be run by hand from the Actions tab. The rebuilt
+image rolls the machine; the data is in the database and persists.
+
+Migrations are not applied by the deploy. Apply new ones with the Supabase CLI
+(`supabase db push`) before merging code that needs them.
+
+The workflow needs the repo secret `FLY_API_TOKEN`, created with
+`fly tokens create deploy` (from the app's directory) and stored under that
+name.
 
 ## Logs
 
