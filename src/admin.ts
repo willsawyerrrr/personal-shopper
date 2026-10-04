@@ -225,25 +225,18 @@ export async function registerAdmin(
       const { word, url, quantity } = request.body
       const items = await store.load(emailOf(request))
       const stockcode = parseStockcode(url ?? '')
-      const full =
-        !!word?.trim() &&
-        !(normalizeWord(word) in items) &&
-        Object.keys(items).length >= config.limits.maxItemsPerHousehold
       const error = !word?.trim()
         ? 'A trigger word is required.'
         : !stockcode
           ? 'Could not find a stockcode in that URL — paste a link like /shop/productdetails/123456/product-name, or the stockcode itself.'
-          : full
-            ? `You can have at most ${config.limits.maxItemsPerHousehold} items.`
-            : undefined
+          : undefined
       if (error || !word || !stockcode) {
-        const status = error && full ? 409 : 400
         if (wantsJson(request)) {
-          return reply.code(status).send({ error })
+          return reply.code(400).send({ error })
         }
         const sessions = await sessionsOf(request)
         return reply
-          .code(status)
+          .code(400)
           .type('text/html')
           .send(renderPage(items, sessions, current.get(request)?.id, error))
       }

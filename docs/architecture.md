@@ -77,8 +77,8 @@ user starts in a household of their own.
   is their household's only member gets `409`, since there is nothing to
   leave.
 - `GET /household` lists the members (`{members:[{email, you}]}`).
-- `MAX_ITEMS_PER_HOUSEHOLD` caps items per household. Members edit one shared
-  list; concurrent edits replace the whole list, so the last save wins.
+- Members edit one shared list; concurrent edits replace the whole list, so
+  the last save wins.
 
 Membership changes are serialised by a Postgres advisory lock, so a household
 is never deleted while someone joins it.

@@ -108,7 +108,6 @@ describe('loadConfig', () => {
       loadConfig({
         ...BASE,
         MAX_USERS: '5',
-        MAX_ITEMS_PER_HOUSEHOLD: '6',
         MAX_INVITES_PER_HOUSEHOLD: '4',
         MAX_TOKENS_PER_USER: '7',
         USER_RATE_LIMIT_PER_MINUTE: '8',
@@ -116,7 +115,6 @@ describe('loadConfig', () => {
       }).limits,
     ).toEqual({
       maxUsers: 5,
-      maxItemsPerHousehold: 6,
       maxInvitesPerHousehold: 4,
       maxTokensPerUser: 7,
       userRequestsPerMinute: 8,
