@@ -198,7 +198,12 @@ export async function registerAdmin(
         return reply
           .code(result.status)
           .type('text/html')
-          .send(renderPage(items, sessions, current.get(request)?.id, result.error))
+          .send(
+            renderPage(items, sessions, current.get(request)?.id, result.error, undefined, {
+              word: normalizeWord(request.params.word),
+              values: request.body ?? {},
+            }),
+          )
       }
       const edited = result.items[result.word]
       if (edited && edited.stockcode !== items[normalizeWord(request.params.word)]?.stockcode) {
@@ -274,28 +279,45 @@ function renderPage(
   currentId: string | undefined,
   error?: string,
   passkey?: boolean,
+  edit?: { word: string; values: Record<string, unknown> },
 ): string {
   const rows = Object.entries(items)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([word, mapping]) => {
+    .map(([word, mapping], index) => {
       const path = `/admin/items/${encodeURIComponent(word)}`
+      const editing = edit?.word === word
+      const field = (name: string, fallback: string | number): string => {
+        const value = editing ? edit.values[name] : undefined
+        return escapeHtml(typeof value === 'string' ? value : String(fallback))
+      }
+      const id = `edit-${index}`
       return `
         <form class="item" method="post" action="${path}/edit">
-          <div class="phrase">
-            <label><span class="field-name">Trigger word</span>
-              <input aria-label="Trigger word" name="word" required value="${escapeHtml(word)}">
+          <input type="checkbox" class="edit-toggle" id="${id}" aria-label="Edit ${escapeHtml(word)}"${editing ? ' checked' : ''}>
+          <div class="cell phrase">
+            <strong class="view">${escapeHtml(word)}</strong>
+            <label class="edit"><span class="field-name">Trigger word</span>
+              <input aria-label="Trigger word" name="word" required value="${field('word', word)}">
             </label>
             ${mapping.listing ? `<div class="listing">${escapeHtml(mapping.listing)}</div>` : ''}
           </div>
-          <label class="product"><span class="field-name">Woolworths product URL or stockcode</span>
-            <input aria-label="Woolworths product URL or stockcode" name="url" required value="${mapping.stockcode}">
-          </label>
-          <label class="qty"><span class="field-name">Quantity</span>
-            <input aria-label="Quantity" name="quantity" type="number" min="1" value="${mapping.quantity}">
-          </label>
-          <div class="actions">
-            <button type="submit">Save</button>
-            <button type="submit" class="danger" formaction="${path}/delete" formnovalidate>Remove</button>
+          <div class="cell product">
+            <span class="view"><span class="view-name">Stockcode</span>${mapping.stockcode}</span>
+            <label class="edit"><span class="field-name">Woolworths product URL or stockcode</span>
+              <input aria-label="Woolworths product URL or stockcode" name="url" required value="${field('url', mapping.stockcode)}">
+            </label>
+          </div>
+          <div class="cell qty">
+            <span class="view"><span class="view-name">Quantity</span>${mapping.quantity}</span>
+            <label class="edit"><span class="field-name">Quantity</span>
+              <input aria-label="Quantity" name="quantity" type="number" min="1" value="${field('quantity', mapping.quantity)}">
+            </label>
+          </div>
+          <div class="cell actions">
+            <label class="view button-label" for="${id}">Edit</label>
+            <button type="submit" class="edit">Save</button>
+            ${editing ? '<a class="edit button-link" href="/admin">Cancel</a>' : '<button type="reset" class="edit secondary">Cancel</button>'}
+            <button type="submit" class="edit danger" formaction="${path}/delete" formnovalidate>Remove</button>
           </div>
         </form>`
     })
