@@ -11,7 +11,7 @@ describe('household API', () => {
     const fetchImpl = respond(200, { members })
     expect(await fetchMembers('https://example.test/', 't', fetchImpl)).toEqual(members)
     expect(fetchImpl).toHaveBeenCalledWith(
-      'https://example.test/admin/household',
+      'https://example.test/household',
       expect.objectContaining({
         method: 'GET',
         headers: { Accept: 'application/json', Authorization: 'Bearer t' },
@@ -25,7 +25,7 @@ describe('household API', () => {
       code: 'abc',
       expiresAt: 1,
     })
-    expect(fetchImpl.mock.calls[0][0]).toBe('https://example.test/admin/household/invites')
+    expect(fetchImpl.mock.calls[0][0]).toBe('https://example.test/household/invites')
     expect(fetchImpl.mock.calls[0][1].method).toBe('POST')
   })
 
@@ -33,14 +33,14 @@ describe('household API', () => {
     const fetchImpl = respond(204)
     await joinHousehold('https://example.test', 't', ' abc ', fetchImpl)
     const [url, init] = fetchImpl.mock.calls[0]
-    expect(url).toBe('https://example.test/admin/household/join')
+    expect(url).toBe('https://example.test/household/join')
     expect(JSON.parse(init.body)).toEqual({ code: 'abc' })
   })
 
   it('leaves', async () => {
     const fetchImpl = respond(204)
     await leaveHousehold('https://example.test', 't', fetchImpl)
-    expect(fetchImpl.mock.calls[0][0]).toBe('https://example.test/admin/household/leave')
+    expect(fetchImpl.mock.calls[0][0]).toBe('https://example.test/household/leave')
   })
 
   it("surfaces the server's message and unauthorized responses", async () => {

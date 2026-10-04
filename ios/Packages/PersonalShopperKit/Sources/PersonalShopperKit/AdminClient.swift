@@ -69,7 +69,7 @@ public struct AdminClient: Sendable {
 
     public func items() async throws -> [Item] {
         struct Response: Decodable { let items: [Item] }
-        let data = try await send("GET", path: "/admin/items")
+        let data = try await send("GET", path: "/items")
         return try decode(Response.self, from: data).items
     }
 
@@ -82,7 +82,7 @@ public struct AdminClient: Sendable {
             let quantity: Int
         }
         let body = Body(word: word, url: url.absoluteString, quantity: quantity)
-        let data = try await send("POST", path: "/admin/items", body: JSONEncoder().encode(body))
+        let data = try await send("POST", path: "/items", body: JSONEncoder().encode(body))
         return try decode(Item.self, from: data)
     }
 
@@ -100,19 +100,19 @@ public struct AdminClient: Sendable {
         }
         let encoded = word.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? word
         let body = Body(word: newWord, url: product, quantity: quantity)
-        let data = try await send("PATCH", path: "/admin/items/\(encoded)", body: JSONEncoder().encode(body))
+        let data = try await send("PATCH", path: "/items/\(encoded)", body: JSONEncoder().encode(body))
         return try decode(Item.self, from: data)
     }
 
     public func remove(word: String) async throws {
         let encoded = word.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? word
-        _ = try await send("POST", path: "/admin/items/\(encoded)/delete")
+        _ = try await send("POST", path: "/items/\(encoded)/delete")
     }
 
     /// The members of the signed-in user's household, the user included.
     public func household() async throws -> [HouseholdMember] {
         struct Response: Decodable { let members: [HouseholdMember] }
-        let data = try await send("GET", path: "/admin/household")
+        let data = try await send("GET", path: "/household")
         return try decode(Response.self, from: data).members
     }
 
@@ -122,7 +122,7 @@ public struct AdminClient: Sendable {
             let code: String
             let expiresAt: Double
         }
-        let data = try await send("POST", path: "/admin/household/invites")
+        let data = try await send("POST", path: "/household/invites")
         let response = try decode(Response.self, from: data)
         return HouseholdInvite(code: response.code, expiresAt: Date(timeIntervalSince1970: response.expiresAt / 1000))
     }
@@ -131,12 +131,12 @@ public struct AdminClient: Sendable {
     /// previous household and its items are discarded if nobody else is in it.
     public func joinHousehold(code: String) async throws {
         struct Body: Encodable { let code: String }
-        _ = try await send("POST", path: "/admin/household/join", body: JSONEncoder().encode(Body(code: code)))
+        _ = try await send("POST", path: "/household/join", body: JSONEncoder().encode(Body(code: code)))
     }
 
     /// Moves the signed-in user into a new, empty household.
     public func leaveHousehold() async throws {
-        _ = try await send("POST", path: "/admin/household/leave")
+        _ = try await send("POST", path: "/household/leave")
     }
 
     private func send(_ method: String, path: String, body: Data? = nil, authorized: Bool = true) async throws -> Data {

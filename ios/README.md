@@ -1,8 +1,8 @@
-# iOS admin app
+# iOS app
 
-Native SwiftUI client for the server's admin API (`src/admin.ts`): list, add,
+Native SwiftUI client for the server's JSON API (`src/admin.ts`): list, add,
 edit and remove items, plus a Share extension and an App Intent that add a
-Woolworths product without opening the web admin.
+Woolworths product without opening the web app.
 
 - **App** (`App/`): Items tab (list with each trigger phrase as the title and
   the product's Woolworths listing text beneath it, pull to refresh, tap an

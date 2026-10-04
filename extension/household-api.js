@@ -2,7 +2,7 @@ import { normalizeServerUrl } from './auth.js'
 import { UnauthorizedError } from './passkey-logic.js'
 
 async function call(serverUrl, accessToken, method, path, body, fetchImpl) {
-  const response = await fetchImpl(`${normalizeServerUrl(serverUrl)}/admin/household${path}`, {
+  const response = await fetchImpl(`${normalizeServerUrl(serverUrl)}/household${path}`, {
     method,
     headers: {
       Accept: 'application/json',

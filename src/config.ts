@@ -28,7 +28,7 @@ export interface Limits {
   maxInvitesPerHousehold: number
   /** Unexpired tokens (sign-ins) a user may hold at once. */
   maxTokensPerUser: number
-  /** Authenticated requests per minute per user on `/admin` and `/cart`. */
+  /** Authenticated requests per minute per user on `/` and `/cart`. */
   userRequestsPerMinute: number
   /** Requests per minute per client IP on `/auth/*` and `/cart/items`. */
   ipRequestsPerMinute: number

@@ -17,10 +17,10 @@ export function renderHousehold(household: HouseholdView): string {
         ? `<p class="hint">Invite code (single use, expires ${formatTime(household.invite.expiresAt)}): <code>${escapeHtml(household.invite.code)}</code></p>`
         : ''
     }
-    <form method="post" action="/admin/household/invites">
+    <form method="post" action="/household/invites">
       <button type="submit">Create invite code</button>
     </form>
-    <form class="add" method="post" action="/admin/household/join">
+    <form class="add" method="post" action="/household/join">
       <label>Join a household with an invite code
         <input name="code" required autocomplete="off">
       </label>
@@ -29,7 +29,7 @@ export function renderHousehold(household: HouseholdView): string {
     <p class="hint">Joining discards your current items if nobody else is in your household.</p>
     ${
       household.members.length > 1
-        ? `<form method="post" action="/admin/household/leave">
+        ? `<form method="post" action="/household/leave">
       <button type="submit" class="danger">Leave household</button>
     </form>`
         : ''

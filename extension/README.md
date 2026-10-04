@@ -2,7 +2,7 @@
 
 A Chrome extension, not part of the Fastify service — adds the Woolworths
 product page you're currently looking at to `items.yml` via the same
-`POST /admin/items` endpoint the web admin UI (`src/admin.ts`) already
+`POST /items` endpoint the web app (`src/admin.ts`) already
 exposes, without switching tabs to copy the URL across by hand.
 
 Plain browser-extension JS, no build step, nothing under `src/`. `pnpm lint`
@@ -28,7 +28,7 @@ this small and single-user.
    trigger word and quantity, then submit. Signed out, the popup shows a
    "Sign in with Google" button instead; a `401` from the server signs you
    out.
-4. "Manage items" at the bottom of the popup opens `/admin` on the
+4. "Manage items" at the bottom of the popup opens `/` on the
    server in a new tab.
 
 ## Household
@@ -37,7 +37,7 @@ Below the passkey, the options page shows the household (members who share
 your items and Woolworths account). "Create invite code" shows a single-use
 code, valid 24 hours, to give to someone; "Join household" takes a code
 (discarding your items if nobody else is in your household); "Leave household"
-appears once there is more than one member. It calls `/admin/household*` with
+appears once there is more than one member. It calls `/household*` with
 the bearer token (`household-api.js`, `household.test.js`).
 
 ## Woolworths passkey
@@ -59,7 +59,7 @@ sign-in, and `CREDENTIALS_ENCRYPTION_KEY` set on the server.
 "Cancel" (or dismissing the debugging bar, or closing the tab) stops the
 registration and does the same cleanup. A failure is shown on the options page.
 Once registered the page offers "Replace passkey" and "Remove passkey"
-(`DELETE /woolworths/passkey`); `/admin` shows the registration too.
+(`DELETE /woolworths/passkey`); `/` shows the registration too.
 
 The registration runs in the extension's service worker (`background.js`),
 which keeps going when the options page closes; the logic is in
@@ -71,7 +71,7 @@ The extension uses the server's API client flow ([`docs/auth.md`](../docs/auth.m
 `chrome.identity.launchWebAuthFlow` opens `/auth/start` with a PKCE S256
 challenge and a random `state` (both generated with WebCrypto and checked on
 return), then `POST /auth/token` redeems the code for a bearer token sent as
-`Authorization: Bearer <token>` on `POST /admin/items`. The options page shows
+`Authorization: Bearer <token>` on `POST /items`. The options page shows
 when the session expires.
 
 ### Extension ID and redirect URI
@@ -108,9 +108,9 @@ digit mapped `0-9a-f` to `a-p`).
 
 ## What this doesn't cover
 
-- No product search — same constraint as the web admin UI. You still need
+- No product search — same constraint as the web app. You still need
   to already be on the product's page.
 - No feedback beyond "Added." / "Failed (\<status\>)" in the popup — check
-  `/admin` if you want to confirm what actually landed in `items.yml`.
+  `/` if you want to confirm what actually landed in `items.yml`.
 - A non-Woolworths-product-page tab hides the form and offers a button to
   open woolworths.com.au in a new tab instead of showing a disabled form.

@@ -10,17 +10,17 @@
    that user's household: its items, its Woolworths session, its passkey (see
    [Households](#households)). Endpoints,
    token lifetime and the client contract are in [`auth.md`](auth.md).
-2. **`/admin`** (`src/admin.ts`): lists, adds, edits, and removes the signed-in
+2. **`/`** (`src/admin.ts`): lists, adds, edits, and removes the signed-in
    user's items (the `items` table, `src/items.ts`), no restart required. It is behind Google sign-in
-   (`/admin/login` is a "Sign in with Google" button; routes in
+   (`/login` is a "Sign in with Google" button; routes in
    `src/login.ts`) and shows the user's own active sessions with a revoke button. Since
    Woolworths' search is broken (see risks below), there's no in-app product
    search; you find a product on woolworths.com.au yourself and paste its URL
    in, and the stockcode is parsed out of `/shop/productdetails/<stockcode>/...`.
    Requests with `Accept: application/json` and a bearer token get JSON
-   instead of the web UI's redirects: `GET /admin/items`,
-   `POST /admin/items`, `PATCH /admin/items/:word`, `DELETE /admin/items/:word`,
-   the household routes below, and `401 {error}` when unauthenticated. Saving a user's items replaces
+   instead of the web UI's redirects: `GET /items`,
+   `POST /items`, `PATCH /items/:word`, `DELETE /items/:word`,
+   the household routes below, and `401 {error}` when unauthenticated. The web app owns the root-level paths `/`, `/login`, `/logout`, `/items`, `/household` and `/sessions`; everything else lives under `/auth`, `/cart`, `/woolworths` or `/healthz`. Saving a user's items replaces
    them in one transaction, so a reader never sees a partial list. Each
    item also stores its `listing`, the product's title on woolworths.com.au,
    looked up with `WoolworthsClient.listing` (below) when the item is added or
@@ -60,23 +60,23 @@ A household (`src/households.ts`, `HouseholdStore`) is the unit that owns items,
 the Woolworths session and the passkey credential; its members each keep their
 own Google sign-in and tokens. The stores stay keyed by email and resolve it
 to the user's household, so everything that acts for a user (cart, Reminders
-sync, scripts, `/admin`) reads and writes the household's shared state. A new
+sync, scripts, `/`) reads and writes the household's shared state. A new
 user starts in a household of their own.
 
-- Any member creates an invite code (`POST /admin/household/invites`): 16
+- Any member creates an invite code (`POST /household/invites`): 16
   random bytes, base64url, single use, valid 24 hours; only its SHA-256 is
   stored. A household holds at most `MAX_INVITES_PER_HOUSEHOLD` unexpired
   invites.
-- Joining (`POST /admin/household/join` with `{code}`) moves the joiner into
+- Joining (`POST /household/join` with `{code}`) moves the joiner into
   the inviter's household and consumes the code. Their previous household,
   with its items, session and passkey, is deleted when they were its only
   member. An unknown, expired or used code is `400`; a code to the joiner's
   own household is `409`.
-- Leaving (`POST /admin/household/leave`) moves the user into a new, empty
+- Leaving (`POST /household/leave`) moves the user into a new, empty
   household, deleting the old one if they were its last member. A user who
   is their household's only member gets `409`, since there is nothing to
   leave.
-- `GET /admin/household` lists the members (`{members:[{email, you}]}`).
+- `GET /household` lists the members (`{members:[{email, you}]}`).
 - `MAX_ITEMS_PER_HOUSEHOLD` caps items per household. Members edit one shared
   list; concurrent edits replace the whole list, so the last save wins.
 
@@ -96,7 +96,7 @@ the privileged role.
 | --------------------- | ------------------------------------------------------------------------------ |
 | `households`          | A group of users sharing one Woolworths account; the key of the shared data.   |
 | `users`               | One row per email (lower-cased, unique), in one household.                     |
-| `tokens`              | Hashed bearer tokens and admin sessions, per user, with client and expiry.     |
+| `tokens`              | Hashed bearer tokens and web sessions, per user, with client and expiry.       |
 | `items`               | A household's trigger phrase, stockcode, quantity and listing, in order.       |
 | `woolworths_sessions` | A household's Woolworths cookie jar.                                           |
 | `passkey_credentials` | A household's passkey credential, AES-256-GCM encrypted (IV, tag, ciphertext). |
@@ -173,7 +173,7 @@ accepts Woolworths' prompt, and the credential read with
 ([`auth.md`](auth.md#registering-a-woolworths-passkey); `src/passkey.ts`),
 which stores it through `CredentialStore` and drops the user's cached session
 store so the next login uses it. `GET` and `DELETE` on the same path report and
-remove it, and `/admin` shows whether one is registered. These routes need
+remove it, and `/` shows whether one is registered. These routes need
 `CREDENTIALS_ENCRYPTION_KEY`.
 
 `pnpm register-passkey` (`scripts/register-passkey.ts`) registers the
@@ -218,7 +218,7 @@ developer machine. State is in Supabase Postgres (above); a Fly volume at
 `/data` is only needed to hold single-user files for the start-up import.
 Because the server is on the
 internet, `/auth/*` is rate limited per client IP (keyed on `X-Forwarded-For`
-when `TRUST_PROXY=true`), the admin session cookie is `Secure` over HTTPS, and
+when `TRUST_PROXY=true`), the session cookie is `Secure` over HTTPS, and
 `GET /healthz` is the unauthenticated health check.
 See [`deployment.md`](deployment.md).
 

@@ -41,7 +41,7 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   server is the OAuth client of Google (authorization code with PKCE), any
   Google account with `email_verified` true may sign up (no allowlist; a user
   row is created on first sign-in), and it issues its own session cookie
-  (`/admin`) or opaque bearer tokens (iOS app, Chrome extension; hashed in
+  (`/`) or opaque bearer tokens (iOS app, Chrome extension; hashed in
   the `tokens` table, 90-day sliding expiry, revocable). Abuse is bounded by
   env-configurable limits: `MAX_USERS`, per-household items and invites, per-user active tokens, and
   per-user plus per-IP rate limits (`docs/auth.md#limits`). The Google
@@ -74,14 +74,14 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
 
 `src/woolworths` is everything that talks to Woolworths' unofficial API;
 `src/app.ts` wires up Fastify, `src/login.ts` the Google sign-in routes,
-`src/admin.ts` the admin UI and JSON API, `src/cart.ts` the cart route, `src/passkey.ts` the passkey routes,
+`src/admin.ts` the web app and its JSON API, `src/cart.ts` the cart route, `src/passkey.ts` the passkey routes,
 `src/tokens.ts` the token store, `src/items.ts` the item store, `src/db.ts` the
 Postgres connection and `src/users/` the per-user credential store, session
 storage, Woolworths clients and legacy-file import; `supabase/migrations` is the
 schema; `scripts/` are one-off CLIs run by hand (session capture, product
 lookup), each taking `--user <email>` (default `REMINDERS_OWNER_EMAIL`); `extension/` is the Chrome
-extension and `ios/` the SwiftUI admin app with its Share extension and App
-Intents (clients of `/admin/items` and `/cart/items`). See
+extension and `ios/` the SwiftUI app with its Share extension and App
+Intents (clients of `/items` and `/cart/items`). See
 [`docs/architecture.md`](docs/architecture.md) for how the pieces fit and the
 open risks.
 

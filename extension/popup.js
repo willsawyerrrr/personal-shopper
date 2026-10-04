@@ -29,7 +29,7 @@ async function init() {
 
   const signInButton = document.getElementById('signIn')
 
-  adminLink.href = `${normalizeServerUrl(SERVER_URL)}/admin`
+  adminLink.href = `${normalizeServerUrl(SERVER_URL)}/`
 
   const tab = await getActiveTab()
   if (!tab.url || !PRODUCT_PATTERN.test(tab.url)) {
@@ -80,7 +80,7 @@ async function init() {
       quantity: Number(document.getElementById('quantity').value) || 1,
     })
     try {
-      const response = await fetch(`${normalizeServerUrl(SERVER_URL)}/admin/items`, {
+      const response = await fetch(`${normalizeServerUrl(SERVER_URL)}/items`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

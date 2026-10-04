@@ -26,16 +26,16 @@ The server refuses to start when a required variable is missing.
 Each limit has a default and an environment variable; all are positive
 integers.
 
-| Variable                     | Default | Meaning                                                                                                             |
-| ---------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------- |
-| `MAX_USERS`                  | 50      | Total users. Beyond it a new Google account cannot sign up (`signup_closed`); existing users are unaffected.        |
-| `MAX_ITEMS_PER_HOUSEHOLD`    | 200     | Items a household may map. `POST /admin/items` for a new phrase beyond it gets `409`; replacing an item is allowed. |
-| `MAX_INVITES_PER_HOUSEHOLD`  | 5       | Unexpired household invites at once. `POST /admin/household/invites` beyond it gets `409`.                          |
-| `MAX_TOKENS_PER_USER`        | 20      | Unexpired tokens (web sessions and API clients) a user may hold. A sign-in beyond it is refused (`user_limit`).     |
-| `USER_RATE_LIMIT_PER_MINUTE` | 120     | Authenticated requests per minute per user on `/admin` and `/cart`; excess gets `429 {"error":"rate_limited"}`.     |
-| `IP_RATE_LIMIT_PER_MINUTE`   | 30      | Requests per minute per client IP on each `/auth/*` route and on `POST /cart/items`; excess gets `429`.             |
+| Variable                     | Default | Meaning                                                                                                         |
+| ---------------------------- | ------- | --------------------------------------------------------------------------------------------------------------- |
+| `MAX_USERS`                  | 50      | Total users. Beyond it a new Google account cannot sign up (`signup_closed`); existing users are unaffected.    |
+| `MAX_ITEMS_PER_HOUSEHOLD`    | 200     | Items a household may map. `POST /items` for a new phrase beyond it gets `409`; replacing an item is allowed.   |
+| `MAX_INVITES_PER_HOUSEHOLD`  | 5       | Unexpired household invites at once. `POST /household/invites` beyond it gets `409`.                            |
+| `MAX_TOKENS_PER_USER`        | 20      | Unexpired tokens (web sessions and API clients) a user may hold. A sign-in beyond it is refused (`user_limit`). |
+| `USER_RATE_LIMIT_PER_MINUTE` | 120     | Authenticated requests per minute per user on `/` and `/cart`; excess gets `429 {"error":"rate_limited"}`.      |
+| `IP_RATE_LIMIT_PER_MINUTE`   | 30      | Requests per minute per client IP on each `/auth/*` route and on `POST /cart/items`; excess gets `429`.         |
 
-A user revokes a sign-in from `/admin` to free a token slot.
+A user revokes a sign-in from `/` to free a token slot.
 
 `ALLOWED_CLIENT_REDIRECTS` entries:
 
@@ -47,12 +47,12 @@ A user revokes a sign-in from `/admin` to free a token slot.
 
 ## Browser sign-in
 
-`/admin/login` shows a "Sign in with Google" button linking to
+`/login` shows a "Sign in with Google" button linking to
 `GET /auth/google/login`, which redirects to Google. After the callback the
 server sets the `ps_admin_session` cookie (`HttpOnly`, `SameSite=Lax`,
 `Secure` when `PUBLIC_BASE_URL` is `https`, 30 days) and redirects to
-`/admin`. The cookie value is an opaque server-issued token, the same kind
-API clients get. "Sign out" on `/admin` revokes it. `/admin` also lists the signed-in
+`/`. The cookie value is an opaque server-issued token, the same kind
+API clients get. "Sign out" on `/` revokes it. `/` also lists the signed-in
 user's own active sessions (web, iOS, extension) with a revoke button; a user
 cannot revoke another user's.
 
@@ -104,25 +104,25 @@ sends `Authorization: Bearer <access_token>` on every API call.
 
 ### Using the token
 
-Bearer tokens authorise the JSON API on `/admin/items`; send
+Bearer tokens authorise the JSON API on `/items`; send
 `Accept: application/json`. Every call acts on the token's user and their
 household: members share items, and `POST /cart/items` adds to the household's
 Woolworths cart.
 
-| Request                                                                  | Success                                                                       |
-| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| `GET /admin/items`                                                       | `200 {"items":[{word, stockcode, quantity, listing?}]}`                       |
-| `POST /admin/items` with `{word, url, quantity?}`                        | `201` with the stored item; `400 {error}` if invalid                          |
-| `PATCH /admin/items/:word` with any of the fields below                  | `200` with the stored item; `400`, `404`, `409` below                         |
-| `DELETE /admin/items/:word` (or `POST /admin/items/:word/delete`)        | `204`                                                                         |
-| `GET /admin` (HTML), `POST /admin/sessions/:id/revoke` (`204` with JSON) | Browser UI and session revocation                                             |
-| `GET /admin/household`                                                   | `200 {"members":[{email, you}]}`                                              |
-| `POST /admin/household/invites`                                          | `201 {code, expiresAt}` (epoch ms); `409 {error}` at the invite limit         |
-| `POST /admin/household/join` with `{code}`                               | `204`; `400 {error}` invalid, expired or used; `409 {error}` already a member |
-| `POST /admin/household/leave`                                            | `204`; `409 {error}` for a sole member                                        |
-| `POST /auth/logout`                                                      | `204`; revokes the presented token                                            |
+| Request                                                       | Success                                                                       |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `GET /items`                                                  | `200 {"items":[{word, stockcode, quantity, listing?}]}`                       |
+| `POST /items` with `{word, url, quantity?}`                   | `201` with the stored item; `400 {error}` if invalid                          |
+| `PATCH /items/:word` with any of the fields below             | `200` with the stored item; `400`, `404`, `409` below                         |
+| `DELETE /items/:word` (or `POST /items/:word/delete`)         | `204`                                                                         |
+| `GET /` (HTML), `POST /sessions/:id/revoke` (`204` with JSON) | Browser UI and session revocation                                             |
+| `GET /household`                                              | `200 {"members":[{email, you}]}`                                              |
+| `POST /household/invites`                                     | `201 {code, expiresAt}` (epoch ms); `409 {error}` at the invite limit         |
+| `POST /household/join` with `{code}`                          | `204`; `400 {error}` invalid, expired or used; `409 {error}` already a member |
+| `POST /household/leave`                                       | `204`; `409 {error}` for a sole member                                        |
+| `POST /auth/logout`                                           | `204`; revokes the presented token                                            |
 
-`PATCH /admin/items/:word` (browser form: `POST /admin/items/:word/edit`)
+`PATCH /items/:word` (browser form: `POST /items/:word/edit`)
 changes only the fields sent, keeps every other entry and the item's position
 in the user's list, and saves atomically. `:word` is normalised like
 `word` on `POST`.
@@ -140,7 +140,7 @@ read-only: the server looks it up when an item is added and when its
 stockcode changes, and clients cannot set it. It is absent when the lookup
 failed or has not run yet; a failed lookup never fails the request. Items
 stored without one are filled in by a background pass at startup and after
-any `GET /admin/items` or `GET /admin`, so a later list contains it.
+any `GET /items` or `GET /`, so a later list contains it.
 
 | Status | Body                                                            |
 | ------ | --------------------------------------------------------------- |
@@ -148,11 +148,11 @@ any `GET /admin/items` or `GET /admin`, so a later list contains it.
 | `404`  | `{"error":"<message>"}`: no item for `:word`                    |
 | `409`  | `{"error":"<message>"}`: `word` is already used by another item |
 
-`POST /admin/items` also answers `409` when the user is at
+`POST /items` also answers `409` when the user is at
 `MAX_ITEMS_PER_HOUSEHOLD` and the phrase is new.
 
-Browser form edits answer the same statuses by re-rendering `/admin` with the
-message, and redirect to `/admin` on success. They rely on the session
+Browser form edits answer the same statuses by re-rendering `/` with the
+message, and redirect to `/` on success. They rely on the session
 cookie's `SameSite=Lax`, like the other form posts.
 
 ### Adding to the cart
@@ -220,13 +220,13 @@ drops the user's cached Woolworths session store, so the next login uses it.
 | `400`  | `{"error":"<message>"}`: the body has no usable credential |
 | `401`  | `{"error":"unauthorized"}`                                 |
 
-`/admin` shows whether the signed-in user has a passkey registered.
+`/` shows whether the signed-in user has a passkey registered.
 
 ### Token lifetime
 
 Tokens are 32 random bytes (`ps_` plus base64url), stored on the server only
 as SHA-256 hashes with email, client, created, last-used and expiry in the
-`tokens` table. Expiry is 90 days from last use (sliding). Revoke with `POST /auth/logout` or from `/admin`.
+`tokens` table. Expiry is 90 days from last use (sliding). Revoke with `POST /auth/logout` or from `/`.
 
 ## Failure reasons
 

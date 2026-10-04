@@ -58,7 +58,7 @@ export async function registerAdmin(
       (await tokens.list()).filter((session) => session.email === emailOf(request))
 
     admin.addHook('onRequest', async (request, reply) => {
-      if (requestPath(request) === '/admin/login') {
+      if (requestPath(request) === '/login') {
         return
       }
       const result = await authenticate(request, tokens, true)
@@ -82,24 +82,24 @@ export async function registerAdmin(
         return reply.code(401).send({ error: 'unauthorized' })
       }
       if (request.method === 'GET') {
-        return reply.redirect('/admin/login')
+        return reply.redirect('/login')
       }
       reply.code(401).send('Authentication required')
     })
 
-    admin.get('/admin/login', async (_request, reply) => {
+    admin.get('/login', async (_request, reply) => {
       reply.type('text/html').send(renderLoginPage())
     })
 
-    admin.post('/admin/logout', async (request, reply) => {
+    admin.post('/logout', async (request, reply) => {
       const token = current.get(request)?.token
       if (token) {
         await tokens.revoke(token)
       }
-      reply.header('set-cookie', sessionCookie('', 0, secureCookie)).redirect('/admin/login')
+      reply.header('set-cookie', sessionCookie('', 0, secureCookie)).redirect('/login')
     })
 
-    admin.post<{ Params: { id: string } }>('/admin/sessions/:id/revoke', async (request, reply) => {
+    admin.post<{ Params: { id: string } }>('/sessions/:id/revoke', async (request, reply) => {
       if ((await sessionsOf(request)).some((session) => session.id === request.params.id)) {
         await tokens.revokeById(request.params.id)
       }
@@ -108,12 +108,12 @@ export async function registerAdmin(
       }
       if (request.params.id === current.get(request)?.id) {
         reply.header('set-cookie', sessionCookie('', 0, secureCookie))
-        return reply.redirect('/admin/login')
+        return reply.redirect('/login')
       }
-      return reply.redirect('/admin')
+      return reply.redirect('/')
     })
 
-    admin.get('/admin', async (request, reply) => {
+    admin.get('/', async (request, reply) => {
       const items = await store.load(emailOf(request))
       void backfillOf(request)
       const sessions = await sessionsOf(request)
@@ -128,14 +128,14 @@ export async function registerAdmin(
     })
 
     // Members of the household the user's items, Woolworths session and passkey are shared with.
-    admin.get('/admin/household', async (request) => ({
+    admin.get('/household', async (request) => ({
       members: (await households.members(emailOf(request))).map((email) => ({
         email,
         you: email === emailOf(request),
       })),
     }))
 
-    // Responds to a household action: JSON for API clients, else the admin page
+    // Responds to a household action: JSON for API clients, else the web page
     // (with `notice` or `error` shown), which is also where an invite code appears.
     const householdPage = async (
       request: FastifyRequest,
@@ -162,7 +162,7 @@ export async function registerAdmin(
         )
     }
 
-    admin.post('/admin/household/invites', async (request, reply) => {
+    admin.post('/household/invites', async (request, reply) => {
       try {
         const invite = await households.invite(emailOf(request))
         if (wantsJson(request)) {
@@ -180,31 +180,28 @@ export async function registerAdmin(
       }
     })
 
-    admin.post<{ Body: { code?: string } | null }>(
-      '/admin/household/join',
-      async (request, reply) => {
-        const code = request.body?.code
-        const result =
-          typeof code === 'string' && code.trim()
-            ? await households.join(emailOf(request), code)
-            : 'invalid_invite'
-        if (result === 'joined') {
-          return wantsJson(request) ? reply.code(204).send() : reply.redirect('/admin')
-        }
-        const [status, error] =
-          result === 'already_member'
-            ? [409, 'You are already in that household.']
-            : [400, 'That invite code is invalid, expired or already used.']
-        return wantsJson(request)
-          ? reply.code(status).send({ error })
-          : householdPage(request, reply, status, { error })
-      },
-    )
+    admin.post<{ Body: { code?: string } | null }>('/household/join', async (request, reply) => {
+      const code = request.body?.code
+      const result =
+        typeof code === 'string' && code.trim()
+          ? await households.join(emailOf(request), code)
+          : 'invalid_invite'
+      if (result === 'joined') {
+        return wantsJson(request) ? reply.code(204).send() : reply.redirect('/')
+      }
+      const [status, error] =
+        result === 'already_member'
+          ? [409, 'You are already in that household.']
+          : [400, 'That invite code is invalid, expired or already used.']
+      return wantsJson(request)
+        ? reply.code(status).send({ error })
+        : householdPage(request, reply, status, { error })
+    })
 
-    admin.post('/admin/household/leave', async (request, reply) => {
+    admin.post('/household/leave', async (request, reply) => {
       const result = await households.leave(emailOf(request))
       if (result === 'left') {
-        return wantsJson(request) ? reply.code(204).send() : reply.redirect('/admin')
+        return wantsJson(request) ? reply.code(204).send() : reply.redirect('/')
       }
       const error = 'You are the only member of your household, so there is nothing to leave.'
       return wantsJson(request)
@@ -212,7 +209,7 @@ export async function registerAdmin(
         : householdPage(request, reply, 409, { error })
     })
 
-    admin.get('/admin/items', async (request) => {
+    admin.get('/items', async (request) => {
       const items = await store.load(emailOf(request))
       void backfillOf(request)
       return {
@@ -224,7 +221,7 @@ export async function registerAdmin(
 
     admin.post<{
       Body: { word?: string; url?: string; quantity?: string | number }
-    }>('/admin/items', async (request, reply) => {
+    }>('/items', async (request, reply) => {
       const { word, url, quantity } = request.body
       const items = await store.load(emailOf(request))
       const stockcode = parseStockcode(url ?? '')
@@ -261,7 +258,7 @@ export async function registerAdmin(
       if (wantsJson(request)) {
         return reply.code(201).send({ word: normalizeWord(word), ...mapping })
       }
-      return reply.redirect('/admin')
+      return reply.redirect('/')
     })
 
     const removeItem = async (
@@ -274,7 +271,7 @@ export async function registerAdmin(
       if (wantsJson(request)) {
         return reply.code(204).send()
       }
-      return reply.redirect('/admin')
+      return reply.redirect('/')
     }
     const editItem = async (
       request: FastifyRequest<{ Params: { word: string }; Body: Record<string, unknown> | null }>,
@@ -312,18 +309,18 @@ export async function registerAdmin(
       if (wantsJson(request)) {
         return reply.send({ word: result.word, ...result.items[result.word] })
       }
-      return reply.redirect('/admin')
+      return reply.redirect('/')
     }
     admin.patch<{ Params: { word: string }; Body: Record<string, unknown> | null }>(
-      '/admin/items/:word',
+      '/items/:word',
       editItem,
     )
     admin.post<{ Params: { word: string }; Body: Record<string, unknown> | null }>(
-      '/admin/items/:word/edit',
+      '/items/:word/edit',
       editItem,
     )
-    admin.post<{ Params: { word: string } }>('/admin/items/:word/delete', removeItem)
-    admin.delete<{ Params: { word: string } }>('/admin/items/:word', removeItem)
+    admin.post<{ Params: { word: string } }>('/items/:word/delete', removeItem)
+    admin.delete<{ Params: { word: string } }>('/items/:word', removeItem)
   })
 }
 
@@ -358,7 +355,7 @@ function renderLoginPage(): string {
 </head>
 <body>
   <div class="card">
-    <h1>Personal Shopper admin</h1>
+    <h1>Personal Shopper</h1>
     <a class="button" href="/auth/google/login">Sign in with Google</a>
   </div>
 </body>
@@ -377,7 +374,7 @@ function renderPage(
   const rows = Object.entries(items)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([word, mapping], index) => {
-      const path = `/admin/items/${encodeURIComponent(word)}`
+      const path = `/items/${encodeURIComponent(word)}`
       const editing = edit?.word === word
       const field = (name: string, fallback: string | number): string => {
         const value = editing ? edit.values[name] : undefined
@@ -409,7 +406,7 @@ function renderPage(
           <div class="cell actions">
             <label class="view button-label" for="${id}">Edit</label>
             <button type="submit" class="edit">Save</button>
-            ${editing ? '<a class="edit button-link" href="/admin">Cancel</a>' : '<button type="reset" class="edit secondary">Cancel</button>'}
+            ${editing ? '<a class="edit button-link" href="/">Cancel</a>' : '<button type="reset" class="edit secondary">Cancel</button>'}
             <button type="submit" class="edit danger" formaction="${path}/delete" formnovalidate>Remove</button>
           </div>
         </form>`
@@ -425,7 +422,7 @@ function renderPage(
           <td>${formatTime(session.lastUsedAt)}</td>
           <td>${formatTime(session.expiresAt)}</td>
           <td>
-            <form method="post" action="/admin/sessions/${session.id}/revoke">
+            <form method="post" action="/sessions/${session.id}/revoke">
               <button type="submit">Revoke</button>
             </form>
           </td>
@@ -444,7 +441,7 @@ function renderPage(
 <body>
   <div class="top-bar">
     <h1>Shopping list items</h1>
-    <form method="post" action="/admin/logout">
+    <form method="post" action="/logout">
       <button type="submit" class="logout">Sign out</button>
     </form>
   </div>
@@ -458,7 +455,7 @@ function renderPage(
   <div class="card">
     <h2>Add an item</h2>
     <p class="hint">Find the product on woolworths.com.au and paste its URL below.</p>
-    <form class="add" method="post" action="/admin/items">
+    <form class="add" method="post" action="/items">
       <label>Trigger word (what you'll say to Siri)
         <input name="word" required placeholder="milk">
       </label>

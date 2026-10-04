@@ -7,7 +7,7 @@ production dependencies only and no browser; the Woolworths login is plain
 HTTP. The server process runs unprivileged: `docker-entrypoint.sh` hands the
 `/data` volume to the `node` user, then drops root.
 
-Local development uses the same code: `pnpm dev`, then `/admin` against
+Local development uses the same code: `pnpm dev`, then `/` against
 `localhost` (Google sign-in needs `http://localhost:3000/auth/google/callback`
 registered, below).
 
@@ -26,7 +26,7 @@ registered, below).
   files to import (below).
 - Postgres (Supabase): users, tokens, items, Woolworths sessions and encrypted
   passkey credentials, per household ([`architecture.md`](architecture.md#data)). A
-  user without items has none; they add them through `/admin`.
+  user without items has none; they add them through `/`.
 - Volume `data` mounted at `/data`: only the single-user files `items.yml`,
   `session.json`, `passkey-credentials.json` and `tokens.json`, if present, so
   the server can import them into the owner's rows when it starts. Each is
@@ -100,7 +100,7 @@ One-off setup in [Google Cloud Console](https://console.cloud.google.com/);
 
 5. For local development put the same values in `.env` with
    `PUBLIC_BASE_URL=http://localhost:3000`, run `pnpm dev` and open
-   `http://localhost:3000/admin`.
+   `http://localhost:3000/`.
 
 Google rejects a redirect URI that differs from a registered one by even a
 trailing slash (`redirect_uri_mismatch`); `PUBLIC_BASE_URL` has no path.
