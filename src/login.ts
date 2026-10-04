@@ -237,7 +237,7 @@ export async function registerLogin(app: FastifyInstance, deps: LoginDeps): Prom
           const { token } = issued
           return reply
             .header('set-cookie', sessionCookie(token, WEB_SESSION_TTL_MS / 1000, secureCookie))
-            .redirect('/admin')
+            .redirect('/')
         }
         const authCode = random()
         sweep(codes, now())
@@ -328,7 +328,7 @@ function renderError(reason: AuthFailureReason): string {
 </head>
 <body style="font-family: system-ui, sans-serif; max-width: 360px; margin: 6rem auto; padding: 0 1rem">
   <p>${message}</p>
-  <p><a href="/admin/login">Try again</a></p>
+  <p><a href="/login">Try again</a></p>
 </body>
 </html>`
 }

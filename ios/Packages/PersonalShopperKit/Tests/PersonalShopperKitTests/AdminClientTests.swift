@@ -68,7 +68,7 @@ struct AdminClientTests {
         #expect(items == [Item(word: "milk", stockcode: 1, quantity: 2, listing: "Maleny Dairies Full Cream 2L"), Item(word: "eggs", stockcode: 3, quantity: 1)])
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
         #expect(request.httpMethod == "GET")
-        #expect(request.url?.absoluteString == "https://example.test/admin/items")
+        #expect(request.url?.absoluteString == "https://example.test/items")
         #expect(request.value(forHTTPHeaderField: "Accept") == "application/json")
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer ps_tok")
     }
@@ -79,7 +79,7 @@ struct AdminClientTests {
         #expect(members == [HouseholdMember(email: "a@example.com", you: true), HouseholdMember(email: "b@example.com", you: false)])
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
         #expect(request.httpMethod == "GET")
-        #expect(request.url?.absoluteString == "https://example.test/admin/household")
+        #expect(request.url?.absoluteString == "https://example.test/household")
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer ps_tok")
     }
 
@@ -89,7 +89,7 @@ struct AdminClientTests {
         #expect(invite == HouseholdInvite(code: "abc123", expiresAt: Date(timeIntervalSince1970: 1_700_000_000)))
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
         #expect(request.httpMethod == "POST")
-        #expect(request.url?.absoluteString == "https://example.test/admin/household/invites")
+        #expect(request.url?.absoluteString == "https://example.test/household/invites")
     }
 
     @Test func reportsTheInviteLimit() async throws {
@@ -104,7 +104,7 @@ struct AdminClientTests {
         try await client.joinHousehold(code: "abc123")
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
         #expect(request.httpMethod == "POST")
-        #expect(request.url?.absoluteString == "https://example.test/admin/household/join")
+        #expect(request.url?.absoluteString == "https://example.test/household/join")
         #expect(try #require(request.httpBody) == Data(#"{"code":"abc123"}"#.utf8))
     }
 
@@ -120,7 +120,7 @@ struct AdminClientTests {
         try await client.leaveHousehold()
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
         #expect(request.httpMethod == "POST")
-        #expect(request.url?.absoluteString == "https://example.test/admin/household/leave")
+        #expect(request.url?.absoluteString == "https://example.test/household/leave")
     }
 
     @Test func addsItem() async throws {
@@ -130,7 +130,7 @@ struct AdminClientTests {
         #expect(item.stockcode == 888137)
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
         #expect(request.httpMethod == "POST")
-        #expect(request.url?.path == "/admin/items")
+        #expect(request.url?.path == "/items")
         #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
         let body = try JSONSerialization.jsonObject(with: try #require(request.httpBody)) as? [String: Any]
         #expect(body?["word"] as? String == "milk")
@@ -143,7 +143,7 @@ struct AdminClientTests {
         try await client.remove(word: "ice cream/2")
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
         #expect(request.httpMethod == "POST")
-        #expect(request.url?.absoluteString == "https://example.test/admin/items/ice%20cream%2F2/delete")
+        #expect(request.url?.absoluteString == "https://example.test/items/ice%20cream%2F2/delete")
     }
 
     @Test func mapsUnauthorized() async {
@@ -356,7 +356,7 @@ extension AdminClientTests {
         #expect(item == Item(word: "oat milk", stockcode: 654321, quantity: 3, listing: "Oat 1L"))
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
         #expect(request.httpMethod == "PATCH")
-        #expect(request.url?.absoluteString == "https://example.test/admin/items/ice%20cream%2F2")
+        #expect(request.url?.absoluteString == "https://example.test/items/ice%20cream%2F2")
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer ps_tok")
         let sent = try body(of: request)
         #expect(sent["word"] as? String == "oat milk")
@@ -441,7 +441,7 @@ extension AdminClientTests {
         await model.submit()
         #expect(model.phase == .saved)
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
-        #expect(request.url?.path == "/admin/items/milk")
+        #expect(request.url?.path == "/items/milk")
         let sent = try body(of: request)
         #expect(sent["word"] as? String == "Oat milk")
         #expect(sent["name"] == nil)

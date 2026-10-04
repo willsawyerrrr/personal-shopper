@@ -35,7 +35,7 @@ describe('buildApp', () => {
   it('has no voice webhook', async () => {
     const response = await buildApp(config, { sql: db.sql }).inject({
       method: 'POST',
-      url: '/items',
+      url: '/webhook',
       payload: { item: 'milk' },
     })
     expect(response.statusCode).toBe(404)

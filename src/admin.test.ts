@@ -39,7 +39,7 @@ describe('admin', () => {
   })
 
   it('shows whether a passkey is registered only when passkeys are enabled', async () => {
-    const page = () => app.inject({ method: 'GET', url: '/admin', headers: authHeader })
+    const page = () => app.inject({ method: 'GET', url: '/', headers: authHeader })
     expect((await page()).body).not.toContain('Woolworths passkey')
 
     const credentials = new CredentialStore(db.sql, randomBytes(32))
@@ -55,7 +55,7 @@ describe('admin', () => {
   })
 
   it('serves a Google sign-in button instead of a password form', async () => {
-    const response = await app.inject({ method: 'GET', url: '/admin/login' })
+    const response = await app.inject({ method: 'GET', url: '/login' })
     expect(response.statusCode).toBe(200)
     expect(response.body).toContain('href="/auth/google/login"')
     expect(response.body).toContain('Sign in with Google')
@@ -63,8 +63,8 @@ describe('admin', () => {
   })
 
   it('adapts the pages to phone screens and the system colour scheme', async () => {
-    const login = await app.inject({ method: 'GET', url: '/admin/login' })
-    const admin = await app.inject({ method: 'GET', url: '/admin', headers: authHeader })
+    const login = await app.inject({ method: 'GET', url: '/login' })
+    const admin = await app.inject({ method: 'GET', url: '/', headers: authHeader })
     for (const page of [login, admin]) {
       expect(page.body).toContain(
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
@@ -77,7 +77,7 @@ describe('admin', () => {
   it('has no password login', async () => {
     const response = await app.inject({
       method: 'POST',
-      url: '/admin/login',
+      url: '/login',
       payload: 'secret=anything',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
     })
@@ -86,23 +86,23 @@ describe('admin', () => {
   })
 
   it('redirects unauthenticated browser requests to the login page', async () => {
-    const response = await app.inject({ method: 'GET', url: '/admin' })
+    const response = await app.inject({ method: 'GET', url: '/' })
     expect(response.statusCode).toBe(302)
-    expect(response.headers.location).toBe('/admin/login')
+    expect(response.headers.location).toBe('/login')
   })
 
   it('answers unauthenticated browser writes with 401', async () => {
-    const response = await app.inject({ method: 'POST', url: '/admin/items/milk/delete' })
+    const response = await app.inject({ method: 'POST', url: '/items/milk/delete' })
     expect(response.statusCode).toBe(401)
     expect(await itemsYaml(db.sql)).toContain('milk:')
   })
 
   it('signs out by revoking the session and clearing the cookie', async () => {
-    const logout = await app.inject({ method: 'POST', url: '/admin/logout', headers: authHeader })
+    const logout = await app.inject({ method: 'POST', url: '/logout', headers: authHeader })
     expect(logout.statusCode).toBe(302)
-    expect(logout.headers.location).toBe('/admin/login')
+    expect(logout.headers.location).toBe('/login')
     expect(String(logout.headers['set-cookie'])).toContain('Max-Age=0')
-    const afterLogout = await app.inject({ method: 'GET', url: '/admin', headers: authHeader })
+    const afterLogout = await app.inject({ method: 'GET', url: '/', headers: authHeader })
     expect(afterLogout.statusCode).toBe(302)
   })
 
@@ -110,14 +110,14 @@ describe('admin', () => {
     const rows = (body: string) =>
       body
         .split('<tr>')
-        .map((row) => /<td>([^<]*)<\/td>[\s\S]*\/admin\/sessions\/([0-9a-f]+)\/revoke/.exec(row))
+        .map((row) => /<td>([^<]*)<\/td>[\s\S]*\/sessions\/([0-9a-f]+)\/revoke/.exec(row))
         .flatMap((match) => (match ? [{ client: match[1] ?? '', id: match[2] ?? '' }] : []))
     const page = async () =>
-      rows((await app.inject({ method: 'GET', url: '/admin', headers: authHeader })).body)
+      rows((await app.inject({ method: 'GET', url: '/', headers: authHeader })).body)
 
     it('lists active sessions, marking the current one, without exposing tokens', async () => {
       const token = await signInClient(app, google, { client: 'extension' })
-      const response = await app.inject({ method: 'GET', url: '/admin', headers: authHeader })
+      const response = await app.inject({ method: 'GET', url: '/', headers: authHeader })
       expect(response.body).toContain('web (this session)')
       expect(response.body).toContain('extension')
       expect(response.body).toContain('me@example.com')
@@ -132,14 +132,14 @@ describe('admin', () => {
       const ios = (await page()).find((row) => row.client === 'ios')
       const revoke = await app.inject({
         method: 'POST',
-        url: `/admin/sessions/${ios?.id}/revoke`,
+        url: `/sessions/${ios?.id}/revoke`,
         headers: authHeader,
       })
       expect(revoke.statusCode).toBe(302)
-      expect(revoke.headers.location).toBe('/admin')
-      const items = await app.inject({ method: 'GET', url: '/admin/items', headers: bearer })
+      expect(revoke.headers.location).toBe('/')
+      const items = await app.inject({ method: 'GET', url: '/items', headers: bearer })
       expect(items.statusCode).toBe(401)
-      const admin = await app.inject({ method: 'GET', url: '/admin', headers: authHeader })
+      const admin = await app.inject({ method: 'GET', url: '/', headers: authHeader })
       expect(admin.statusCode).toBe(200)
     })
 
@@ -147,12 +147,12 @@ describe('admin', () => {
       const own = (await page()).find((row) => row.client.includes('this session'))
       const revoke = await app.inject({
         method: 'POST',
-        url: `/admin/sessions/${own?.id}/revoke`,
+        url: `/sessions/${own?.id}/revoke`,
         headers: authHeader,
       })
-      expect(revoke.headers.location).toBe('/admin/login')
+      expect(revoke.headers.location).toBe('/login')
       expect(String(revoke.headers['set-cookie'])).toContain('Max-Age=0')
-      const admin = await app.inject({ method: 'GET', url: '/admin', headers: authHeader })
+      const admin = await app.inject({ method: 'GET', url: '/', headers: authHeader })
       expect(admin.statusCode).toBe(302)
     })
 
@@ -162,17 +162,17 @@ describe('admin', () => {
       const web = (await page()).find((row) => row.client.includes('this session'))
       const response = await app.inject({
         method: 'POST',
-        url: `/admin/sessions/${web?.id}/revoke`,
+        url: `/sessions/${web?.id}/revoke`,
         headers: bearer,
       })
       expect(response.statusCode).toBe(204)
-      const admin = await app.inject({ method: 'GET', url: '/admin', headers: authHeader })
+      const admin = await app.inject({ method: 'GET', url: '/', headers: authHeader })
       expect(admin.statusCode).toBe(302)
     })
   })
 
   it('lists existing items', async () => {
-    const response = await app.inject({ method: 'GET', url: '/admin', headers: authHeader })
+    const response = await app.inject({ method: 'GET', url: '/', headers: authHeader })
     expect(response.statusCode).toBe(200)
     expect(response.body).toContain('milk')
     expect(response.body).toContain('123456')
@@ -181,7 +181,7 @@ describe('admin', () => {
   it('adds an item from a product URL', async () => {
     const response = await app.inject({
       method: 'POST',
-      url: '/admin/items',
+      url: '/items',
       headers: authHeader,
       payload: {
         word: 'Bread',
@@ -199,7 +199,7 @@ describe('admin', () => {
   it('adds an item from a bare stockcode', async () => {
     const response = await app.inject({
       method: 'POST',
-      url: '/admin/items',
+      url: '/items',
       headers: authHeader,
       payload: { word: 'eggs', url: '654321' },
     })
@@ -212,7 +212,7 @@ describe('admin', () => {
   it('re-renders with an error when the URL has no stockcode', async () => {
     const response = await app.inject({
       method: 'POST',
-      url: '/admin/items',
+      url: '/items',
       headers: authHeader,
       payload: { word: 'bread', url: 'not a url' },
     })
@@ -223,8 +223,8 @@ describe('admin', () => {
   })
 
   it('offers an edit form per item, prefilled', async () => {
-    const response = await app.inject({ method: 'GET', url: '/admin', headers: authHeader })
-    expect(response.body).toContain('action="/admin/items/milk/edit"')
+    const response = await app.inject({ method: 'GET', url: '/', headers: authHeader })
+    expect(response.body).toContain('action="/items/milk/edit"')
     expect(response.body).toContain('aria-label="Trigger word" name="word" required value="milk"')
     expect(response.body).not.toContain('<details')
     expect(response.body).toContain('name="url" required value="123456"')
@@ -232,7 +232,7 @@ describe('admin', () => {
   })
 
   it('renders items read-only until Edit is pressed', async () => {
-    const response = await app.inject({ method: 'GET', url: '/admin', headers: authHeader })
+    const response = await app.inject({ method: 'GET', url: '/', headers: authHeader })
     expect(response.body).toContain('<strong class="view">milk</strong>')
     expect(response.body).toContain('<label class="view button-label" for="edit-0">Edit</label>')
     expect(response.body).toMatch(/class="edit-toggle" id="edit-0" aria-label="Edit milk">/)
@@ -242,12 +242,12 @@ describe('admin', () => {
   it('edits an item from the web form and redirects', async () => {
     const response = await app.inject({
       method: 'POST',
-      url: '/admin/items/milk/edit',
+      url: '/items/milk/edit',
       headers: { ...authHeader, 'content-type': 'application/x-www-form-urlencoded' },
       payload: 'word=Oat+Milk&url=654321&quantity=3',
     })
     expect(response.statusCode).toBe(302)
-    expect(response.headers.location).toBe('/admin')
+    expect(response.headers.location).toBe('/')
     expect(await itemsYaml(db.sql)).toBe('oat milk:\n  stockcode: 654321\n  quantity: 3\n')
   })
 
@@ -258,7 +258,7 @@ describe('admin', () => {
     )
     const response = await app.inject({
       method: 'POST',
-      url: '/admin/items/milk/edit',
+      url: '/items/milk/edit',
       headers: { ...authHeader, 'content-type': 'application/x-www-form-urlencoded' },
       payload: 'word=bread&url=1&quantity=1',
     })
@@ -266,14 +266,14 @@ describe('admin', () => {
     expect(response.body).toContain('already used by another item')
     expect(response.body).toMatch(/class="edit-toggle" id="edit-1" aria-label="Edit milk" checked>/)
     expect(response.body).toContain('name="word" required value="bread"')
-    expect(response.body).toContain('<a class="edit button-link" href="/admin">Cancel</a>')
+    expect(response.body).toContain('<a class="edit button-link" href="/">Cancel</a>')
     expect(await itemsYaml(db.sql)).toContain('milk:')
   })
 
   it('answers unauthenticated web edits with 401', async () => {
     const response = await app.inject({
       method: 'POST',
-      url: '/admin/items/milk/edit',
+      url: '/items/milk/edit',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       payload: 'word=oat&url=1',
     })
@@ -284,7 +284,7 @@ describe('admin', () => {
   it('removes an item', async () => {
     const response = await app.inject({
       method: 'POST',
-      url: '/admin/items/milk/delete',
+      url: '/items/milk/delete',
       headers: authHeader,
     })
     expect(response.statusCode).toBe(302)
@@ -303,7 +303,7 @@ describe('admin', () => {
     })
 
     it('lists items as JSON', async () => {
-      const response = await app.inject({ method: 'GET', url: '/admin/items', headers: json })
+      const response = await app.inject({ method: 'GET', url: '/items', headers: json })
       expect(response.statusCode).toBe(200)
       expect(response.json()).toEqual({ items: [{ word: 'milk', stockcode: 123456, quantity: 1 }] })
     })
@@ -311,7 +311,7 @@ describe('admin', () => {
     it('answers unauthenticated JSON requests with 401 instead of a redirect', async () => {
       const response = await app.inject({
         method: 'GET',
-        url: '/admin/items',
+        url: '/items',
         headers: { accept: 'application/json' },
       })
       expect(response.statusCode).toBe(401)
@@ -321,7 +321,7 @@ describe('admin', () => {
     it('adds an item from a JSON body and returns it', async () => {
       const response = await app.inject({
         method: 'POST',
-        url: '/admin/items',
+        url: '/items',
         headers: json,
         payload: {
           word: 'Bread',
@@ -341,7 +341,7 @@ describe('admin', () => {
     it('rejects a URL without a stockcode', async () => {
       const response = await app.inject({
         method: 'POST',
-        url: '/admin/items',
+        url: '/items',
         headers: json,
         payload: { word: 'bread', url: 'nope' },
       })
@@ -352,7 +352,7 @@ describe('admin', () => {
     it('rejects a missing trigger word', async () => {
       const response = await app.inject({
         method: 'POST',
-        url: '/admin/items',
+        url: '/items',
         headers: json,
         payload: { url: '654321' },
       })
@@ -360,9 +360,9 @@ describe('admin', () => {
       expect(response.json()).toEqual({ error: 'A trigger word is required.' })
     })
 
-    describe('PATCH /admin/items/:word', () => {
+    describe('PATCH /items/:word', () => {
       const patch = async (word: string, payload: Record<string, unknown>) =>
-        await app.inject({ method: 'PATCH', url: `/admin/items/${word}`, headers: json, payload })
+        await app.inject({ method: 'PATCH', url: `/items/${word}`, headers: json, payload })
 
       beforeEach(async () => {
         await seedItems(
@@ -442,7 +442,7 @@ describe('admin', () => {
       it('answers unauthenticated requests with 401', async () => {
         const response = await app.inject({
           method: 'PATCH',
-          url: '/admin/items/bread',
+          url: '/items/bread',
           headers: { accept: 'application/json' },
           payload: { quantity: 2 },
         })
@@ -453,7 +453,7 @@ describe('admin', () => {
     it('removes an item with DELETE and 204', async () => {
       const response = await app.inject({
         method: 'DELETE',
-        url: '/admin/items/milk',
+        url: '/items/milk',
         headers: json,
       })
       expect(response.statusCode).toBe(204)
@@ -463,7 +463,7 @@ describe('admin', () => {
     it('removes an item with 204', async () => {
       const response = await app.inject({
         method: 'POST',
-        url: '/admin/items/milk/delete',
+        url: '/items/milk/delete',
         headers: json,
       })
       expect(response.statusCode).toBe(204)
@@ -504,7 +504,7 @@ describe('admin listing text', () => {
   it('stores the listing of an added item and returns it', async () => {
     const response = await app.inject({
       method: 'POST',
-      url: '/admin/items',
+      url: '/items',
       headers: json,
       payload: { word: 'Bread', url: '2', quantity: 2 },
     })
@@ -525,7 +525,7 @@ describe('admin listing text', () => {
     lookup.listing.mockRejectedValueOnce(new Error('boom'))
     const response = await app.inject({
       method: 'POST',
-      url: '/admin/items',
+      url: '/items',
       headers: json,
       payload: { word: 'bread', url: '2' },
     })
@@ -537,7 +537,7 @@ describe('admin listing text', () => {
     await vi.waitFor(async () => expect((await readItems()).milk?.listing).toBe('Milk 2L'))
     const response = await app.inject({
       method: 'PATCH',
-      url: '/admin/items/milk',
+      url: '/items/milk',
       headers: json,
       payload: { stockcode: 99 },
     })
@@ -549,7 +549,7 @@ describe('admin listing text', () => {
     lookup.listing.mockClear()
     const response = await app.inject({
       method: 'PATCH',
-      url: '/admin/items/milk',
+      url: '/items/milk',
       headers: json,
       payload: { url: '1', quantity: 3 },
     })
@@ -559,7 +559,7 @@ describe('admin listing text', () => {
 
   it('backfills existing items in the background and lists them with their listing', async () => {
     await vi.waitFor(async () => expect((await readItems()).milk?.listing).toBe('Milk 2L'))
-    const response = await app.inject({ method: 'GET', url: '/admin/items', headers: json })
+    const response = await app.inject({ method: 'GET', url: '/items', headers: json })
     expect(response.json().items).toEqual([
       { word: 'milk', stockcode: 1, quantity: 1, listing: 'Milk 2L' },
     ])
@@ -567,7 +567,7 @@ describe('admin listing text', () => {
 
   it('shows the listing under the phrase on the admin page', async () => {
     await vi.waitFor(async () => expect((await readItems()).milk?.listing).toBe('Milk 2L'))
-    const response = await app.inject({ method: 'GET', url: '/admin', headers: json })
+    const response = await app.inject({ method: 'GET', url: '/', headers: json })
     expect(response.body).toContain('<div class="listing">Milk 2L</div>')
   })
 })
@@ -604,9 +604,9 @@ describe('admin with several users', () => {
   })
 
   const add = (headers: typeof me, word: string, url: string) =>
-    app.inject({ method: 'POST', url: '/admin/items', headers, payload: { word, url } })
+    app.inject({ method: 'POST', url: '/items', headers, payload: { word, url } })
   const list = async (headers: typeof me) =>
-    (await app.inject({ method: 'GET', url: '/admin/items', headers })).json()
+    (await app.inject({ method: 'GET', url: '/items', headers })).json()
 
   it('keeps each user their own items, looked up through their own account', async () => {
     await add(me, 'milk', '1')
@@ -624,11 +624,11 @@ describe('admin with several users', () => {
     await add(you, 'milk', '2')
     await app.inject({
       method: 'PATCH',
-      url: '/admin/items/milk',
+      url: '/items/milk',
       headers: you,
       payload: { quantity: 5 },
     })
-    await app.inject({ method: 'DELETE', url: '/admin/items/milk', headers: me })
+    await app.inject({ method: 'DELETE', url: '/items/milk', headers: me })
     expect((await list(me)).items).toEqual([])
     expect((await list(you)).items).toMatchObject([{ word: 'milk', stockcode: 2, quantity: 5 }])
   })
@@ -637,7 +637,7 @@ describe('admin with several users', () => {
     await add(me, 'milk', '1')
     await add(you, 'oatmilk', '2')
     const cookie = await signInWeb(app, google, { email: 'you@example.com' })
-    const page = (await app.inject({ method: 'GET', url: '/admin', headers: { cookie } })).body
+    const page = (await app.inject({ method: 'GET', url: '/', headers: { cookie } })).body
     expect(page).toContain('oatmilk')
     expect(page).not.toContain('<strong>milk</strong>')
     expect(page).toContain('you@example.com')
@@ -651,7 +651,7 @@ describe('admin with several users', () => {
     )
     const response = await app.inject({
       method: 'POST',
-      url: `/admin/sessions/${mine?.id}/revoke`,
+      url: `/sessions/${mine?.id}/revoke`,
       headers: { cookie, accept: 'application/json' },
     })
     expect(response.statusCode).toBe(204)
@@ -671,7 +671,7 @@ describe('admin with several users', () => {
       accept: 'application/json',
     }
     const post = (word: string) =>
-      strict.inject({ method: 'POST', url: '/admin/items', headers, payload: { word, url: '1' } })
+      strict.inject({ method: 'POST', url: '/items', headers, payload: { word, url: '1' } })
     expect((await post('milk')).statusCode).toBe(201)
     expect((await post('bread')).statusCode).toBe(201)
     const full = await post('eggs')
@@ -698,7 +698,7 @@ describe('admin with several users', () => {
     const post = (headers: typeof mine, url: string, payload?: object) =>
       app.inject({
         method: 'POST',
-        url: `/admin/household${url}`,
+        url: `/household${url}`,
         headers,
         ...(payload && { payload }),
       })
@@ -708,14 +708,14 @@ describe('admin with several users', () => {
       expect(invite.statusCode).toBe(201)
       const { code } = invite.json<{ code: string; expiresAt: number }>()
       expect((await post(yours, '/join', { code })).statusCode).toBe(204)
-      const members = await app.inject({ method: 'GET', url: '/admin/household', headers: yours })
+      const members = await app.inject({ method: 'GET', url: '/household', headers: yours })
       expect(members.json()).toEqual({
         members: [
           { email: 'me@example.com', you: false },
           { email: 'you@example.com', you: true },
         ],
       })
-      const items = await app.inject({ method: 'GET', url: '/admin/items', headers: yours })
+      const items = await app.inject({ method: 'GET', url: '/items', headers: yours })
       expect(items.json<{ items: { word: string }[] }>().items.map((item) => item.word)).toEqual([
         'milk',
       ])
@@ -736,8 +736,7 @@ describe('admin with several users', () => {
         { sql: db.sql, fetch: google.fetch },
       )
       const headers = json(await signInClient(strict, google))
-      const create = () =>
-        strict.inject({ method: 'POST', url: '/admin/household/invites', headers })
+      const create = () => strict.inject({ method: 'POST', url: '/household/invites', headers })
       expect((await create()).statusCode).toBe(201)
       expect((await create()).statusCode).toBe(409)
       await strict.close()
@@ -748,16 +747,16 @@ describe('admin with several users', () => {
       const { code } = (await post(mine, '/invites')).json<{ code: string }>()
       await post(yours, '/join', { code })
       expect((await post(yours, '/leave')).statusCode).toBe(204)
-      const items = await app.inject({ method: 'GET', url: '/admin/items', headers: yours })
+      const items = await app.inject({ method: 'GET', url: '/items', headers: yours })
       expect(items.json()).toEqual({ items: [] })
-      const members = await app.inject({ method: 'GET', url: '/admin/household', headers: mine })
+      const members = await app.inject({ method: 'GET', url: '/household', headers: mine })
       expect(members.json()).toEqual({ members: [{ email: 'me@example.com', you: true }] })
     })
 
     it('requires authentication', async () => {
       const response = await app.inject({
         method: 'POST',
-        url: '/admin/household/invites',
+        url: '/household/invites',
         headers: { accept: 'application/json' },
       })
       expect(response.statusCode).toBe(401)
@@ -772,35 +771,35 @@ describe('admin with several users', () => {
           headers: { ...cookie, 'content-type': 'application/x-www-form-urlencoded' },
           payload: body,
         })
-      const page = await form('/admin/household/invites')
+      const page = await form('/household/invites')
       expect(page.statusCode).toBe(201)
       const code = /<code>([^<]+)<\/code>/.exec(page.body)?.[1] ?? ''
       expect(code).not.toBe('')
       const yourCookie = { cookie: await signInWeb(app, google, { email: 'you@example.com' }) }
       const join = await app.inject({
         method: 'POST',
-        url: '/admin/household/join',
+        url: '/household/join',
         headers: { ...yourCookie, 'content-type': 'application/x-www-form-urlencoded' },
         payload: `code=${code}`,
       })
       expect(join.statusCode).toBe(302)
-      const shown = await app.inject({ method: 'GET', url: '/admin', headers: yourCookie })
+      const shown = await app.inject({ method: 'GET', url: '/', headers: yourCookie })
       expect(shown.body).toContain('me@example.com')
       expect(shown.body).toContain('Leave household')
-      const bad = await form('/admin/household/join', 'code=nope')
+      const bad = await form('/household/join', 'code=nope')
       expect(bad.statusCode).toBe(400)
       expect(bad.body).toContain('invalid, expired or already used')
       const left = await app.inject({
         method: 'POST',
-        url: '/admin/household/leave',
+        url: '/household/leave',
         headers: yourCookie,
       })
       expect(left.statusCode).toBe(302)
-      expect((await form('/admin/household/leave')).statusCode).toBe(409)
+      expect((await form('/household/leave')).statusCode).toBe(409)
     })
   })
 
-  it('limits each user per minute across /admin', async () => {
+  it('limits each user per minute across /', async () => {
     const strict = buildApp(
       testConfig(dir, { limits: { ...DEFAULT_LIMITS, userRequestsPerMinute: 2 } }),
       { sql: db.sql, fetch: google.fetch },
@@ -809,8 +808,7 @@ describe('admin with several users', () => {
       authorization: `Bearer ${await signInClient(strict, google)}`,
       accept: 'application/json',
     }
-    const get = (headers: typeof mine) =>
-      strict.inject({ method: 'GET', url: '/admin/items', headers })
+    const get = (headers: typeof mine) => strict.inject({ method: 'GET', url: '/items', headers })
     expect((await get(mine)).statusCode).toBe(200)
     expect((await get(mine)).statusCode).toBe(200)
     const limited = await get(mine)

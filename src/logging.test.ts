@@ -38,7 +38,7 @@ describe('logging', () => {
   const get = (app: ReturnType<typeof build>, headers: Record<string, string>) =>
     app.inject({
       method: 'GET',
-      url: '/admin/items?debug=1',
+      url: '/items?debug=1',
       headers: { 'user-agent': 'PersonalShopper/1', accept: 'application/json', ...headers },
       remoteAddress: '9.9.9.9',
     })
@@ -63,7 +63,7 @@ describe('logging', () => {
       expect(rejections()[0]).toMatchObject({
         level: 40,
         reason: 'missing_authorization',
-        route: '/admin/items',
+        route: '/items',
         method: 'GET',
         authScheme: 'none',
         tokenLength: 0,
@@ -274,7 +274,7 @@ describe('logging', () => {
       expect(completed[0]).toMatchObject({
         level: 30,
         method: 'GET',
-        url: '/admin/items',
+        url: '/items',
         statusCode: 200,
         userAgent: 'PersonalShopper/1',
         ip: '9.9.9.9',

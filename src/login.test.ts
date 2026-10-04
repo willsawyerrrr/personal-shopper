@@ -85,14 +85,14 @@ describe('Google sign-in', () => {
       const { code, state } = google.approve(String(login.headers.location))
       const response = await callback(app, { code, state })
       expect(response.statusCode).toBe(302)
-      expect(response.headers.location).toBe('/admin')
+      expect(response.headers.location).toBe('/')
       const cookie = String(response.headers['set-cookie'])
       expect(cookie).toContain('HttpOnly')
       expect(cookie).toContain('SameSite=Lax')
       expect(cookie).toContain('Secure')
       const admin = await app.inject({
         method: 'GET',
-        url: '/admin',
+        url: '/',
         headers: { cookie: cookie.split(';')[0] ?? '' },
       })
       expect(admin.statusCode).toBe(200)
@@ -299,7 +299,7 @@ describe('Google sign-in', () => {
       expect(token).toMatch(/^ps_/)
       const items = await app.inject({
         method: 'GET',
-        url: '/admin/items',
+        url: '/items',
         headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
       })
       expect(items.statusCode).toBe(200)
@@ -411,14 +411,10 @@ describe('Google sign-in', () => {
       const app = build()
       const token = await signInClient(app, google)
       const headers = { authorization: `Bearer ${token}`, accept: 'application/json' }
-      expect((await app.inject({ method: 'GET', url: '/admin/items', headers })).statusCode).toBe(
-        200,
-      )
+      expect((await app.inject({ method: 'GET', url: '/items', headers })).statusCode).toBe(200)
       const logout = await app.inject({ method: 'POST', url: '/auth/logout', headers })
       expect(logout.statusCode).toBe(204)
-      expect((await app.inject({ method: 'GET', url: '/admin/items', headers })).statusCode).toBe(
-        401,
-      )
+      expect((await app.inject({ method: 'GET', url: '/items', headers })).statusCode).toBe(401)
       expect((await app.inject({ method: 'POST', url: '/auth/logout', headers })).statusCode).toBe(
         401,
       )
@@ -430,7 +426,7 @@ describe('Google sign-in', () => {
       const get = () =>
         app.inject({
           method: 'GET',
-          url: '/admin/items',
+          url: '/items',
           headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
         })
       clock += 80 * DAY
@@ -447,7 +443,7 @@ describe('Google sign-in', () => {
       await restarted.ready()
       const response = await restarted.inject({
         method: 'GET',
-        url: '/admin/items',
+        url: '/items',
         headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
       })
       expect(response.statusCode).toBe(200)

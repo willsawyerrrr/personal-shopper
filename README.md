@@ -13,7 +13,7 @@ creating the Google OAuth client.
 Users belong to a household, which has one Woolworths account: items, session
 and passkey are per household, shared by its members (a new user starts in a
 household of their own; members invite each other with single-use codes from
-`/admin`, the iOS app or the Chrome extension). All of it is in Postgres (`DATABASE_URL`; schema in
+`/`, the iOS app or the Chrome extension). All of it is in Postgres (`DATABASE_URL`; schema in
 `supabase/migrations`, applied with the Supabase CLI). A user's Woolworths login
 is captured once with `pnpm capture-session` (optionally `--user <email>`) and
 then kept alive by the server through Woolworths' `/auth/heartbeat` refresh. Set
@@ -31,8 +31,8 @@ Postgres; `GET /healthz` is the unauthenticated health check, and `/auth/*` is
 rate limited per client IP.
 
 Sign-in is Google only and open to any account with a verified email, up to
-`MAX_USERS`: the admin UI at
-`/admin` uses a session cookie and API clients use server-issued bearer
+`MAX_USERS`: the web app at
+`/` uses a session cookie and API clients use server-issued bearer
 tokens.
 
 The `ios/` app (see [`ios/README.md`](ios/README.md)) manages items and adds a
