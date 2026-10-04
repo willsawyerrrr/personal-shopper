@@ -277,39 +277,28 @@ function renderPage(
 ): string {
   const rows = Object.entries(items)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(
-      ([word, mapping]) => `
-        <tr class="item">
-          <td>
-            <strong>${escapeHtml(word)}</strong>
+    .map(([word, mapping]) => {
+      const path = `/admin/items/${encodeURIComponent(word)}`
+      return `
+        <form class="item" method="post" action="${path}/edit">
+          <div class="phrase">
+            <label><span class="field-name">Trigger word</span>
+              <input aria-label="Trigger word" name="word" required value="${escapeHtml(word)}">
+            </label>
             ${mapping.listing ? `<div class="listing">${escapeHtml(mapping.listing)}</div>` : ''}
-          </td>
-          <td>${mapping.stockcode}</td>
-          <td>${mapping.quantity}</td>
-        </tr>
-        <tr class="item-edit">
-          <td colspan="3">
-            <details class="edit">
-              <summary>Edit</summary>
-              <form class="edit-panel" method="post" action="/admin/items/${encodeURIComponent(word)}/edit">
-                <label class="grow">Trigger word
-                  <input name="word" required value="${escapeHtml(word)}">
-                </label>
-                <label class="grow">Woolworths product URL or stockcode
-                  <input name="url" required value="${mapping.stockcode}">
-                </label>
-                <label class="qty">Quantity
-                  <input name="quantity" type="number" min="1" value="${mapping.quantity}">
-                </label>
-                <div class="actions">
-                  <button type="submit">Save</button>
-                  <button type="submit" class="danger" formaction="/admin/items/${encodeURIComponent(word)}/delete" formnovalidate>Remove</button>
-                </div>
-              </form>
-            </details>
-          </td>
-        </tr>`,
-    )
+          </div>
+          <label class="product"><span class="field-name">Woolworths product URL or stockcode</span>
+            <input aria-label="Woolworths product URL or stockcode" name="url" required value="${mapping.stockcode}">
+          </label>
+          <label class="qty"><span class="field-name">Quantity</span>
+            <input aria-label="Quantity" name="quantity" type="number" min="1" value="${mapping.quantity}">
+          </label>
+          <div class="actions">
+            <button type="submit">Save</button>
+            <button type="submit" class="danger" formaction="${path}/delete" formnovalidate>Remove</button>
+          </div>
+        </form>`
+    })
     .join('')
 
   const sessionRows = sessions
@@ -346,10 +335,10 @@ function renderPage(
   </div>
   ${error ? `<p class="error">${escapeHtml(error)}</p>` : ''}
   <div class="card">
-    <table>
-      <thead><tr><th>Phrase</th><th>Stockcode</th><th>Qty</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="3">No items configured yet.</td></tr>'}</tbody>
-    </table>
+    <div class="items">
+      <div class="item-head" aria-hidden="true"><span>Phrase</span><span>Product</span><span>Qty</span><span></span></div>
+      ${rows || '<p class="hint">No items configured yet.</p>'}
+    </div>
   </div>
   <div class="card">
     <h2>Add an item</h2>

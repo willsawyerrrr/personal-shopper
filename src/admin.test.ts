@@ -225,7 +225,8 @@ describe('admin', () => {
   it('offers an edit form per item, prefilled', async () => {
     const response = await app.inject({ method: 'GET', url: '/admin', headers: authHeader })
     expect(response.body).toContain('action="/admin/items/milk/edit"')
-    expect(response.body).toContain('name="word" required value="milk"')
+    expect(response.body).toContain('aria-label="Trigger word" name="word" required value="milk"')
+    expect(response.body).not.toContain('<details')
     expect(response.body).toContain('name="url" required value="123456"')
     expect(response.body).toContain('name="quantity" type="number" min="1" value="1"')
   })
