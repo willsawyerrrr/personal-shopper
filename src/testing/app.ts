@@ -6,7 +6,7 @@ import type { Sql } from '../db.ts'
 import { ItemStore, parseItemsYaml } from '../items.ts'
 import { CLIENT_ID, CLIENT_SECRET, type FakeGoogle, type IdTokenOverrides } from './google.ts'
 
-export const IOS_REDIRECT = 'dev.willsawyerrrr.personalshopper://auth'
+export const IOS_REDIRECT = 'dev.willsawyerrrr.personal-shopper://auth'
 export const EXTENSION_REDIRECT = 'https://abcdefghijklmnop.chromiumapp.org/'
 
 export const OWNER = 'me@example.com'

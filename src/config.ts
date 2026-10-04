@@ -138,7 +138,7 @@ function positiveInt(env: NodeJS.ProcessEnv, name: string, fallback: number): nu
 }
 
 /** The iOS app's custom URL scheme; the Chrome extension's redirect URI is deployment-specific. */
-const DEFAULT_CLIENT_REDIRECT = 'dev.willsawyerrrr.personalshopper://auth'
+const DEFAULT_CLIENT_REDIRECT = 'dev.willsawyerrrr.personal-shopper://auth'
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name]?.trim()

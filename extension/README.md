@@ -75,7 +75,7 @@ unpacked extension's ID must not change. `manifest.json` carries a `key`
 `https://pclllencpcblooaannkgnkncliojdnce.chromiumapp.org/`. Set on Fly:
 
 ```
-ALLOWED_CLIENT_REDIRECTS=dev.willsawyerrrr.personalshopper://auth,https://pclllencpcblooaannkgnkncliojdnce.chromiumapp.org/
+ALLOWED_CLIENT_REDIRECTS=dev.willsawyerrrr.personal-shopper://auth,https://pclllencpcblooaannkgnkncliojdnce.chromiumapp.org/
 ```
 
 The matching private key was discarded; it is not needed to load or run the

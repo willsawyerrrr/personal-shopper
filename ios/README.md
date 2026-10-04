@@ -29,7 +29,7 @@ Woolworths product without opening the web admin.
 Google is the only way in ([`docs/auth.md`](../docs/auth.md)). Settings > Sign
 in with Google opens `GET /auth/start` in `ASWebAuthenticationSession` with a
 PKCE S256 challenge and a random `state`. The server redirects to
-`dev.willsawyerrrr.personalshopper://auth` (the registered URL scheme) with a
+`dev.willsawyerrrr.personal-shopper://auth` (the registered URL scheme) with a
 one-time `code`; the app checks `state`, redeems the code with the PKCE
 verifier at `POST /auth/token` and stores the access token in the Keychain. No
 third-party code is involved.
@@ -51,8 +51,8 @@ xcodegen generate        # writes PersonalShopper.xcodeproj (gitignored)
 open PersonalShopper.xcodeproj
 ```
 
-Bundle IDs are `dev.willsawyerrrr.personalshopper` (app) and
-`dev.willsawyerrrr.personalshopper.share` (extension).
+Bundle IDs are `dev.willsawyerrrr.personal-shopper` (app) and
+`dev.willsawyerrrr.personal-shopper.share` (extension).
 
 To run on a device, set your team in the gitignored `Config/Local.xcconfig`
 (read by `Config/Shared.xcconfig` for both targets; builds without it still
@@ -66,8 +66,8 @@ xcodegen generate
 ```
 
 The App
-Group `group.dev.willsawyerrrr.personalshopper` and Keychain group
-`dev.willsawyerrrr.personalshopper` are created by automatic signing.
+Group `group.dev.willsawyerrrr.personal-shopper` and Keychain group
+`dev.willsawyerrrr.personal-shopper` are created by automatic signing.
 
 Open the app, then Settings: the server URL defaults to
 `https://personal-shopper.willsawyerrrr.dev`; tap Sign in with Google, then

@@ -1,6 +1,6 @@
 name: PersonalShopper
 options:
-  bundleIdPrefix: dev.willsawyerrrr.personalshopper
+  bundleIdPrefix: dev.willsawyerrrr.personal-shopper
   deploymentTarget:
     iOS: '18.0'
   createIntermediateGroups: true
@@ -25,7 +25,7 @@ targets:
       - target: ShareExtension
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.willsawyerrrr.personalshopper
+        PRODUCT_BUNDLE_IDENTIFIER: dev.willsawyerrrr.personal-shopper
         TARGETED_DEVICE_FAMILY: '1,2'
     info:
       path: App/Info.plist
@@ -40,13 +40,13 @@ targets:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         CFBundleURLTypes:
-          - CFBundleURLName: dev.willsawyerrrr.personalshopper
-            CFBundleURLSchemes: [dev.willsawyerrrr.personalshopper]
+          - CFBundleURLName: dev.willsawyerrrr.personal-shopper
+            CFBundleURLSchemes: [dev.willsawyerrrr.personal-shopper]
     entitlements:
       path: App/PersonalShopper.entitlements
       properties:
-        com.apple.security.application-groups: [group.dev.willsawyerrrr.personalshopper]
-        keychain-access-groups: [$(AppIdentifierPrefix)dev.willsawyerrrr.personalshopper]
+        com.apple.security.application-groups: [group.dev.willsawyerrrr.personal-shopper]
+        keychain-access-groups: [$(AppIdentifierPrefix)dev.willsawyerrrr.personal-shopper]
   ShareExtension:
     type: app-extension
     platform: iOS
@@ -55,7 +55,7 @@ targets:
       - package: PersonalShopperKit
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.willsawyerrrr.personalshopper.share
+        PRODUCT_BUNDLE_IDENTIFIER: dev.willsawyerrrr.personal-shopper.share
         TARGETED_DEVICE_FAMILY: '1,2'
     info:
       path: ShareExtension/Info.plist
@@ -74,8 +74,8 @@ targets:
     entitlements:
       path: ShareExtension/ShareExtension.entitlements
       properties:
-        com.apple.security.application-groups: [group.dev.willsawyerrrr.personalshopper]
-        keychain-access-groups: [$(AppIdentifierPrefix)dev.willsawyerrrr.personalshopper]
+        com.apple.security.application-groups: [group.dev.willsawyerrrr.personal-shopper]
+        keychain-access-groups: [$(AppIdentifierPrefix)dev.willsawyerrrr.personal-shopper]
 schemes:
   PersonalShopper:
     build:

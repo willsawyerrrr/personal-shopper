@@ -1,8 +1,8 @@
 import Foundation
 
 public enum SharedConfig {
-    public static let appGroup = "group.dev.willsawyerrrr.personalshopper"
-    public static let keychainService = "dev.willsawyerrrr.personalshopper"
+    public static let appGroup = "group.dev.willsawyerrrr.personal-shopper"
+    public static let keychainService = "dev.willsawyerrrr.personal-shopper"
     public static let defaultServerURL = "https://personal-shopper.willsawyerrrr.dev"
 }
 
