@@ -12,6 +12,8 @@ settings:
     SWIFT_VERSION: '6.0'
     CODE_SIGN_STYLE: Automatic
     GENERATE_INFOPLIST_FILE: NO
+    MARKETING_VERSION: '1.0'
+    CURRENT_PROJECT_VERSION: '1'
 packages:
   PersonalShopperKit:
     path: Packages/PersonalShopperKit
@@ -31,6 +33,9 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Personal Shopper
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UISupportedInterfaceOrientations~ipad:
@@ -61,6 +66,8 @@ targets:
       path: ShareExtension/Info.plist
       properties:
         CFBundleDisplayName: Personal Shopper
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         NSExtension:

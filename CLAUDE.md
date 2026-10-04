@@ -59,6 +59,12 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   (`src/cart.ts`, bearer token only, rate limited). See
   [`docs/siri-setup.md`](docs/siri-setup.md) and
   [`docs/architecture.md`](docs/architecture.md#reminders-queue).
+- iOS release: merges to `main` touching `ios/**` ship to TestFlight via
+  `.github/workflows/deploy-ios.yml` (platform's reusable `ios-testflight.yml`).
+  Needs repo secrets `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`, repo variable
+  `DEVELOPMENT_TEAM`, and an App Store Connect app record for
+  `dev.willsawyerrrr.personalshopper`. See
+  [`ios/README.md`](ios/README.md#testflight).
 
 ## Layout
 

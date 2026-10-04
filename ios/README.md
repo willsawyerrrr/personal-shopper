@@ -98,6 +98,24 @@ to Personal Shopper" and answer the prompt for the link.
 To add to the cart, say "Add to my Woolworths cart with Personal Shopper" and
 answer "What do you want to add?" with a mapped item such as "milk".
 
+## TestFlight
+
+Merges to `main` that touch `ios/**` (or `.github/workflows/deploy-ios.yml`)
+archive the app and upload it to TestFlight through
+`.github/workflows/deploy-ios.yml`, which calls the platform repo's reusable
+`ios-testflight.yml`. Run it by hand from the Actions tab
+(`workflow_dispatch`). Requires:
+
+- Repo secrets `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_P8` (an App Store
+  Connect API key).
+- Repo variable `DEVELOPMENT_TEAM` (the team ID; never committed).
+- An App Store Connect app record for `dev.willsawyerrrr.personalshopper`
+  (the extension, `.share`, is signed with it).
+
+`MARKETING_VERSION` (`project.yml`) is the version users see; the workflow sets
+`CURRENT_PROJECT_VERSION` per upload. Both targets share them so the extension
+matches the app.
+
 ## Tests
 
 ```bash
