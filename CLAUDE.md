@@ -69,7 +69,7 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   `.github/workflows/deploy-ios.yml` (platform's reusable `ios-testflight.yml`).
   Needs repo secrets `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`, repo variable
   `DEVELOPMENT_TEAM`, and an App Store Connect app record for
-  `dev.willsawyerrrr.personalshopper`. See
+  `dev.willsawyerrrr.personal-shopper`. See
   [`ios/README.md`](ios/README.md#testflight).
 
 ## Layout
