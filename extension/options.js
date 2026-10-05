@@ -44,6 +44,9 @@ async function init() {
   const registerButton = document.getElementById('registerPasskey')
   const cancelButton = document.getElementById('cancelPasskey')
   const removeButton = document.getElementById('removePasskey')
+  const incognitoHelp = document.getElementById('incognitoHelp')
+  const extensionsPath = document.getElementById('extensionsPath')
+  extensionsPath.textContent = `chrome://extensions/?id=${chrome.runtime.id}`
 
   async function renderPasskey() {
     const { [STATE_KEY]: state } = await chrome.storage.session.get(STATE_KEY)
@@ -65,6 +68,7 @@ async function init() {
     registerButton.hidden = status.busy
     registerButton.disabled = registered === undefined
     registerButton.textContent = registered ? 'Replace passkey' : 'Register passkey'
+    incognitoHelp.hidden = !status.incognitoHelp
     cancelButton.hidden = !status.busy
     removeButton.hidden = status.busy || !registered
   }
@@ -133,6 +137,13 @@ async function init() {
     await chrome.runtime.sendMessage({ type: 'passkey/start' })
     await renderPasskey()
   })
+  document.getElementById('registerNormal').addEventListener('click', async () => {
+    await chrome.runtime.sendMessage({ type: 'passkey/start', normalWindow: true })
+    await renderPasskey()
+  })
+  document
+    .getElementById('copyExtensionsPath')
+    .addEventListener('click', () => navigator.clipboard.writeText(extensionsPath.textContent))
   cancelButton.addEventListener('click', () =>
     chrome.runtime.sendMessage({ type: 'passkey/cancel' }),
   )

@@ -27,7 +27,7 @@ Add the Woolworths product page you're viewing to your Personal Shopper items li
 ## Permission justifications
 
 - `activeTab`: reads the URL of the current tab only when you open the popup, to prefill the product being added.
-- `debugger`: attaches a virtual authenticator to the Woolworths login tab you open from the options page, only while you register a passkey. Chrome shows its debugging bar while attached.
+- `debugger`: attaches a virtual authenticator to the Woolworths login tab (in an Incognito window if you allow the extension there) you open from the options page, only while you register a passkey. Chrome shows its debugging bar while attached.
 - `identity`: `chrome.identity.launchWebAuthFlow` runs Google sign-in through the Personal Shopper server.
 - `storage`: keeps your access token and its expiry in local extension storage, and the in-progress passkey registration state in session storage.
 - Host permission `https://personal-shopper.willsawyerrrr.dev/*`: the popup and options page call the Personal Shopper server's API (the server sets no CORS headers).

@@ -9,14 +9,15 @@ import {
 
 /**
  * Registers a Woolworths passkey with a virtual authenticator attached to a
- * new tab and uploads it. Resolves once the credential is uploaded; rejects
+ * new tab or window and uploads it. Resolves once the credential is uploaded; rejects
  * with `CancelledError` when `signal` aborts, and otherwise with the failure.
  * The authenticator is always removed and the debugger detached.
  *
  * `deps`: `openTab()` opens a blank tab and returns its ID; `navigate(tabId,
  * url)`; `debuggerApi` has `attach(tabId)`, `detach(tabId)` and
  * `send(tabId, method, params)`; `upload(credential)`; `signal`;
- * `onPhase(phase)`; and optionally `sleep(ms)` and `now()`.
+ * `onPhase(phase)`; and optionally `close()` (called last on every exit once
+ * the tab is open, to close what `openTab` opened), `sleep(ms)` and `now()`.
  */
 export async function registerPasskey({
   openTab,
@@ -25,6 +26,7 @@ export async function registerPasskey({
   upload,
   signal,
   onPhase,
+  close = async () => {},
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   now = Date.now,
 }) {
@@ -74,5 +76,6 @@ export async function registerPasskey({
       await send('WebAuthn.disable').catch(() => {})
       await debuggerApi.detach(tabId).catch(() => {})
     }
+    await close()
   }
 }

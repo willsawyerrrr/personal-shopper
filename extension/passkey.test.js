@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fetchRegistered, removePasskey, uploadPasskey } from './passkey-api.js'
 import { registerPasskey } from './passkey-flow.js'
+import { openRegistrationTab } from './passkey-window.js'
 import {
   AUTHENTICATOR_OPTIONS,
   CancelledError,
+  IncognitoNotAllowedError,
   REGISTRATION_TIMEOUT_MS,
   UnauthorizedError,
   describeStatus,
@@ -59,6 +61,11 @@ describe('describeStatus', () => {
       busy: false,
     })
     expect(describeStatus({ phase: 'cancelled' })).toMatchObject({ variant: 'error' })
+    expect(describeStatus({ phase: 'needsIncognito' })).toMatchObject({
+      text: expect.stringContaining('Allow in Incognito'),
+      busy: false,
+      incognitoHelp: true,
+    })
   })
 
   it('falls back to the server answer', () => {
@@ -134,6 +141,7 @@ describe('registerPasskey', () => {
     }
     const deps = {
       openTab: vi.fn(async () => 7),
+      close: vi.fn(async () => calls.push('close')),
       navigate: vi.fn(async () => calls.push('navigate')),
       debuggerApi,
       upload: vi.fn(async () => calls.push('upload')),
@@ -160,6 +168,7 @@ describe('registerPasskey', () => {
       'WebAuthn.removeVirtualAuthenticator',
       'WebAuthn.disable',
       'detach',
+      'close',
     ])
     expect(debuggerApi.send).toHaveBeenCalledWith(7, 'WebAuthn.addVirtualAuthenticator', {
       options: AUTHENTICATOR_OPTIONS,
@@ -184,10 +193,11 @@ describe('registerPasskey', () => {
     deps.sleep = vi.fn(async () => controller.abort())
     await expect(registerPasskey(deps)).rejects.toBeInstanceOf(CancelledError)
     expect(deps.upload).not.toHaveBeenCalled()
-    expect(calls.slice(-3)).toEqual([
+    expect(calls.slice(-4)).toEqual([
       'WebAuthn.removeVirtualAuthenticator',
       'WebAuthn.disable',
       'detach',
+      'close',
     ])
   })
 
@@ -209,17 +219,18 @@ describe('registerPasskey', () => {
     let time = 0
     deps.now = () => (time += REGISTRATION_TIMEOUT_MS)
     await expect(registerPasskey(deps)).rejects.toThrow(/Timed out/)
-    expect(calls.at(-1)).toBe('detach')
+    expect(calls.slice(-2)).toEqual(['detach', 'close'])
   })
 
   it('cleans up when the upload fails', async () => {
     const { deps, calls } = setup()
     deps.upload = vi.fn().mockRejectedValue(new Error('Server error (500)'))
     await expect(registerPasskey(deps)).rejects.toThrow('Server error (500)')
-    expect(calls.slice(-3)).toEqual([
+    expect(calls.slice(-4)).toEqual([
       'WebAuthn.removeVirtualAuthenticator',
       'WebAuthn.disable',
       'detach',
+      'close',
     ])
   })
 
@@ -228,6 +239,28 @@ describe('registerPasskey', () => {
     debuggerApi.attach.mockRejectedValue(new Error('Another debugger is attached'))
     await expect(registerPasskey(deps)).rejects.toThrow('Another debugger')
     expect(debuggerApi.detach).not.toHaveBeenCalled()
+    expect(deps.close).toHaveBeenCalledOnce()
+  })
+
+  it('does not close anything when opening the tab failed', async () => {
+    const { deps } = setup()
+    deps.openTab = vi.fn().mockRejectedValue(new IncognitoNotAllowedError())
+    await expect(registerPasskey(deps)).rejects.toBeInstanceOf(IncognitoNotAllowedError)
+    expect(deps.close).not.toHaveBeenCalled()
+  })
+
+  it('closes after the debugger is detached mid-command', async () => {
+    const { deps, controller, debuggerApi, calls } = setup({ credentialsByPoll: [[]] })
+    const send = debuggerApi.send.getMockImplementation()
+    debuggerApi.send.mockImplementation(async (tabId, method, params) => {
+      if (method === 'WebAuthn.getCredentials') {
+        controller.abort()
+        throw new Error('Detached while handling command')
+      }
+      return send(tabId, method, params)
+    })
+    await expect(registerPasskey(deps)).rejects.toBeInstanceOf(CancelledError)
+    expect(calls.at(-1)).toBe('close')
   })
 
   it('finishes cleanup even when removing the authenticator fails', async () => {
@@ -239,5 +272,60 @@ describe('registerPasskey', () => {
     })
     await registerPasskey(deps)
     expect(debuggerApi.detach).toHaveBeenCalledWith(7)
+  })
+})
+
+describe('openRegistrationTab', () => {
+  function setup({ allowed = true, windowTabs = [{ id: 9 }] } = {}) {
+    const api = {
+      extension: { isAllowedIncognitoAccess: vi.fn(async () => allowed) },
+      windows: {
+        create: vi.fn(async () => ({ id: 3, tabs: windowTabs })),
+        remove: vi.fn(async () => {}),
+      },
+      tabs: { create: vi.fn(async () => ({ id: 5 })) },
+    }
+    return api
+  }
+
+  it('opens an Incognito window and removes it on close', async () => {
+    const api = setup()
+    const { tabId, close } = await openRegistrationTab({ api })
+    expect(api.windows.create).toHaveBeenCalledWith({ incognito: true, url: 'about:blank' })
+    expect(tabId).toBe(9)
+    expect(api.windows.remove).not.toHaveBeenCalled()
+    await close()
+    expect(api.windows.remove).toHaveBeenCalledWith(3)
+    expect(api.tabs.create).not.toHaveBeenCalled()
+  })
+
+  it('tolerates the window already being closed', async () => {
+    const api = setup()
+    api.windows.remove.mockRejectedValue(new Error('No window with id: 3'))
+    const { close } = await openRegistrationTab({ api })
+    await expect(close()).resolves.toBeUndefined()
+  })
+
+  it('removes a window that has no tab', async () => {
+    const api = setup({ windowTabs: [] })
+    await expect(openRegistrationTab({ api })).rejects.toThrow('Incognito window')
+    expect(api.windows.remove).toHaveBeenCalledWith(3)
+  })
+
+  it('asks for Incognito access instead of opening any window', async () => {
+    const api = setup({ allowed: false })
+    await expect(openRegistrationTab({ api })).rejects.toBeInstanceOf(IncognitoNotAllowedError)
+    expect(api.windows.create).not.toHaveBeenCalled()
+    expect(api.tabs.create).not.toHaveBeenCalled()
+  })
+
+  it('opens a normal tab on request, without checking Incognito access', async () => {
+    const api = setup({ allowed: false })
+    const { tabId, close } = await openRegistrationTab({ api, normalWindow: true })
+    expect(tabId).toBe(5)
+    expect(api.tabs.create).toHaveBeenCalledWith({ url: 'about:blank' })
+    await close()
+    expect(api.windows.remove).not.toHaveBeenCalled()
+    expect(api.extension.isAllowedIncognitoAccess).not.toHaveBeenCalled()
   })
 })
