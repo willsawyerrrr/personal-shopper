@@ -33,16 +33,23 @@ export function isTimedOut(startedAt, now = Date.now()) {
 
 /**
  * Describes a registration state (`{phase, error?}`, phase one of `idle`,
- * `registering`, `uploading`, `failed`, `cancelled`) and the server's answer
+ * `registering`, `uploading`, `needsIncognito`, `failed`, `cancelled`) and the server's answer
  * (`registered`: a boolean, or `undefined` when unknown) for display.
  */
 export function describeStatus(state, registered) {
   switch (state?.phase) {
     case 'registering':
       return {
-        text: 'Log in to Woolworths in the new tab and accept the prompt to create a passkey.',
+        text: 'Log in to Woolworths in the new window and accept the prompt to create a passkey.',
         variant: 'info',
         busy: true,
+      }
+    case 'needsIncognito':
+      return {
+        text: 'Registration opens an Incognito window, where password managers are off. Turn on "Allow in Incognito" for this extension, then register again.',
+        variant: 'info',
+        busy: false,
+        incognitoHelp: true,
       }
     case 'uploading':
       return { text: 'Saving your passkey…', variant: 'info', busy: true }
@@ -71,5 +78,12 @@ export class UnauthorizedError extends Error {
   constructor() {
     super('Session expired. Sign in again')
     this.name = 'UnauthorizedError'
+  }
+}
+
+export class IncognitoNotAllowedError extends Error {
+  constructor() {
+    super('Incognito access is not allowed for this extension')
+    this.name = 'IncognitoNotAllowedError'
   }
 }

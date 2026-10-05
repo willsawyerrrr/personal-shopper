@@ -1,7 +1,8 @@
 import { clearSession, getSession, isExpired, SERVER_URL } from './auth.js'
 import { uploadPasskey } from './passkey-api.js'
 import { registerPasskey } from './passkey-flow.js'
-import { CancelledError, UnauthorizedError } from './passkey-logic.js'
+import { CancelledError, IncognitoNotAllowedError, UnauthorizedError } from './passkey-logic.js'
+import { openRegistrationTab } from './passkey-window.js'
 
 const STATE_KEY = 'passkeyState'
 const PROTOCOL_VERSION = '1.3'
@@ -16,12 +17,13 @@ const debuggerApi = {
   send: (tabId, method, params) => chrome.debugger.sendCommand({ tabId }, method, params),
 }
 
-async function start() {
+async function start({ normalWindow } = {}) {
   if (running) return
   const controller = new AbortController()
   const abort = () => controller.abort()
   running = { abort }
   let tabId
+  let opened
   const onDetach = (source) => source.tabId === tabId && abort()
   const onRemoved = (id) => id === tabId && abort()
   try {
@@ -34,7 +36,11 @@ async function start() {
     chrome.tabs.onRemoved.addListener(onRemoved)
     await setState({ phase: 'registering' })
     await registerPasskey({
-      openTab: async () => (tabId = (await chrome.tabs.create({ url: 'about:blank' })).id),
+      openTab: async () => {
+        opened = await openRegistrationTab({ api: chrome, normalWindow })
+        return (tabId = opened.tabId)
+      },
+      close: () => opened?.close(),
       navigate: (id, url) => chrome.tabs.update(id, { url }),
       debuggerApi,
       upload: (credential) => uploadPasskey(SERVER_URL, session.accessToken, credential),
@@ -47,7 +53,9 @@ async function start() {
     await setState(
       error instanceof CancelledError
         ? { phase: 'cancelled' }
-        : { phase: 'failed', error: error.message },
+        : error instanceof IncognitoNotAllowedError
+          ? { phase: 'needsIncognito' }
+          : { phase: 'failed', error: error.message },
     )
   } finally {
     chrome.debugger.onDetach.removeListener(onDetach)
@@ -57,7 +65,7 @@ async function start() {
 }
 
 chrome.runtime.onMessage.addListener((message) => {
-  if (message?.type === 'passkey/start') void start()
+  if (message?.type === 'passkey/start') void start({ normalWindow: message.normalWindow })
   if (message?.type === 'passkey/cancel') running?.abort()
 })
 

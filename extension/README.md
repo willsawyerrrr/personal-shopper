@@ -45,30 +45,41 @@ The options page registers the passkey the server signs in to Woolworths with
 when its session expires, without the CLI. Needs a Google
 sign-in, and `CREDENTIALS_ENCRYPTION_KEY` set on the server.
 
-1. Options → "Register passkey". The extension opens a new tab at the
-   Woolworths login and attaches a virtual authenticator to it with
-   `chrome.debugger` (CDP `WebAuthn.enable` and `addVirtualAuthenticator`: ctap2,
-   internal, resident key, user verified). Chrome shows its "started debugging
-   this browser" bar while it is attached.
-2. Log in to Woolworths in that tab and accept the prompt to create a passkey.
+1. Options → "Register passkey". The extension opens a new Incognito window
+   at the Woolworths login (password managers are normally off there, so they
+   cannot answer the passkey prompt) and attaches a virtual authenticator to
+   its tab with `chrome.debugger` (CDP `WebAuthn.enable` and
+   `addVirtualAuthenticator`: ctap2, internal, resident key, user verified).
+   Chrome shows its "started debugging this browser" bar while it is attached.
+2. Log in to Woolworths in that window and accept the prompt to create a passkey.
 3. The extension polls `WebAuthn.getCredentials`, uploads the first credential
    for `auth.woolworths.com.au` with `PUT /woolworths/passkey`, then removes the
-   authenticator and detaches. It times out after 10 minutes.
+   authenticator, detaches and closes the window. It times out after 10 minutes.
+
+Incognito needs a one-time step: `chrome://extensions` → this extension's
+Details → "Allow in Incognito". Until it is on, the options page shows that
+path (with a copy button, since extension pages cannot link to `chrome://`)
+and a "Continue in a normal window" button that registers in an ordinary tab
+instead. The manifest keeps the default `incognito: "spanning"`, so the one
+service worker drives the Incognito window and shares the signed-in state in
+`chrome.storage`; no extra permission is needed (`chrome.extension.isAllowedIncognitoAccess()`
+and `chrome.windows` need none).
 
 If Chrome shows its own "Choose where to save your passkey" dialog instead,
 something in the profile (a password manager or other passkey-capable
 extension) answered the request before the virtual authenticator did, and
-nothing is uploaded. Turn that extension's passkey handling off, or register
-from a profile without it.
+nothing is uploaded. This happens in a normal window when such an extension is
+on; allow Incognito for this extension (and keep the other one off there) or
+turn its passkey handling off.
 
-"Cancel" (or dismissing the debugging bar, or closing the tab) stops the
-registration and does the same cleanup. A failure is shown on the options page.
+"Cancel" (or dismissing the debugging bar, or closing the window or tab) stops
+the registration and does the same cleanup, closing the Incognito window. A failure is shown on the options page.
 Once registered the page offers "Replace passkey" and "Remove passkey"
 (`DELETE /woolworths/passkey`); `/` shows the registration too.
 
 The registration runs in the extension's service worker (`background.js`),
 which keeps going when the options page closes; the logic is in
-`passkey-logic.js`, `passkey-api.js` and `passkey-flow.js` (`passkey.test.js`).
+`passkey-logic.js`, `passkey-api.js`, `passkey-window.js` and `passkey-flow.js` (`passkey.test.js`).
 
 ## Sign-in
 
@@ -101,8 +112,9 @@ digit mapped `0-9a-f` to `a-p`).
 - `activeTab` — read the current tab's URL only when you open the popup, to
   prefill the form. No `tabs`, no broad host access
   to browse tabs you haven't opened the popup on.
-- `debugger` — attach a virtual authenticator to the Woolworths login tab you
-  open from the options page, only while registering a passkey.
+- `debugger` — attach a virtual authenticator to the Woolworths login tab (in
+  an Incognito window when allowed) you open from the options page, only while
+  registering a passkey.
 - `identity` — `chrome.identity.launchWebAuthFlow` and `getRedirectURL` for
   Google sign-in through the server.
 - `storage` — save your access token locally.
