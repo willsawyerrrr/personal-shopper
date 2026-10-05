@@ -14,7 +14,7 @@
    user's items (the `items` table, `src/items.ts`), no restart required. Items
    are stored and matched per trigger word, but listed one row per product
    (`src/products.ts`): words sharing a stockcode and quantity appear together,
-   display-cased, under the product's listing. It is behind Google sign-in
+   display-cased, one per line under the product's listing. It is behind Google sign-in
    (`/login` is a "Sign in with Google" button; routes in
    `src/login.ts`) and shows the user's own active sessions with a revoke button. Since
    Woolworths' search is broken (see risks below), there's no in-app product

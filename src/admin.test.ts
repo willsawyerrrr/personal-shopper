@@ -263,9 +263,13 @@ describe('admin', () => {
       const { body } = await app.inject({ method: 'GET', url: '/', headers: authHeader })
       expect(body.match(/<form class="item"/g)).toHaveLength(4)
       expect(body).toContain('<strong class="view">Full Cream Milk 2L</strong>')
-      expect(body).toContain('<div class="view words">Full Cream Milk, Milk</div>')
+      expect(body).toContain(
+        '<div class="view words"><div>Full Cream Milk</div><div>Milk</div></div>',
+      )
       expect(body).toContain('<strong class="view">Bread</strong>')
-      expect(body).toContain('<div class="view words">Ben &amp; Jerry\'s, Coca-Cola, 7up</div>')
+      expect(body).toContain(
+        '<div class="view words"><div>Ben &amp; Jerry\'s</div><div>Coca-Cola</div><div>7up</div></div>',
+      )
       expect(body.indexOf('Full Cream Milk 2L')).toBeLessThan(body.indexOf('>Bread<'))
       expect(body.indexOf('>Bread<')).toBeLessThan(body.indexOf('Ben &amp; Jerry'))
     })
