@@ -13,6 +13,30 @@ export const AUTHENTICATOR_OPTIONS = {
   automaticPresenceSimulation: true,
 }
 
+/** The name the registered passkey is given, so it is recognisable in a password manager or account page. */
+export const PASSKEY_NAME = 'Personal Shopper'
+
+/**
+ * Page script that wraps `navigator.credentials.create` so a `publicKey`
+ * request is made with `user.name` and `user.displayName` set to
+ * `PASSKEY_NAME`. The options are copied, never mutated, and nothing else
+ * (`user.id`, `challenge`, `rp`, `pubKeyCredParams`, `excludeCredentials`) is
+ * touched. Other calls, results and errors pass through unchanged.
+ */
+export const NAME_PASSKEY_SCRIPT = `(() => {
+  const credentials = navigator.credentials
+  if (!credentials) return
+  const create = credentials.create
+  credentials.create = function (options) {
+    const user = options?.publicKey?.user
+    if (user) {
+      const name = ${JSON.stringify(PASSKEY_NAME)}
+      options = { ...options, publicKey: { ...options.publicKey, user: { ...user, name, displayName: name } } }
+    }
+    return create.call(this, options)
+  }
+})()`
+
 const filled = (value) => typeof value === 'string' && value !== ''
 
 /** Returns the first credential the server can sign in with: for Woolworths' RP ID, with an ID, user handle and private key. */
