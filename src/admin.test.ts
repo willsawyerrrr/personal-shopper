@@ -259,7 +259,7 @@ describe('admin', () => {
 
     const form = { 'content-type': 'application/x-www-form-urlencoded' }
 
-    it('lists one row per product with its words display-cased, in stored order', async () => {
+    it('lists one row per product with its words display-cased, sorted by title', async () => {
       const { body } = await app.inject({ method: 'GET', url: '/', headers: authHeader })
       expect(body.match(/<form class="item"/g)).toHaveLength(4)
       expect(body).toContain('<strong class="view">Full Cream Milk 2L</strong>')
@@ -270,8 +270,27 @@ describe('admin', () => {
       expect(body).toContain(
         '<div class="view words"><div>Ben &amp; Jerry\'s</div><div>Coca-Cola</div><div>7up</div></div>',
       )
-      expect(body.indexOf('Full Cream Milk 2L')).toBeLessThan(body.indexOf('>Bread<'))
-      expect(body.indexOf('>Bread<')).toBeLessThan(body.indexOf('Ben &amp; Jerry'))
+      expect(body.indexOf('Ben &amp; Jerry')).toBeLessThan(body.indexOf('>Bread<'))
+      expect(body.indexOf('>Bread<')).toBeLessThan(body.indexOf('Full Cream Milk 2L'))
+      expect(body.indexOf('Full Cream Milk 2L')).toBeLessThan(body.indexOf('>Lemonade<'))
+    })
+
+    it('sorts titles ignoring case and comparing numbers naturally, keeping word order', async () => {
+      await seedItems(
+        db.sql,
+        [
+          'zed:\n  stockcode: 10\n  quantity: 1\n  listing: Milk 10L\n',
+          'a:\n  stockcode: 11\n  quantity: 1\n  listing: milk 2L\n',
+          'b:\n  stockcode: 12\n  quantity: 1\n  listing: Apple\n',
+          'y:\n  stockcode: 12\n  quantity: 1\n',
+          'c:\n  stockcode: 13\n  quantity: 1\n  listing: apple\n',
+        ].join(''),
+      )
+      const { body } = await app.inject({ method: 'GET', url: '/', headers: authHeader })
+      const titles = [...body.matchAll(/<strong class="view">([^<]*)<\/strong>/g)].map((m) => m[1])
+      expect(titles).toEqual(['Apple', 'apple', 'milk 2L', 'Milk 10L'])
+      expect(body).toContain('<div class="view words"><div>B</div><div>Y</div></div>')
+      expect(body).toMatch(/id="edit-3" aria-label="Edit Milk 10L"/)
     })
 
     it('titles a product without a listing by its first word', async () => {

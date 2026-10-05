@@ -45,6 +45,17 @@ export function displayCase(word: string): string {
 export const groupTitle = (group: ProductGroup): string =>
   group.listing ?? displayCase(group.words[0] ?? '')
 
+const titleCollator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
+
+/** Orders groups for display: by title, ignoring case and treating digit runs as numbers, then by stockcode and quantity. */
+export const sortGroups = (groups: ProductGroup[]): ProductGroup[] =>
+  [...groups].sort(
+    (a, b) =>
+      titleCollator.compare(groupTitle(a), groupTitle(b)) ||
+      a.stockcode - b.stockcode ||
+      a.quantity - b.quantity,
+  )
+
 /** Splits comma-separated or array input into distinct normalised words. */
 export function parseWords(input: unknown): string[] | undefined {
   const parts = typeof input === 'string' ? input.split(',') : input
