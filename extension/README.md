@@ -51,10 +51,15 @@ sign-in, and `CREDENTIALS_ENCRYPTION_KEY` set on the server.
    its tab with `chrome.debugger` (CDP `WebAuthn.enable` and
    `addVirtualAuthenticator`: ctap2, internal, resident key, user verified).
    Chrome shows its "started debugging this browser" bar while it is attached.
+   It also injects a script (`Page.addScriptToEvaluateOnNewDocument`, from
+   `NAME_PASSKEY_SCRIPT` in `passkey-logic.js`) that wraps
+   `navigator.credentials.create` so the passkey's user name and display name
+   are "Personal Shopper" rather than whatever Woolworths sends; the user ID,
+   challenge, relying party and credential parameters are untouched.
 2. Log in to Woolworths in that window and accept the prompt to create a passkey.
 3. The extension polls `WebAuthn.getCredentials`, uploads the first credential
    for `auth.woolworths.com.au` with `PUT /woolworths/passkey`, then removes the
-   authenticator, detaches and closes the window. It times out after 10 minutes.
+   script and authenticator, detaches and closes the window. It times out after 10 minutes.
 
 Incognito needs a one-time step: `chrome://extensions` → this extension's
 Details → "Allow in Incognito". Until it is on, the options page shows an
