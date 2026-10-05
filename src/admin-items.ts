@@ -1,13 +1,13 @@
 import { escapeHtml } from './html.ts'
 import type { ItemsConfig } from './items.ts'
-import { displayCase, groupItems, groupKey, groupTitle } from './products.ts'
+import { displayCase, groupItems, groupKey, groupTitle, sortGroups } from './products.ts'
 
 /** One editable form per product; `edit` re-opens the product with `key` showing `values`. */
 export function renderItemRows(
   items: ItemsConfig,
   edit?: { key: string; values: Record<string, unknown> },
 ): string {
-  return groupItems(items)
+  return sortGroups(groupItems(items))
     .map((group, index) => {
       const key = groupKey(group)
       const path = `/products/${key}`
