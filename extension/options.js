@@ -1,7 +1,7 @@
 import { clearSession, getSession, isExpired, SERVER_URL, signIn, signOut } from './auth.js'
 import { createInvite, fetchMembers, joinHousehold, leaveHousehold } from './household-api.js'
 import { fetchRegistered, removePasskey } from './passkey-api.js'
-import { describeStatus } from './passkey-logic.js'
+import { describeStatus, incognitoWasGranted } from './passkey-logic.js'
 
 const STATE_KEY = 'passkeyState'
 
@@ -45,8 +45,6 @@ async function init() {
   const cancelButton = document.getElementById('cancelPasskey')
   const removeButton = document.getElementById('removePasskey')
   const incognitoHelp = document.getElementById('incognitoHelp')
-  const extensionsPath = document.getElementById('extensionsPath')
-  extensionsPath.textContent = `chrome://extensions/?id=${chrome.runtime.id}`
 
   async function renderPasskey() {
     const { [STATE_KEY]: state } = await chrome.storage.session.get(STATE_KEY)
@@ -142,8 +140,10 @@ async function init() {
     await renderPasskey()
   })
   document
-    .getElementById('copyExtensionsPath')
-    .addEventListener('click', () => navigator.clipboard.writeText(extensionsPath.textContent))
+    .getElementById('openExtensionSettings')
+    .addEventListener('click', () =>
+      chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` }),
+    )
   cancelButton.addEventListener('click', () =>
     chrome.runtime.sendMessage({ type: 'passkey/cancel' }),
   )
@@ -156,6 +156,16 @@ async function init() {
       await chrome.storage.session.set({ [STATE_KEY]: { phase: 'failed', error: error.message } })
     }
     await renderPasskey()
+  })
+  async function recheckIncognito() {
+    const { [STATE_KEY]: state } = await chrome.storage.session.get(STATE_KEY)
+    if (await incognitoWasGranted(state, () => chrome.extension.isAllowedIncognitoAccess())) {
+      await chrome.storage.session.set({ [STATE_KEY]: { phase: 'incognitoReady' } })
+    }
+  }
+  window.addEventListener('focus', recheckIncognito)
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) recheckIncognito()
   })
   chrome.storage.session.onChanged.addListener(renderPasskey)
   chrome.storage.local.onChanged.addListener(renderPasskey)

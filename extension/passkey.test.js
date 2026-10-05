@@ -6,6 +6,7 @@ import {
   AUTHENTICATOR_OPTIONS,
   CancelledError,
   IncognitoNotAllowedError,
+  incognitoWasGranted,
   REGISTRATION_TIMEOUT_MS,
   UnauthorizedError,
   describeStatus,
@@ -66,6 +67,24 @@ describe('describeStatus', () => {
       busy: false,
       incognitoHelp: true,
     })
+  })
+
+  it('announces Incognito access once granted', () => {
+    expect(describeStatus({ phase: 'incognitoReady' })).toMatchObject({
+      text: 'Incognito access enabled — press Register passkey.',
+      variant: 'success',
+      busy: false,
+    })
+  })
+
+  it('detects Incognito access granted while waiting for it', async () => {
+    const needs = { phase: 'needsIncognito' }
+    expect(await incognitoWasGranted(needs, async () => true)).toBe(true)
+    expect(await incognitoWasGranted(needs, async () => false)).toBe(false)
+    const isAllowed = vi.fn(async () => true)
+    expect(await incognitoWasGranted({ phase: 'failed' }, isAllowed)).toBe(false)
+    expect(await incognitoWasGranted(undefined, isAllowed)).toBe(false)
+    expect(isAllowed).not.toHaveBeenCalled()
   })
 
   it('falls back to the server answer', () => {

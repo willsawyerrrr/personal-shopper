@@ -57,10 +57,13 @@ sign-in, and `CREDENTIALS_ENCRYPTION_KEY` set on the server.
    authenticator, detaches and closes the window. It times out after 10 minutes.
 
 Incognito needs a one-time step: `chrome://extensions` → this extension's
-Details → "Allow in Incognito". Until it is on, the options page shows that
-path (with a copy button, since extension pages cannot link to `chrome://`)
-and a "Continue in a normal window" button that registers in an ordinary tab
-instead. The manifest keeps the default `incognito: "spanning"`, so the one
+Details → "Allow in Incognito". Until it is on, the options page shows an
+"Open extension settings" button (`chrome.tabs.create` on
+`chrome://extensions/?id=<id>`; Chrome has no API to request the access) and a
+"Continue in a normal window" button that registers in an ordinary tab
+instead. When the options page regains focus it re-checks the access; once on,
+it shows "Incognito access enabled — press Register passkey" and waits for the
+button, since registration opens a window and attaches the debugger. The manifest keeps the default `incognito: "spanning"`, so the one
 service worker drives the Incognito window and shares the signed-in state in
 `chrome.storage`; no extra permission is needed (`chrome.extension.isAllowedIncognitoAccess()`
 and `chrome.windows` need none).
