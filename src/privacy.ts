@@ -10,13 +10,14 @@ const PAGE = `<!doctype html>
   <style>${PAGE_STYLES}</style>
 </head>
 <body>
-  <div class="card">
-    <h1>Privacy policy</h1>
+  <h1>Privacy policy</h1>
+  <section>
     <p>
       Personal Shopper adds products to a Woolworths Click &amp; Collect cart. This policy
       covers the Personal Shopper server, web app, iOS app and Chrome extension.
     </p>
-
+  </section>
+  <section>
     <h2>What is stored</h2>
     <ul>
       <li>
@@ -31,23 +32,26 @@ const PAGE = `<!doctype html>
         Woolworths session and passkey, encrypted before they reach the database.
       </li>
     </ul>
-
+  </section>
+  <section>
     <h2>What is sent</h2>
     <p>
       The extension talks only to the Personal Shopper server and to Woolworths pages you open
       from it. Sign-in goes through Google; the server receives your verified email address and
       nothing else from your Google account.
     </p>
-
+  </section>
+  <section>
     <h2>What is not done</h2>
     <p>
       No analytics, advertising or tracking. Your data is never sold or shared with third
       parties, and is not used for anything other than operating the service.
     </p>
-
+  </section>
+  <section>
     <h2>Deleting your data</h2>
     <p>Contact the operator to delete your account and its data.</p>
-  </div>
+  </section>
 </body>
 </html>`
 

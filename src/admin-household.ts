@@ -10,7 +10,7 @@ export function renderHousehold(household: HouseholdView): string {
   const members = household.members
     .map((email) => `<li>${escapeHtml(email)}${email === household.you ? ' (you)' : ''}</li>`)
     .join('')
-  return `<div class="card household">
+  return `<section class="household">
     <h2>Household</h2>
     <p class="hint">Members share these items and one Woolworths account.</p>
     <ul class="members">${members}</ul>
@@ -36,7 +36,7 @@ export function renderHousehold(household: HouseholdView): string {
       </div>
       <p class="hint">Joining discards your current items if nobody else is in your household.</p>
     </form>
-  </div>`
+  </section>`
 }
 
 function formatTime(ms: number): string {

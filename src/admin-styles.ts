@@ -38,12 +38,10 @@ export const PAGE_STYLES = `
   }
   h1 { font-size: 1.3rem; font-weight: 600; margin: 0 0 1.25rem; }
   h2 { font-size: 1rem; font-weight: 600; margin: 0 0 0.5rem; }
-  .card {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    padding: 1.25rem 1.5rem;
-    margin-bottom: 1.5rem;
+  section + section {
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--color-border);
   }
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--color-border); font-size: 0.9rem; }
@@ -160,7 +158,7 @@ export const PAGE_STYLES = `
   }
   @media (max-width: 30rem) {
     body { margin: 1.25rem auto; }
-    .card { padding: 1rem; }
+    section + section { margin-top: 1.5rem; padding-top: 1.5rem; }
     .item-head { display: none; }
     form.item { display: flex; flex-direction: column; align-items: stretch; gap: 0.4rem; padding: 0.9rem 0; }
     form.item .field-name {
