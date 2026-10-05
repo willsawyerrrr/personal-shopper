@@ -17,16 +17,16 @@ export function renderItemRows(
         return escapeHtml(typeof value === 'string' ? value : String(fallback))
       }
       const title = groupTitle(group)
-      const words = group.words.map(displayCase).join(', ')
+      const words = group.words.map(displayCase)
       const id = `edit-${index}`
       return `
         <form class="item" method="post" action="${path}/edit">
           <input type="checkbox" class="edit-toggle" id="${id}" aria-label="Edit ${escapeHtml(title)}"${editing ? ' checked' : ''}>
           <div class="cell phrase">
             <strong class="view">${escapeHtml(title)}</strong>
-            <div class="view words">${escapeHtml(words)}</div>
+            <div class="view words">${words.map((word) => `<div>${escapeHtml(word)}</div>`).join('')}</div>
             <label class="edit"><span class="field-name">Trigger words, separated by commas</span>
-              <input aria-label="Trigger words, separated by commas" name="words" required value="${field('words', words)}">
+              <input aria-label="Trigger words, separated by commas" name="words" required value="${field('words', words.join(', '))}">
             </label>
           </div>
           <div class="cell product">
