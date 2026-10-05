@@ -33,7 +33,7 @@ export function isTimedOut(startedAt, now = Date.now()) {
 
 /**
  * Describes a registration state (`{phase, error?}`, phase one of `idle`,
- * `registering`, `uploading`, `needsIncognito`, `failed`, `cancelled`) and the server's answer
+ * `registering`, `uploading`, `needsIncognito`, `incognitoReady`, `failed`, `cancelled`) and the server's answer
  * (`registered`: a boolean, or `undefined` when unknown) for display.
  */
 export function describeStatus(state, registered) {
@@ -51,6 +51,12 @@ export function describeStatus(state, registered) {
         busy: false,
         incognitoHelp: true,
       }
+    case 'incognitoReady':
+      return {
+        text: 'Incognito access enabled — press Register passkey.',
+        variant: 'success',
+        busy: false,
+      }
     case 'uploading':
       return { text: 'Saving your passkey…', variant: 'info', busy: true }
     case 'failed':
@@ -65,6 +71,15 @@ export function describeStatus(state, registered) {
     return { text: 'No passkey registered.', variant: 'info', busy: false }
   }
   return { text: '', variant: 'info', busy: false }
+}
+
+/**
+ * Whether a registration waiting on `needsIncognito` can proceed: the extension
+ * now has Incognito access, according to `isAllowed` (an async function, e.g.
+ * `chrome.extension.isAllowedIncognitoAccess`).
+ */
+export async function incognitoWasGranted(state, isAllowed) {
+  return state?.phase === 'needsIncognito' && (await isAllowed())
 }
 
 export class CancelledError extends Error {
