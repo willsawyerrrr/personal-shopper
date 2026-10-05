@@ -2,7 +2,6 @@ import {
   AUTHENTICATOR_OPTIONS,
   CancelledError,
   LOGIN_URL,
-  NAME_PASSKEY_SCRIPT,
   POLL_INTERVAL_MS,
   isTimedOut,
   selectCredential,
@@ -12,9 +11,7 @@ import {
  * Registers a Woolworths passkey with a virtual authenticator attached to a
  * new tab or window and uploads it. Resolves once the credential is uploaded; rejects
  * with `CancelledError` when `signal` aborts, and otherwise with the failure.
- * A script naming the passkey `PASSKEY_NAME` is injected into every document the
- * tab loads. The script and authenticator are always removed and the debugger
- * detached.
+ * The authenticator is always removed and the debugger detached.
  *
  * `deps`: `openTab()` opens a blank tab and returns its ID; `navigate(tabId,
  * url)`; `debuggerApi` has `attach(tabId)`, `detach(tabId)` and
@@ -36,7 +33,6 @@ export async function registerPasskey({
   const tabId = await openTab()
   let attached = false
   let authenticatorId
-  let scriptId
   const send = (method, params) => debuggerApi.send(tabId, method, params)
   const checkCancelled = () => {
     if (signal.aborted) throw new CancelledError()
@@ -47,10 +43,6 @@ export async function registerPasskey({
     await send('WebAuthn.enable')
     ;({ authenticatorId } = await send('WebAuthn.addVirtualAuthenticator', {
       options: AUTHENTICATOR_OPTIONS,
-    }))
-    await send('Page.enable')
-    ;({ identifier: scriptId } = await send('Page.addScriptToEvaluateOnNewDocument', {
-      source: NAME_PASSKEY_SCRIPT,
     }))
     checkCancelled()
     await navigate(tabId, LOGIN_URL)
@@ -78,11 +70,6 @@ export async function registerPasskey({
     throw error
   } finally {
     if (attached) {
-      if (scriptId) {
-        await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: scriptId }).catch(
-          () => {},
-        )
-      }
       if (authenticatorId) {
         await send('WebAuthn.removeVirtualAuthenticator', { authenticatorId }).catch(() => {})
       }
