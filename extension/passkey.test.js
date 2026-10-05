@@ -6,7 +6,7 @@ import {
   AUTHENTICATOR_OPTIONS,
   CancelledError,
   IncognitoNotAllowedError,
-  NAME_PASSKEY_SCRIPT,
+  PASSKEY_CREATE_SCRIPT,
   PASSKEY_NAME,
   incognitoWasGranted,
   REGISTRATION_TIMEOUT_MS,
@@ -142,10 +142,10 @@ describe('passkey API', () => {
   })
 })
 
-describe('NAME_PASSKEY_SCRIPT', () => {
+describe('PASSKEY_CREATE_SCRIPT', () => {
   const run = (create) => {
     const navigator = { credentials: { create } }
-    new Function('navigator', NAME_PASSKEY_SCRIPT)(navigator)
+    new Function('navigator', PASSKEY_CREATE_SCRIPT)(navigator)
     return navigator.credentials
   }
   const id = new Uint8Array([1, 2, 3])
@@ -157,7 +157,7 @@ describe('NAME_PASSKEY_SCRIPT', () => {
     excludeCredentials: [{ type: 'public-key', id }],
   })
 
-  it('names the user and changes nothing else, without mutating the options', async () => {
+  it('names the user, requests no attestation and changes nothing else, without mutating the options', async () => {
     const create = vi.fn(async function (options) {
       return { options, self: this }
     })
@@ -168,12 +168,21 @@ describe('NAME_PASSKEY_SCRIPT', () => {
     expect(result.options).toEqual({
       publicKey: {
         ...publicKey(),
+        attestation: 'none',
         user: { id, name: PASSKEY_NAME, displayName: PASSKEY_NAME },
       },
       signal: 's',
     })
     expect(result.options.publicKey.user.id).toBe(id)
     expect(options.publicKey).toEqual(publicKey())
+  })
+
+  it('overrides a requested attestation', async () => {
+    const create = vi.fn(async (options) => options)
+    const result = await run(create).create({
+      publicKey: { ...publicKey(), attestation: 'direct' },
+    })
+    expect(result.publicKey.attestation).toBe('none')
   })
 
   it('passes other calls through untouched', async () => {
@@ -202,7 +211,7 @@ describe('NAME_PASSKEY_SCRIPT', () => {
   })
 
   it('does nothing without navigator.credentials', () => {
-    expect(() => new Function('navigator', NAME_PASSKEY_SCRIPT)({})).not.toThrow()
+    expect(() => new Function('navigator', PASSKEY_CREATE_SCRIPT)({})).not.toThrow()
   })
 })
 
@@ -266,7 +275,7 @@ describe('registerPasskey', () => {
       authenticatorId: 'auth-1',
     })
     expect(debuggerApi.send).toHaveBeenCalledWith(7, 'Page.addScriptToEvaluateOnNewDocument', {
-      source: NAME_PASSKEY_SCRIPT,
+      source: PASSKEY_CREATE_SCRIPT,
     })
     expect(debuggerApi.send).toHaveBeenCalledWith(7, 'Page.removeScriptToEvaluateOnNewDocument', {
       identifier: 'script-1',

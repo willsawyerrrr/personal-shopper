@@ -2,7 +2,7 @@ import {
   AUTHENTICATOR_OPTIONS,
   CancelledError,
   LOGIN_URL,
-  NAME_PASSKEY_SCRIPT,
+  PASSKEY_CREATE_SCRIPT,
   POLL_INTERVAL_MS,
   isTimedOut,
   selectCredential,
@@ -50,7 +50,7 @@ export async function registerPasskey({
     }))
     await send('Page.enable')
     ;({ identifier: scriptId } = await send('Page.addScriptToEvaluateOnNewDocument', {
-      source: NAME_PASSKEY_SCRIPT,
+      source: PASSKEY_CREATE_SCRIPT,
     }))
     checkCancelled()
     await navigate(tabId, LOGIN_URL)

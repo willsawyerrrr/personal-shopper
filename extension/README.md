@@ -52,10 +52,13 @@ sign-in, and `CREDENTIALS_ENCRYPTION_KEY` set on the server.
    `addVirtualAuthenticator`: ctap2, internal, resident key, user verified).
    Chrome shows its "started debugging this browser" bar while it is attached.
    It also injects a script (`Page.addScriptToEvaluateOnNewDocument`, from
-   `NAME_PASSKEY_SCRIPT` in `passkey-logic.js`) that wraps
+   `PASSKEY_CREATE_SCRIPT` in `passkey-logic.js`) that wraps
    `navigator.credentials.create` so the passkey's user name and display name
-   are "Personal Shopper" rather than whatever Woolworths sends; the user ID,
-   challenge, relying party and credential parameters are untouched.
+   are "Personal Shopper" rather than whatever Woolworths sends, and
+   `attestation` is `none`; the user ID, challenge, relying party and
+   credential parameters are untouched. (Chrome's virtual authenticator still
+   reports its AAGUID in the authenticator data, so a site can still derive a
+   "Chromium Virtual Authenticator" label from it.)
 2. Log in to Woolworths in that window and accept the prompt to create a passkey.
 3. The extension polls `WebAuthn.getCredentials`, uploads the first credential
    for `auth.woolworths.com.au` with `PUT /woolworths/passkey`, then removes the
