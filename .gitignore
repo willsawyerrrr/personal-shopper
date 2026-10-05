@@ -23,3 +23,6 @@ coverage/
 
 # Local iOS signing config
 ios/Config/Local.xcconfig
+
+# Local Claude Code settings
+.claude/
