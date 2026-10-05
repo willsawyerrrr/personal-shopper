@@ -920,6 +920,8 @@ describe('admin with several users', () => {
         })
       const page = await form('/household/invites')
       expect(page.statusCode).toBe(201)
+      expect(page.body).toContain('Join household')
+      expect(page.body).not.toContain('Leave household')
       const code = /<code>([^<]+)<\/code>/.exec(page.body)?.[1] ?? ''
       expect(code).not.toBe('')
       const yourCookie = { cookie: await signInWeb(app, google, { email: 'you@example.com' }) }
@@ -933,6 +935,9 @@ describe('admin with several users', () => {
       const shown = await app.inject({ method: 'GET', url: '/', headers: yourCookie })
       expect(shown.body).toContain('me@example.com')
       expect(shown.body).toContain('Leave household')
+      expect(shown.body).toMatch(
+        /<button type="submit">Join household<\/button>\s*<button type="submit" class="secondary" formaction="\/household\/leave" formnovalidate>Leave household/,
+      )
       const bad = await form('/household/join', 'code=nope')
       expect(bad.statusCode).toBe(400)
       expect(bad.body).toContain('invalid, expired or already used')

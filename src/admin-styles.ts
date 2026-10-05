@@ -199,6 +199,24 @@ export const PAGE_STYLES = `
     table.sessions td:nth-child(4)::before { content: 'Expires'; }
     table.sessions td:nth-child(5) { justify-content: flex-end; padding-top: 0.4rem; }
   }
+  .household h2 { margin-bottom: 0.6rem; }
+  .household .hint { margin-bottom: 0.85rem; }
+  .household .members { margin: 0 0 1rem; padding-left: 1.1rem; font-size: 0.9rem; }
+  .household .members li + li { margin-top: 0.25rem; }
+  .household code {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.8rem;
+    word-break: break-all;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+  }
+  .household .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0 0 1.25rem; }
+  .household label { margin-bottom: 0.6rem; }
+  .household form + form .actions { margin-bottom: 0.85rem; }
+  .household form + form .hint { margin-bottom: 0; }
+  button.secondary { color: var(--color-link); background: var(--color-surface); border: 1px solid var(--color-border); }
+  button.secondary:hover { background: var(--color-bg); }
   .error { color: var(--color-danger); margin: 0 0 1rem; font-size: 0.9rem; }
   .hint { color: var(--color-text-muted); font-size: 0.85rem; margin: 0 0 1rem; }
   .top-bar { display: flex; align-items: center; justify-content: space-between; }
