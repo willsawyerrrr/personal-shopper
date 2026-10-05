@@ -6,8 +6,6 @@ import {
   AUTHENTICATOR_OPTIONS,
   CancelledError,
   IncognitoNotAllowedError,
-  NAME_PASSKEY_SCRIPT,
-  PASSKEY_NAME,
   incognitoWasGranted,
   REGISTRATION_TIMEOUT_MS,
   UnauthorizedError,
@@ -142,70 +140,6 @@ describe('passkey API', () => {
   })
 })
 
-describe('NAME_PASSKEY_SCRIPT', () => {
-  const run = (create) => {
-    const navigator = { credentials: { create } }
-    new Function('navigator', NAME_PASSKEY_SCRIPT)(navigator)
-    return navigator.credentials
-  }
-  const id = new Uint8Array([1, 2, 3])
-  const publicKey = () => ({
-    challenge: new Uint8Array([9]),
-    rp: { id: 'auth.woolworths.com.au', name: 'Woolworths' },
-    user: { id, name: 'a@b.c', displayName: 'Someone' },
-    pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
-    excludeCredentials: [{ type: 'public-key', id }],
-  })
-
-  it('names the user and changes nothing else, without mutating the options', async () => {
-    const create = vi.fn(async function (options) {
-      return { options, self: this }
-    })
-    const credentials = run(create)
-    const options = { publicKey: publicKey(), signal: 's' }
-    const result = await credentials.create(options)
-    expect(result.self).toBe(credentials)
-    expect(result.options).toEqual({
-      publicKey: {
-        ...publicKey(),
-        user: { id, name: PASSKEY_NAME, displayName: PASSKEY_NAME },
-      },
-      signal: 's',
-    })
-    expect(result.options.publicKey.user.id).toBe(id)
-    expect(options.publicKey).toEqual(publicKey())
-  })
-
-  it('passes other calls through untouched', async () => {
-    const create = vi.fn(async () => 'cred')
-    const credentials = run(create)
-    const password = { password: true }
-    const noUser = { publicKey: { challenge: id } }
-    await credentials.create(password)
-    await credentials.create(noUser)
-    await credentials.create()
-    expect(create.mock.calls.map(([options]) => options)).toEqual([password, noUser, undefined])
-  })
-
-  it('returns the original promise result and errors', async () => {
-    const ok = {}
-    await expect(run(async () => ok).create({ publicKey: publicKey() })).resolves.toBe(ok)
-    const error = new Error('NotAllowedError')
-    await expect(run(() => Promise.reject(error)).create({ publicKey: publicKey() })).rejects.toBe(
-      error,
-    )
-    expect(() =>
-      run(() => {
-        throw error
-      }).create({ publicKey: publicKey() }),
-    ).toThrow(error)
-  })
-
-  it('does nothing without navigator.credentials', () => {
-    expect(() => new Function('navigator', NAME_PASSKEY_SCRIPT)({})).not.toThrow()
-  })
-})
-
 describe('registerPasskey', () => {
   function setup({ credentialsByPoll = [[credential()]], aborted = false } = {}) {
     const controller = new AbortController()
@@ -218,7 +152,6 @@ describe('registerPasskey', () => {
       send: vi.fn(async (_tabId, method) => {
         calls.push(method)
         if (method === 'WebAuthn.addVirtualAuthenticator') return { authenticatorId: 'auth-1' }
-        if (method === 'Page.addScriptToEvaluateOnNewDocument') return { identifier: 'script-1' }
         if (method === 'WebAuthn.getCredentials') {
           return { credentials: polls.length > 1 ? polls.shift() : polls[0] }
         }
@@ -246,14 +179,11 @@ describe('registerPasskey', () => {
       'attach',
       'WebAuthn.enable',
       'WebAuthn.addVirtualAuthenticator',
-      'Page.enable',
-      'Page.addScriptToEvaluateOnNewDocument',
       'navigate',
       'WebAuthn.getCredentials',
       'WebAuthn.getCredentials',
       'WebAuthn.getCredentials',
       'upload',
-      'Page.removeScriptToEvaluateOnNewDocument',
       'WebAuthn.removeVirtualAuthenticator',
       'WebAuthn.disable',
       'detach',
@@ -264,12 +194,6 @@ describe('registerPasskey', () => {
     })
     expect(debuggerApi.send).toHaveBeenCalledWith(7, 'WebAuthn.removeVirtualAuthenticator', {
       authenticatorId: 'auth-1',
-    })
-    expect(debuggerApi.send).toHaveBeenCalledWith(7, 'Page.addScriptToEvaluateOnNewDocument', {
-      source: NAME_PASSKEY_SCRIPT,
-    })
-    expect(debuggerApi.send).toHaveBeenCalledWith(7, 'Page.removeScriptToEvaluateOnNewDocument', {
-      identifier: 'script-1',
     })
     expect(deps.upload).toHaveBeenCalledWith(credential())
     expect(deps.onPhase).toHaveBeenCalledWith('uploading')
@@ -288,8 +212,7 @@ describe('registerPasskey', () => {
     deps.sleep = vi.fn(async () => controller.abort())
     await expect(registerPasskey(deps)).rejects.toBeInstanceOf(CancelledError)
     expect(deps.upload).not.toHaveBeenCalled()
-    expect(calls.slice(-5)).toEqual([
-      'Page.removeScriptToEvaluateOnNewDocument',
+    expect(calls.slice(-4)).toEqual([
       'WebAuthn.removeVirtualAuthenticator',
       'WebAuthn.disable',
       'detach',
@@ -322,8 +245,7 @@ describe('registerPasskey', () => {
     const { deps, calls } = setup()
     deps.upload = vi.fn().mockRejectedValue(new Error('Server error (500)'))
     await expect(registerPasskey(deps)).rejects.toThrow('Server error (500)')
-    expect(calls.slice(-5)).toEqual([
-      'Page.removeScriptToEvaluateOnNewDocument',
+    expect(calls.slice(-4)).toEqual([
       'WebAuthn.removeVirtualAuthenticator',
       'WebAuthn.disable',
       'detach',
