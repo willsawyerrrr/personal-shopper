@@ -402,10 +402,8 @@ function renderLoginPage(): string {
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>Personal Shopper</h1>
-    <a class="button" href="/auth/google/login">Sign in with Google</a>
-  </div>
+  <h1>Personal Shopper</h1>
+  <a class="button" href="/auth/google/login">Sign in with Google</a>
 </body>
 </html>`
 }
@@ -454,13 +452,13 @@ function renderPage(
     </form>
   </div>
   ${error ? `<p class="error">${escapeHtml(error)}</p>` : ''}
-  <div class="card">
+  <section>
     <div class="items">
       <div class="item-head" aria-hidden="true"><span>Product</span><span>Stockcode</span><span>Qty</span><span></span></div>
       ${rows || '<p class="hint">No items configured yet.</p>'}
     </div>
-  </div>
-  <div class="card">
+  </section>
+  <section>
     <h2>Add an item</h2>
     <p class="hint">Find the product on woolworths.com.au and paste its URL below.</p>
     <form class="add" method="post" action="/items">
@@ -475,23 +473,23 @@ function renderPage(
       </label>
       <button type="submit">Add item</button>
     </form>
-  </div>
+  </section>
   ${
     passkey === undefined
       ? ''
-      : `<div class="card">
+      : `<section>
     <h2>Woolworths passkey</h2>
     <p class="hint">${passkey ? 'Registered. The server signs in to Woolworths with it when your session expires.' : 'Not registered. Register one from the Chrome extension.'}</p>
-  </div>`
+  </section>`
   }
   ${household ? renderHousehold(household) : ''}
-  <div class="card">
+  <section>
     <h2>Signed-in sessions</h2>
     <table class="sessions">
       <thead><tr><th>Client</th><th>Account</th><th>Last used</th><th>Expires</th><th></th></tr></thead>
       <tbody>${sessionRows}</tbody>
     </table>
-  </div>
+  </section>
 </body>
 </html>`
 }
