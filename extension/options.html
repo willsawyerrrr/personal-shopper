@@ -11,7 +11,24 @@
         --color-text-muted: #667066;
         --color-accent: #1f7a4d;
         --color-accent-hover: #17603c;
+        --color-focus-ring: rgb(31 122 77 / 15%);
+        --color-danger: #b3261e;
         --radius: 10px;
+        color-scheme: light;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --color-bg: #121714;
+          --color-surface: #1b231e;
+          --color-border: #34413a;
+          --color-text: #e8eee9;
+          --color-text-muted: #a3b0a7;
+          --color-accent: #2f9a65;
+          --color-accent-hover: #3aae75;
+          --color-focus-ring: rgb(111 214 162 / 30%);
+          --color-danger: #ff8f86;
+          color-scheme: dark;
+        }
       }
       * {
         box-sizing: border-box;
@@ -22,18 +39,87 @@
           -apple-system,
           'Segoe UI',
           sans-serif;
-        max-width: 360px;
-        margin: 3rem auto;
+        max-width: 560px;
+        margin: 2.5rem auto;
+        padding: 0 1rem;
+        background: var(--color-bg);
+        color: var(--color-text);
+      }
+      main {
         padding: 1.5rem;
         background: var(--color-surface);
-        color: var(--color-text);
         border: 1px solid var(--color-border);
         border-radius: var(--radius);
       }
       h1 {
-        font-size: 1.1rem;
+        font-size: 1.3rem;
         font-weight: 600;
         margin: 0 0 1.25rem;
+      }
+      h2 {
+        font-size: 1rem;
+        font-weight: 600;
+        margin: 0 0 0.6rem;
+      }
+      section {
+        margin-top: 1.5rem;
+        padding-top: 1.25rem;
+        border-top: 1px solid var(--color-border);
+      }
+      p {
+        margin: 0 0 0.85rem;
+        font-size: 0.85rem;
+        color: var(--color-text-muted);
+      }
+      .hint {
+        font-size: 0.8rem;
+      }
+      .error {
+        color: var(--color-danger);
+      }
+      .success {
+        color: var(--color-accent);
+      }
+      p:empty {
+        display: none;
+      }
+      ul {
+        margin: 0 0 0.85rem;
+        padding-left: 1.1rem;
+        font-size: 0.85rem;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 0.85rem;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      label {
+        display: block;
+        margin-bottom: 0.6rem;
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: var(--color-text-muted);
+      }
+      input {
+        display: block;
+        width: 100%;
+        margin-top: 0.3rem;
+        padding: 0.5rem 0.6rem;
+        font-size: 0.9rem;
+        font-family: inherit;
+        color: var(--color-text);
+        background: var(--color-bg);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius);
+      }
+      input:focus {
+        outline: none;
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 3px var(--color-focus-ring);
       }
       button {
         padding: 0.5rem 1rem;
@@ -49,6 +135,10 @@
       button:hover {
         background: var(--color-accent-hover);
       }
+      button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
       button.secondary {
         color: var(--color-accent);
         background: var(--color-surface);
@@ -57,103 +147,55 @@
       button.secondary:hover {
         background: var(--color-bg);
       }
-      #account {
-        margin-top: 1.5rem;
-        padding-top: 1.25rem;
-        border-top: 1px solid var(--color-border);
-      }
-      h2 {
-        font-size: 0.95rem;
-        font-weight: 600;
-        margin: 0 0 0.6rem;
-      }
-      #passkey {
-        margin-top: 1.5rem;
-        padding-top: 1.25rem;
-        border-top: 1px solid var(--color-border);
-      }
-      #passkey .hint {
-        margin: 0 0 0.85rem;
-        font-size: 0.8rem;
-        color: var(--color-text-muted);
-      }
-      #passkeyState.error {
-        color: #b3261e;
-      }
-      #passkeyState.success {
-        color: var(--color-accent);
-      }
-      #accountState,
-      #passkeyState {
-        margin: 0 0 0.85rem;
-        font-size: 0.85rem;
-        color: var(--color-text-muted);
-      }
-      #accountError {
-        margin: 0.6rem 0 0;
-        font-size: 0.85rem;
-        color: #b3261e;
-      }
-      #household {
-        margin-top: 1.5rem;
-        padding-top: 1.25rem;
-        border-top: 1px solid var(--color-border);
-      }
-      #household .hint,
-      #householdState,
-      #inviteState {
-        margin: 0 0 0.85rem;
-        font-size: 0.8rem;
-        color: var(--color-text-muted);
-      }
-      #members {
-        margin: 0 0 0.85rem;
-        padding-left: 1.1rem;
-        font-size: 0.85rem;
-      }
-      #householdState.error {
-        color: #b3261e;
-      }
-      #household button {
-        margin: 0 0.4rem 0.5rem 0;
-      }
     </style>
   </head>
   <body>
-    <h1>Personal Shopper settings</h1>
-    <section id="account">
-      <h2>Account</h2>
-      <p id="accountState"></p>
-      <button id="signIn" type="button">Sign in with Google</button>
-      <button id="signOut" type="button" class="secondary" hidden>Sign out</button>
-      <p id="accountError" class="error"></p>
-    </section>
-    <section id="passkey">
-      <h2>Woolworths passkey</h2>
-      <p class="hint">
-        Lets the server sign in to your Woolworths account when its session expires. Chrome shows a
-        debugging bar while you register.
-      </p>
-      <p id="passkeyState"></p>
-      <button id="registerPasskey" type="button">Register passkey</button>
-      <button id="cancelPasskey" type="button" class="secondary" hidden>Cancel</button>
-      <button id="removePasskey" type="button" class="secondary" hidden>Remove passkey</button>
-    </section>
-    <section id="household" hidden>
-      <h2>Household</h2>
-      <p class="hint">Members share the same items and one Woolworths account.</p>
-      <ul id="members"></ul>
-      <button id="createInvite" type="button">Create invite code</button>
-      <p id="inviteState"></p>
-      <label
-        >Invite code
-        <input id="inviteCode" autocomplete="off" />
-      </label>
-      <button id="joinHousehold" type="button">Join household</button>
-      <p class="hint">Joining discards your current items if nobody else is in your household.</p>
-      <button id="leaveHousehold" type="button" class="secondary" hidden>Leave household</button>
-      <p id="householdState"></p>
-    </section>
+    <main>
+      <h1>Personal Shopper settings</h1>
+      <section id="account">
+        <h2>Account</h2>
+        <p id="accountState"></p>
+        <div class="actions">
+          <button id="signIn" type="button">Sign in with Google</button>
+          <button id="signOut" type="button" class="secondary" hidden>Sign out</button>
+        </div>
+        <p id="accountError" class="error"></p>
+      </section>
+      <section id="passkey">
+        <h2>Woolworths passkey</h2>
+        <p class="hint">
+          Lets the server sign in to your Woolworths account when its session expires. Chrome shows
+          a debugging bar while you register.
+        </p>
+        <p id="passkeyState"></p>
+        <div class="actions">
+          <button id="registerPasskey" type="button">Register passkey</button>
+          <button id="cancelPasskey" type="button" class="secondary" hidden>Cancel</button>
+          <button id="removePasskey" type="button" class="secondary" hidden>Remove passkey</button>
+        </div>
+      </section>
+      <section id="household" hidden>
+        <h2>Household</h2>
+        <p class="hint">Members share the same items and one Woolworths account.</p>
+        <ul id="members"></ul>
+        <div class="actions">
+          <button id="createInvite" type="button">Create invite code</button>
+        </div>
+        <p id="inviteState"></p>
+        <label>
+          Invite code
+          <input id="inviteCode" autocomplete="off" />
+        </label>
+        <div class="actions">
+          <button id="joinHousehold" type="button">Join household</button>
+          <button id="leaveHousehold" type="button" class="secondary" hidden>
+            Leave household
+          </button>
+        </div>
+        <p class="hint">Joining discards your current items if nobody else is in your household.</p>
+        <p id="householdState"></p>
+      </section>
+    </main>
     <script type="module" src="options.js"></script>
   </body>
 </html>
