@@ -39,17 +39,11 @@
           -apple-system,
           'Segoe UI',
           sans-serif;
-        max-width: 560px;
+        max-width: 640px;
         margin: 2.5rem auto;
         padding: 0 1rem;
         background: var(--color-bg);
         color: var(--color-text);
-      }
-      main {
-        padding: 1.5rem;
-        background: var(--color-surface);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius);
       }
       h1 {
         font-size: 1.3rem;
@@ -59,11 +53,11 @@
       h2 {
         font-size: 1rem;
         font-weight: 600;
-        margin: 0 0 0.6rem;
+        margin: 0 0 0.5rem;
       }
-      section {
-        margin-top: 1.5rem;
-        padding-top: 1.25rem;
+      section + section {
+        margin-top: 2rem;
+        padding-top: 2rem;
         border-top: 1px solid var(--color-border);
       }
       p {
@@ -107,7 +101,7 @@
       }
       label {
         display: block;
-        margin-bottom: 0.6rem;
+        margin-bottom: 0.85rem;
         font-size: 0.8rem;
         font-weight: 500;
         color: var(--color-text-muted);
@@ -154,6 +148,15 @@
       }
       button.secondary:hover {
         background: var(--color-bg);
+      }
+      @media (max-width: 30rem) {
+        body {
+          margin: 1.25rem auto;
+        }
+        section + section {
+          margin-top: 1.5rem;
+          padding-top: 1.5rem;
+        }
       }
     </style>
   </head>
