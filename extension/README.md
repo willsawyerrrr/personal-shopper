@@ -55,6 +55,12 @@ sign-in, and `CREDENTIALS_ENCRYPTION_KEY` set on the server.
    for `auth.woolworths.com.au` with `PUT /woolworths/passkey`, then removes the
    authenticator and detaches. It times out after 10 minutes.
 
+If Chrome shows its own "Choose where to save your passkey" dialog instead,
+something in the profile (a password manager or other passkey-capable
+extension) answered the request before the virtual authenticator did, and
+nothing is uploaded. Turn that extension's passkey handling off, or register
+from a profile without it.
+
 "Cancel" (or dismissing the debugging bar, or closing the tab) stops the
 registration and does the same cleanup. A failure is shown on the options page.
 Once registered the page offers "Replace passkey" and "Remove passkey"
