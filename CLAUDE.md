@@ -88,6 +88,7 @@ Intents (clients of `/items` and `/cart/items`). See
 open risks.
 
 ```bash
+pnpm run format:check
 pnpm run lint
 pnpm run typecheck
 pnpm run coverage               # needs Postgres at TEST_DATABASE_URL (default localhost:54329)
