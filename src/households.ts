@@ -17,7 +17,7 @@ export class InviteLimitError extends Error {
 export type JoinResult = 'joined' | 'invalid_invite' | 'already_member'
 export type LeaveResult = 'left' | 'sole_member'
 
-export function hashInvite(code: string): string {
+function hashInvite(code: string): string {
   return createHash('sha256').update(code).digest('hex')
 }
 

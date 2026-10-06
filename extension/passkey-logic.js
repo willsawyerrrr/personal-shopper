@@ -1,4 +1,4 @@
-export const RP_ID = 'auth.woolworths.com.au'
+const RP_ID = 'auth.woolworths.com.au'
 export const LOGIN_URL = 'https://www.woolworths.com.au/shop/securelogin'
 export const REGISTRATION_TIMEOUT_MS = 10 * 60 * 1000
 export const POLL_INTERVAL_MS = 1000

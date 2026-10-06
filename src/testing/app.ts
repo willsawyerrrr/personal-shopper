@@ -9,7 +9,7 @@ import { CLIENT_ID, CLIENT_SECRET, type FakeGoogle, type IdTokenOverrides } from
 export const IOS_REDIRECT = 'dev.willsawyerrrr.personal-shopper://auth'
 export const EXTENSION_REDIRECT = 'https://abcdefghijklmnop.chromiumapp.org/'
 
-export const OWNER = 'me@example.com'
+const OWNER = 'me@example.com'
 
 /** Stores `yaml` as `email`'s (default: the owner's) items. */
 export async function seedItems(sql: Sql, yaml: string, email: string = OWNER): Promise<void> {

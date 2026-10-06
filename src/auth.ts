@@ -30,7 +30,7 @@ export type AuthFailureReason =
   | 'invalid_request'
   | 'invalid_grant'
 
-export type AuthScheme = 'Bearer' | 'Basic' | 'cookie' | 'other' | 'none'
+type AuthScheme = 'Bearer' | 'Basic' | 'cookie' | 'other' | 'none'
 
 export interface AuthFailure {
   reason: AuthFailureReason
@@ -41,7 +41,7 @@ export interface AuthFailure {
   detail?: LoginFailureDetail
 }
 
-export const SESSION_COOKIE = 'ps_admin_session'
+const SESSION_COOKIE = 'ps_admin_session'
 
 export type Authentication =
   { ok: true; record: TokenRecord; token: string } | { ok: false; failure: AuthFailure }
@@ -100,7 +100,7 @@ export function sessionCookie(value: string, maxAgeSeconds: number, secure: bool
   return `${SESSION_COOKIE}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${secure ? '; Secure' : ''}`
 }
 
-export function readCookie(header: string | undefined, name: string): string | undefined {
+function readCookie(header: string | undefined, name: string): string | undefined {
   return header
     ?.split(';')
     .map((part) => part.trim().split('='))
