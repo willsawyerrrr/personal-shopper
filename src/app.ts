@@ -96,16 +96,7 @@ export function buildApp(config: AppConfig, options: AppOptions): FastifyInstanc
 
   void registerPrivacy(app)
   void registerLogin(app, { config, sql: options.sql, tokens, google, now })
-  void registerAdmin(
-    app,
-    config,
-    tokens,
-    items,
-    households,
-    options.lookup,
-    options.passkeys?.credentials,
-    now,
-  )
+  void registerAdmin(app, config, tokens, items, households, options.lookup, options.passkeys, now)
   if (options.cart) {
     void registerCart(app, config, tokens, items, options.cart, now)
   }

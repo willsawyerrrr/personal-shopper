@@ -16,7 +16,10 @@
    removes the user's items, **Add item** (`/items/new`) adds one, **Household**
    (`/household/manage`) manages the household and **Account** (`/account`)
    shows the user's own active sessions with a revoke button and whether a
-   Woolworths passkey is registered. Form posts return to the page they came
+   Woolworths passkey is registered, with a "Remove passkey" button when one
+   is (`POST /account/passkey/remove`: session cookie, same rate limit as
+   `DELETE /woolworths/passkey`, both through `removePasskey` in
+   `src/passkey.ts`, which also drops the user's cached Woolworths session). Form posts return to the page they came
    from, showing validation errors there. The household page is not at
    `/household` because `GET /household` is the JSON member list. Items
    are the signed-in user's own (the `items` table, `src/items.ts`), changed with no restart required. Items

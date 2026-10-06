@@ -214,7 +214,9 @@ export const PAGE_STYLES = `
   .household form + form .hint { margin-bottom: 0; }
   button.secondary { color: var(--color-link); background: var(--color-surface); border: 1px solid var(--color-border); }
   button.secondary:hover { background: var(--color-bg); }
+  button.danger { color: var(--color-danger); }
   .error { color: var(--color-danger); margin: 0 0 1rem; font-size: 0.9rem; }
+  .notice { color: var(--color-text); margin: 0 0 1rem; font-size: 0.9rem; }
   .hint { color: var(--color-text-muted); font-size: 0.85rem; margin: 0 0 1rem; }
   .top-bar {
     display: flex;

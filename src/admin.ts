@@ -15,7 +15,7 @@ import {
 import { InviteLimitError, type HouseholdStore } from './households.ts'
 import { normalizeWord, type ItemMapping, type ItemStore } from './items.ts'
 import { createListingBackfill, lookupListing } from './listings.ts'
-import type { CredentialStore } from './users/credentials.ts'
+import { PASSKEY_RATE_LIMIT, removePasskey, type PasskeyOptions } from './passkey.ts'
 import type { SessionSummary, TokenStore } from './tokens.ts'
 import type { ProductLookup } from './woolworths/client.ts'
 
@@ -26,7 +26,7 @@ export async function registerAdmin(
   store: ItemStore,
   households: HouseholdStore,
   lookupFor?: (email: string) => ProductLookup,
-  passkeys?: CredentialStore,
+  passkeys?: PasskeyOptions,
   now: () => number = Date.now,
 ): Promise<void> {
   const secureCookie = config.publicBaseUrl.startsWith('https:')
@@ -131,16 +131,31 @@ export async function registerAdmin(
 
     admin.get('/account', async (request, reply) => {
       const email = emailOf(request)
+      const { passkey } = request.query as { passkey?: string }
       reply
         .type('text/html')
         .send(
           renderAccountPage(
             await sessionsOf(request),
             current.get(request)?.id,
-            passkeys && (await passkeys.has(email)),
+            passkeys && (await passkeys.credentials.has(email)),
+            passkey === 'removed' ? 'Passkey removed.' : undefined,
           ),
         )
     })
+
+    if (passkeys) {
+      const options = passkeys
+      admin.post(
+        '/account/passkey/remove',
+        { config: { rateLimit: PASSKEY_RATE_LIMIT } },
+        async (request, reply) => {
+          await removePasskey(emailOf(request), options)
+          request.log.info('woolworths passkey removed')
+          return reply.redirect('/account?passkey=removed')
+        },
+      )
+    }
 
     // The household web page lives at `/household/manage`: `GET /household` is the JSON member list.
     admin.get('/household/manage', async (request, reply) => {

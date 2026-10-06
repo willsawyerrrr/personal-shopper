@@ -81,7 +81,7 @@ turn its passkey handling off.
 "Cancel" (or dismissing the debugging bar, or closing the window or tab) stops
 the registration and does the same cleanup, closing the Incognito window. A failure is shown on the options page.
 Once registered the page offers "Replace passkey" and "Remove passkey"
-(`DELETE /woolworths/passkey`); `/` shows the registration too.
+(`DELETE /woolworths/passkey`); the web app's Account page shows the registration too and can remove it.
 
 The registration runs in the extension's service worker (`background.js`),
 which keeps going when the options page closes; the logic is in
