@@ -108,7 +108,7 @@ archive the app and upload it to TestFlight through
 - Repo secrets `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_P8` (an App Store
   Connect API key).
 - Repo variable `DEVELOPMENT_TEAM` (the team ID; never committed).
-- An App Store Connect app record for `dev.willsawyerrrr.personalshopper`
+- An App Store Connect app record for `dev.willsawyerrrr.personal-shopper`
   (the extension, `.share`, is signed with it).
 
 `MARKETING_VERSION` (`project.yml`) is the version users see; the workflow sets
