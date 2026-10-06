@@ -234,8 +234,9 @@ drops the user's cached Woolworths session store, so the next login uses it.
 | `400`  | `{"error":"<message>"}`: the body has no usable credential |
 | `401`  | `{"error":"unauthorized"}`                                 |
 
-`/account` shows whether the signed-in user has a passkey registered and, when
-one is, a "Remove passkey" button (`POST /account/passkey/remove`, session
+`/account` shows whether the signed-in user has a passkey registered, a button
+that opens the extension's options page to register or replace it and, when one
+is registered, a "Remove passkey" button (`POST /account/passkey/remove`, session
 cookie, same rate limit and effect as `DELETE`) that redirects back to
 `/account`. Like the other form posts it relies on the cookie's
 `SameSite=Lax` and does not ask for confirmation.

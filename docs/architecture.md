@@ -189,7 +189,12 @@ accepts Woolworths' prompt, and the credential read with
 ([`auth.md`](auth.md#registering-a-woolworths-passkey); `src/passkey.ts`),
 which stores it through `CredentialStore` and drops the user's cached session
 store so the next login uses it. `GET` and `DELETE` on the same path report and
-remove it, and `/` shows whether one is registered. These routes need
+remove it, and `/account` shows whether one is registered, with a "Register
+passkey" (or "Replace passkey") button that opens the extension's options page:
+a content script on the web app's origin (`extension/web-app.js`) marks the page
+as having the extension and asks the service worker to call
+`chrome.runtime.openOptionsPage()`, so the page needs no extension ID and
+shows install guidance instead when the marker is absent. These routes need
 `CREDENTIALS_ENCRYPTION_KEY`.
 
 `pnpm register-passkey` (`scripts/register-passkey.ts`) registers the

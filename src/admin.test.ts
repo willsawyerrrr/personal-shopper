@@ -49,9 +49,13 @@ describe('admin', () => {
       passkeys: { credentials, invalidate: () => {} },
     })
     authHeader = { cookie: await signInWeb(app, google) }
-    expect((await page()).body).toContain('Not registered.')
+    const unregistered = (await page()).body
+    expect(unregistered).toContain('Not registered.')
+    expect(unregistered).toContain('data-open-extension-options>Register passkey<')
     await credentials.put('me@example.com', [{ credentialId: 'x' }])
-    expect((await page()).body).toContain('Registered.')
+    const registered = (await page()).body
+    expect(registered).toContain('Registered.')
+    expect(registered).toContain('data-open-extension-options>Replace passkey<')
   })
 
   describe('removing the passkey', () => {

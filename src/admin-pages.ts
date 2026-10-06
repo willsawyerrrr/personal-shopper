@@ -127,7 +127,10 @@ export function renderAccountPage(
         ? ''
         : `<section>
     <h2>Woolworths passkey</h2>
-    <p class="hint">${passkey ? 'Registered. The server signs in to Woolworths with it when your session expires.' : 'Not registered. Register one from the Chrome extension.'}</p>${
+    <p class="hint">${passkey ? 'Registered. The server signs in to Woolworths with it when your session expires.' : 'Not registered.'}</p>
+    <button type="button" class="secondary" data-open-extension-options>${passkey ? 'Replace passkey' : 'Register passkey'}</button>
+    <p class="hint extension-present">Opens the Chrome extension's settings, where you press Register passkey.</p>
+    <p class="hint extension-absent">Install the Chrome extension to ${passkey ? 'replace' : 'register'} a passkey.</p>${
       passkey
         ? `
     <form method="post" action="/account/passkey/remove">

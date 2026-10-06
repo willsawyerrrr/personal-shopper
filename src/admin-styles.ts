@@ -75,6 +75,8 @@ export const PAGE_STYLES = `
     cursor: pointer;
   }
   button:hover { background: var(--color-accent-hover); }
+  [data-open-extension-options] + .hint { margin-top: 0.5rem; }
+  html:not([data-extension-installed]) [data-open-extension-options], html:not([data-extension-installed]) .extension-present, html[data-extension-installed] .extension-absent { display: none; }
   table button {
     padding: 0.3rem 0.6rem;
     font-size: 0.8rem;
