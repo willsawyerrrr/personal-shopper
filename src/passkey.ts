@@ -4,7 +4,8 @@ import { authenticate, logAuthFailure } from './auth.ts'
 import type { TokenStore } from './tokens.ts'
 import type { CredentialStore, PasskeyCredential } from './users/credentials.ts'
 
-const PASSKEY_RATE_LIMIT_MAX = 10
+/** Per-client-IP limit on the passkey routes, shared with the web app's remove button. */
+export const PASSKEY_RATE_LIMIT = { max: 10, timeWindow: '1 minute' }
 const PASSKEY_RP_ID = 'auth.woolworths.com.au'
 const SUPPORTED_KEY_TYPES = ['ed25519', 'ec', 'rsa']
 
@@ -64,6 +65,15 @@ export function selectCredential(
   return { ok: false, error }
 }
 
+/** Removes `email`'s stored passkey credential and drops their cached Woolworths session. */
+export async function removePasskey(
+  email: string,
+  { credentials, invalidate }: PasskeyOptions,
+): Promise<void> {
+  await credentials.delete(email)
+  invalidate(email)
+}
+
 /**
  * Registers `PUT`, `GET` and `DELETE /woolworths/passkey`, which store,
  * report on and remove the Woolworths passkey of the user the bearer token
@@ -77,7 +87,7 @@ export async function registerPasskey(
 ): Promise<void> {
   await app.register(async (routes) => {
     const emails = new WeakMap<FastifyRequest, string>()
-    const rateLimit = { max: PASSKEY_RATE_LIMIT_MAX, timeWindow: '1 minute' }
+    const rateLimit = PASSKEY_RATE_LIMIT
 
     routes.addHook('onRequest', async (request, reply) => {
       const result = await authenticate(request, tokens, false)
@@ -105,9 +115,7 @@ export async function registerPasskey(
     }))
 
     routes.delete('/woolworths/passkey', { config: { rateLimit } }, async (request) => {
-      const email = emails.get(request) as string
-      await credentials.delete(email)
-      invalidate(email)
+      await removePasskey(emails.get(request) as string, { credentials, invalidate })
       request.log.info('woolworths passkey removed')
       return { registered: false }
     })

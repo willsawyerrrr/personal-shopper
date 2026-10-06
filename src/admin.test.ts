@@ -54,6 +54,99 @@ describe('admin', () => {
     expect((await page()).body).toContain('Registered.')
   })
 
+  describe('removing the passkey', () => {
+    let credentials: CredentialStore
+    let invalidate: ReturnType<typeof vi.fn<(email: string) => void>>
+    const remove = (headers?: { cookie: string }) =>
+      app.inject({
+        method: 'POST',
+        url: '/account/passkey/remove',
+        ...(headers && { headers }),
+      })
+
+    beforeEach(async () => {
+      credentials = new CredentialStore(db.sql, randomBytes(32))
+      invalidate = vi.fn<(email: string) => void>()
+      app = buildApp(config, {
+        sql: db.sql,
+        fetch: google.fetch,
+        passkeys: { credentials, invalidate },
+      })
+      authHeader = { cookie: await signInWeb(app, google) }
+    })
+
+    const page = async () =>
+      (await app.inject({ method: 'GET', url: '/account', headers: authHeader })).body
+
+    it('offers removal only when a passkey is registered', async () => {
+      expect(await page()).not.toContain('Remove passkey')
+      await credentials.put('me@example.com', [{ credentialId: 'x' }])
+      expect(await page()).toContain('action="/account/passkey/remove"')
+      expect(await page()).toContain('Remove passkey</button>')
+    })
+
+    it('removes the credential, drops the cached session and confirms', async () => {
+      await credentials.put('me@example.com', [{ credentialId: 'x' }])
+      const response = await remove(authHeader)
+      expect(response.statusCode).toBe(302)
+      expect(response.headers.location).toBe('/account?passkey=removed')
+      expect(await credentials.has('me@example.com')).toBe(false)
+      expect(invalidate).toHaveBeenCalledWith('me@example.com')
+      const shown = await app.inject({
+        method: 'GET',
+        url: response.headers.location as string,
+        headers: authHeader,
+      })
+      expect(shown.body).toContain('<p class="notice" role="status">Passkey removed.</p>')
+      expect(shown.body).toContain('Not registered.')
+      expect(shown.body).not.toContain('Remove passkey</button>')
+    })
+
+    it('leaves other users credentials alone', async () => {
+      await credentials.put('me@example.com', [{ credentialId: 'x' }])
+      await credentials.put('you@example.com', [{ credentialId: 'y' }])
+      await remove(authHeader)
+      expect(await credentials.has('you@example.com')).toBe(true)
+    })
+
+    it('handles removal when none is registered', async () => {
+      const response = await remove(authHeader)
+      expect(response.statusCode).toBe(302)
+      expect(response.headers.location).toBe('/account?passkey=removed')
+    })
+
+    it('rejects unauthenticated requests', async () => {
+      await credentials.put('me@example.com', [{ credentialId: 'x' }])
+      const response = await remove()
+      expect(response.statusCode).toBe(401)
+      expect(await credentials.has('me@example.com')).toBe(true)
+    })
+
+    it('does not show the notice for other values', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/account?passkey=%3Cb%3E',
+        headers: authHeader,
+      })
+      expect(response.body).not.toContain('class="notice"')
+    })
+
+    it('is rate limited like the API route', async () => {
+      const statuses: number[] = []
+      for (let i = 0; i < 11; i++) {
+        statuses.push((await remove(authHeader)).statusCode)
+      }
+      expect(statuses.slice(0, 10).every((status) => status === 302)).toBe(true)
+      expect(statuses[10]).toBe(429)
+    })
+
+    it('is not available when passkeys are disabled', async () => {
+      app = buildApp(config, { sql: db.sql, fetch: google.fetch })
+      authHeader = { cookie: await signInWeb(app, google) }
+      expect((await remove(authHeader)).statusCode).toBe(404)
+    })
+  })
+
   describe('pages', () => {
     const get = (url: string, headers?: { cookie: string }) =>
       app.inject({ method: 'GET', url, ...(headers && { headers }) })

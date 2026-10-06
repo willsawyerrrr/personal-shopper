@@ -14,8 +14,8 @@ const PAGES = {
 
 type PageId = keyof typeof PAGES
 
-/** The signed-in page chrome: navigation marking `page`, the heading, any `error`, then `body`. */
-function renderLayout(page: PageId, body: string, error?: string): string {
+/** The signed-in page chrome: navigation marking `page`, the heading, any `error` or `notice`, then `body`. */
+function renderLayout(page: PageId, body: string, error?: string, notice?: string): string {
   const { title } = PAGES[page]
   const links = Object.entries(PAGES)
     .map(
@@ -40,6 +40,7 @@ function renderLayout(page: PageId, body: string, error?: string): string {
   </header>
   <h1>${escapeHtml(title)}</h1>
   ${error ? `<p class="error">${escapeHtml(error)}</p>` : ''}
+  ${notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : ''}
   ${body}
 </body>
 </html>`
@@ -93,11 +94,15 @@ export function renderHouseholdPage(household: HouseholdView, error?: string): s
   return renderLayout('household', renderHousehold(household), error)
 }
 
-/** `passkey` is undefined when passkeys are disabled, which hides their section. */
+/**
+ * `passkey` is undefined when passkeys are disabled, which hides their section;
+ * `notice` is a confirmation shown above the page.
+ */
 export function renderAccountPage(
   sessions: SessionSummary[],
   currentId: string | undefined,
   passkey: boolean | undefined,
+  notice?: string,
 ): string {
   const sessionRows = sessions
     .map(
@@ -122,7 +127,14 @@ export function renderAccountPage(
         ? ''
         : `<section>
     <h2>Woolworths passkey</h2>
-    <p class="hint">${passkey ? 'Registered. The server signs in to Woolworths with it when your session expires.' : 'Not registered. Register one from the Chrome extension.'}</p>
+    <p class="hint">${passkey ? 'Registered. The server signs in to Woolworths with it when your session expires.' : 'Not registered. Register one from the Chrome extension.'}</p>${
+      passkey
+        ? `
+    <form method="post" action="/account/passkey/remove">
+      <button type="submit" class="secondary danger">Remove passkey</button>
+    </form>`
+        : ''
+    }
   </section>`
     }
   <section>
@@ -132,5 +144,7 @@ export function renderAccountPage(
       <tbody>${sessionRows}</tbody>
     </table>
   </section>`,
+    undefined,
+    notice,
   )
 }
