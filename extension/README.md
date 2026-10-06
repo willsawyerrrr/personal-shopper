@@ -30,6 +30,9 @@ Web Store build.
 4. "Manage items" at the bottom of the popup opens `/` on the
    server in a new tab.
 
+The popup and options page follow the system light or dark theme
+(`prefers-color-scheme`), using the same colours as the web app.
+
 ## Household
 
 Below the passkey, the options page shows the household (members who share

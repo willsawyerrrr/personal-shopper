@@ -11,8 +11,26 @@
         --color-text-muted: #667066;
         --color-accent: #1f7a4d;
         --color-accent-hover: #17603c;
+        --color-link: #1f7a4d;
+        --color-focus-ring: rgb(31 122 77 / 15%);
         --color-danger: #b3261e;
         --radius: 10px;
+        color-scheme: light;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --color-bg: #121714;
+          --color-surface: #1b231e;
+          --color-border: #34413a;
+          --color-text: #e8eee9;
+          --color-text-muted: #a3b0a7;
+          --color-accent: #2f9a65;
+          --color-accent-hover: #3aae75;
+          --color-link: #6fd6a2;
+          --color-focus-ring: rgb(111 214 162 / 30%);
+          --color-danger: #ff8f86;
+          color-scheme: dark;
+        }
       }
       * {
         box-sizing: border-box;
@@ -43,7 +61,7 @@
         color: var(--color-danger);
       }
       p#status.success {
-        color: var(--color-accent);
+        color: var(--color-link);
       }
       label {
         display: block;
@@ -66,7 +84,7 @@
       input:focus {
         outline: none;
         border-color: var(--color-accent);
-        box-shadow: 0 0 0 3px rgb(31 122 77 / 15%);
+        box-shadow: 0 0 0 3px var(--color-focus-ring);
       }
       button {
         width: 100%;
@@ -84,7 +102,7 @@
         background: var(--color-accent-hover);
       }
       button.secondary {
-        color: var(--color-accent);
+        color: var(--color-link);
         background: var(--color-surface);
         border: 1px solid var(--color-border);
       }
@@ -101,7 +119,7 @@
         text-decoration: none;
       }
       .footer a:hover {
-        color: var(--color-accent);
+        color: var(--color-link);
       }
     </style>
   </head>
