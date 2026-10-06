@@ -30,12 +30,18 @@ export function serverOrigin(authSource: string): string {
 /**
  * The manifest the Web Store build ships: no pinned `key` (the store assigns
  * the ID) and host access narrowed to the hosted server and the Woolworths
- * login.
+ * login; the web app content script runs on that origin.
  */
 export function storeManifest(manifest: Manifest, origin: string): Manifest {
-  const { key: _key, ...rest } = manifest
+  const { key: _key, content_scripts: contentScripts, ...rest } = manifest
   return {
     ...rest,
+    ...(Array.isArray(contentScripts) && {
+      content_scripts: contentScripts.map((script: object) => ({
+        ...script,
+        matches: [`${origin}/*`],
+      })),
+    }),
     host_permissions: [`${origin}/*`, 'https://*.woolworths.com.au/*'],
   }
 }

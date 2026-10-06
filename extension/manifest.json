@@ -20,6 +20,13 @@
   "options_page": "options.html",
   "permissions": ["activeTab", "debugger", "identity", "storage"],
   "host_permissions": ["https://*.willsawyerrrr.dev/*", "https://*.woolworths.com.au/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://personal-shopper.willsawyerrrr.dev/*"],
+      "js": ["web-app.js"],
+      "run_at": "document_start"
+    }
+  ],
   "background": {
     "service_worker": "background.js",
     "type": "module"

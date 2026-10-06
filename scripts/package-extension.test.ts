@@ -31,6 +31,7 @@ describe('storeManifest', () => {
         key: 'abc',
         permissions: ['storage'],
         host_permissions: ['http://*/*', 'https://*.willsawyerrrr.dev/*'],
+        content_scripts: [{ matches: ['https://old.example.test/*'], js: ['web-app.js'] }],
       },
       'https://app.example.test',
     )
@@ -39,6 +40,7 @@ describe('storeManifest', () => {
       version: '1.2.3',
       permissions: ['storage'],
       host_permissions: ['https://app.example.test/*', 'https://*.woolworths.com.au/*'],
+      content_scripts: [{ matches: ['https://app.example.test/*'], js: ['web-app.js'] }],
     })
   })
 })

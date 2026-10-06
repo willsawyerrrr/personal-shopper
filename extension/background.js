@@ -67,6 +67,7 @@ async function start({ normalWindow } = {}) {
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === 'passkey/start') void start({ normalWindow: message.normalWindow })
   if (message?.type === 'passkey/cancel') running?.abort()
+  if (message?.type === 'options/open') void chrome.runtime.openOptionsPage()
 })
 
 // A worker restart loses the registration, so a state left in progress is stale.

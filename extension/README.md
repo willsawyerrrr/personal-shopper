@@ -48,7 +48,7 @@ The options page registers the passkey the server signs in to Woolworths with
 when its session expires, without the CLI. Needs a Google
 sign-in, and `CREDENTIALS_ENCRYPTION_KEY` set on the server.
 
-1. Options → "Register passkey". The extension opens a new Incognito window
+1. Options → "Register passkey" (the web app's Account page has a button that opens the options page). The extension opens a new Incognito window
    at the Woolworths login (password managers are normally off there, so they
    cannot answer the passkey prompt) and attaches a virtual authenticator to
    its tab with `chrome.debugger` (CDP `WebAuthn.enable` and
@@ -124,6 +124,13 @@ digit mapped `0-9a-f` to `a-p`).
 - `identity` — `chrome.identity.launchWebAuthFlow` and `getRedirectURL` for
   Google sign-in through the server.
 - `storage` — save your access token locally.
+- Content script `web-app.js` on the hosted web app's origin, covered by the
+  host permission below (no extra warning). It marks the page
+  (`data-extension-installed` on `<html>`) so the Account page can show its
+  "Register passkey" button, and relays that button's click to the service
+  worker, which opens this options page. The page needs no extension ID, so it
+  works for the unpacked and the Web Store IDs alike. A local dev server is not
+  covered; add its origin to `content_scripts[].matches` to try it.
 - `host_permissions` — required for the popup's and options page's `fetch` to
   reach the server; this server sets no CORS headers. `https://*.willsawyerrrr.dev/*`
   covers the deployed server.

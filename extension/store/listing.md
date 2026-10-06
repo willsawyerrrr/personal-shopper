@@ -31,6 +31,7 @@ Add the Woolworths product page you're viewing to your Personal Shopper items li
 - `identity`: `chrome.identity.launchWebAuthFlow` runs Google sign-in through the Personal Shopper server.
 - `storage`: keeps your access token and its expiry in local extension storage, and the in-progress passkey registration state in session storage.
 - Host permission `https://personal-shopper.willsawyerrrr.dev/*`: the popup and options page call the Personal Shopper server's API (the server sets no CORS headers).
+- Content script on `https://personal-shopper.willsawyerrrr.dev/*`: lets the web app's Account page detect the extension and open its options page. It reads nothing from the page and sends nothing to the server.
 - Host permission `https://*.woolworths.com.au/*`: lets the extension drive the Woolworths login tab opened for passkey registration.
 
 Remote code: none. All code ships in the package.
