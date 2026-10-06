@@ -39,7 +39,7 @@ describe('admin', () => {
   })
 
   it('shows whether a passkey is registered only when passkeys are enabled', async () => {
-    const page = () => app.inject({ method: 'GET', url: '/', headers: authHeader })
+    const page = () => app.inject({ method: 'GET', url: '/account', headers: authHeader })
     expect((await page()).body).not.toContain('Woolworths passkey')
 
     const credentials = new CredentialStore(db.sql, randomBytes(32))
@@ -54,6 +54,77 @@ describe('admin', () => {
     expect((await page()).body).toContain('Registered.')
   })
 
+  describe('pages', () => {
+    const get = (url: string, headers?: { cookie: string }) =>
+      app.inject({ method: 'GET', url, ...(headers && { headers }) })
+    const pages = [
+      {
+        url: '/',
+        label: 'Items',
+        has: ['class="items"'],
+        lacks: ['Signed-in sessions', 'name="word"', 'Invite code'],
+      },
+      {
+        url: '/items/new',
+        label: 'Add item',
+        has: ['name="word"'],
+        lacks: ['class="items"', 'Signed-in sessions', 'Invite code'],
+      },
+      {
+        url: '/household/manage',
+        label: 'Household',
+        has: ['Invite code'],
+        lacks: ['class="items"', 'name="word"', 'Signed-in sessions'],
+      },
+      {
+        url: '/account',
+        label: 'Account',
+        has: ['Signed-in sessions'],
+        lacks: ['class="items"', 'name="word"', 'Invite code'],
+      },
+    ]
+
+    it.each(pages)('renders only its own sections at $url', async ({ url, has, lacks }) => {
+      const response = await get(url, authHeader)
+      expect(response.statusCode).toBe(200)
+      for (const text of has) {
+        expect(response.body).toContain(text)
+      }
+      for (const text of lacks) {
+        expect(response.body).not.toContain(text)
+      }
+    })
+
+    it.each(pages)('marks only $label as the current page at $url', async ({ url, label }) => {
+      const { body } = await get(url, authHeader)
+      expect(body.match(/aria-current="page"/g)).toHaveLength(1)
+      expect(body).toContain(`aria-current="page">${label}</a>`)
+      for (const { url: href } of pages) {
+        expect(body).toContain(`href="${href}"`)
+      }
+      expect(body).toContain('action="/logout"')
+    })
+
+    it.each(pages)(
+      'redirects unauthenticated requests for $url to the login page',
+      async ({ url }) => {
+        const response = await get(url)
+        expect(response.statusCode).toBe(302)
+        expect(response.headers.location).toBe('/login')
+      },
+    )
+
+    it('keeps GET /household as the JSON member list', async () => {
+      const token = await signInClient(app, google)
+      const response = await app.inject({
+        method: 'GET',
+        url: '/household',
+        headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
+      })
+      expect(response.json()).toHaveProperty('members')
+    })
+  })
+
   it('serves a Google sign-in button instead of a password form', async () => {
     const response = await app.inject({ method: 'GET', url: '/login' })
     expect(response.statusCode).toBe(200)
@@ -64,7 +135,7 @@ describe('admin', () => {
 
   it('adapts the pages to phone screens and the system colour scheme', async () => {
     const login = await app.inject({ method: 'GET', url: '/login' })
-    const admin = await app.inject({ method: 'GET', url: '/', headers: authHeader })
+    const admin = await app.inject({ method: 'GET', url: '/account', headers: authHeader })
     for (const page of [login, admin]) {
       expect(page.body).toContain(
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
@@ -113,11 +184,11 @@ describe('admin', () => {
         .map((row) => /<td>([^<]*)<\/td>[\s\S]*\/sessions\/([0-9a-f]+)\/revoke/.exec(row))
         .flatMap((match) => (match ? [{ client: match[1] ?? '', id: match[2] ?? '' }] : []))
     const page = async () =>
-      rows((await app.inject({ method: 'GET', url: '/', headers: authHeader })).body)
+      rows((await app.inject({ method: 'GET', url: '/account', headers: authHeader })).body)
 
     it('lists active sessions, marking the current one, without exposing tokens', async () => {
       const token = await signInClient(app, google, { client: 'extension' })
-      const response = await app.inject({ method: 'GET', url: '/', headers: authHeader })
+      const response = await app.inject({ method: 'GET', url: '/account', headers: authHeader })
       expect(response.body).toContain('web (this session)')
       expect(response.body).toContain('extension')
       expect(response.body).toContain('me@example.com')
@@ -136,7 +207,7 @@ describe('admin', () => {
         headers: authHeader,
       })
       expect(revoke.statusCode).toBe(302)
-      expect(revoke.headers.location).toBe('/')
+      expect(revoke.headers.location).toBe('/account')
       const items = await app.inject({ method: 'GET', url: '/items', headers: bearer })
       expect(items.statusCode).toBe(401)
       const admin = await app.inject({ method: 'GET', url: '/', headers: authHeader })
@@ -174,7 +245,7 @@ describe('admin', () => {
   it('lists existing items', async () => {
     const response = await app.inject({ method: 'GET', url: '/', headers: authHeader })
     expect(response.statusCode).toBe(200)
-    expect(response.body).toContain('milk')
+    expect(response.body).toContain('Milk')
     expect(response.body).toContain('123456')
   })
 
@@ -218,6 +289,9 @@ describe('admin', () => {
     })
     expect(response.statusCode).toBe(400)
     expect(response.body).toContain('Could not find a stockcode')
+    expect(response.body).toContain('aria-current="page">Add item</a>')
+    expect(response.body).toContain('value="bread"')
+    expect(response.body).toContain('value="not a url"')
     const items = await itemsYaml(db.sql)
     expect(items).not.toContain('bread:')
   })
@@ -807,11 +881,14 @@ describe('admin with several users', () => {
     await add(me, 'milk', '1')
     await add(you, 'oatmilk', '2')
     const cookie = await signInWeb(app, google, { email: 'you@example.com' })
-    const page = (await app.inject({ method: 'GET', url: '/', headers: { cookie } })).body
-    expect(page).toContain('Oatmilk')
-    expect(page).not.toContain('<strong class="view">Milk</strong>')
-    expect(page).toContain('you@example.com')
-    expect(page).not.toContain('me@example.com')
+    const get = async (url: string) =>
+      (await app.inject({ method: 'GET', url, headers: { cookie } })).body
+    const items = await get('/')
+    expect(items).toContain('Oatmilk')
+    expect(items).not.toContain('<strong class="view">Milk</strong>')
+    const account = await get('/account')
+    expect(account).toContain('you@example.com')
+    expect(account).not.toContain('me@example.com')
   })
 
   it("does not let a user revoke another user's session", async () => {
@@ -920,6 +997,7 @@ describe('admin with several users', () => {
         })
       const page = await form('/household/invites')
       expect(page.statusCode).toBe(201)
+      expect(page.body).toContain('aria-current="page">Household</a>')
       expect(page.body).toContain('Join household')
       expect(page.body).not.toContain('Leave household')
       const code = /<code>([^<]+)<\/code>/.exec(page.body)?.[1] ?? ''
@@ -932,7 +1010,12 @@ describe('admin with several users', () => {
         payload: `code=${code}`,
       })
       expect(join.statusCode).toBe(302)
-      const shown = await app.inject({ method: 'GET', url: '/', headers: yourCookie })
+      expect(join.headers.location).toBe('/household/manage')
+      const shown = await app.inject({
+        method: 'GET',
+        url: '/household/manage',
+        headers: yourCookie,
+      })
       expect(shown.body).toContain('me@example.com')
       expect(shown.body).toContain('Leave household')
       expect(shown.body).toMatch(
@@ -941,13 +1024,18 @@ describe('admin with several users', () => {
       const bad = await form('/household/join', 'code=nope')
       expect(bad.statusCode).toBe(400)
       expect(bad.body).toContain('invalid, expired or already used')
+      expect(bad.body).toContain('aria-current="page">Household</a>')
       const left = await app.inject({
         method: 'POST',
         url: '/household/leave',
         headers: yourCookie,
       })
       expect(left.statusCode).toBe(302)
-      expect((await form('/household/leave')).statusCode).toBe(409)
+      expect(left.headers.location).toBe('/household/manage')
+      const sole = await form('/household/leave')
+      expect(sole.statusCode).toBe(409)
+      expect(sole.body).toContain('nothing to leave')
+      expect(sole.body).toContain('aria-current="page">Household</a>')
     })
   })
 

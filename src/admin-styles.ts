@@ -197,7 +197,6 @@ export const PAGE_STYLES = `
     table.sessions td:nth-child(4)::before { content: 'Expires'; }
     table.sessions td:nth-child(5) { justify-content: flex-end; padding-top: 0.4rem; }
   }
-  .household h2 { margin-bottom: 0.6rem; }
   .household .hint { margin-bottom: 0.85rem; }
   .household .members { margin: 0 0 1rem; padding-left: 1.1rem; font-size: 0.9rem; }
   .household .members li + li { margin-top: 0.25rem; }
@@ -217,7 +216,28 @@ export const PAGE_STYLES = `
   button.secondary:hover { background: var(--color-bg); }
   .error { color: var(--color-danger); margin: 0 0 1rem; font-size: 0.9rem; }
   .hint { color: var(--color-text-muted); font-size: 0.85rem; margin: 0 0 1rem; }
-  .top-bar { display: flex; align-items: center; justify-content: space-between; }
+  .top-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .top-bar ul { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; margin: 0; padding: 0; list-style: none; }
+  .top-bar a {
+    display: inline-block;
+    padding: 0.3rem 0;
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+  }
+  .top-bar a:hover { color: var(--color-text); }
+  .top-bar a[aria-current='page'] { color: var(--color-link); font-weight: 600; border-bottom-color: var(--color-accent); }
+  .top-bar a:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
   .logout {
     padding: 0.3rem 0.7rem;
     font-size: 0.8rem;
