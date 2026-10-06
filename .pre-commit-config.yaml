@@ -1,0 +1,18 @@
+repos:
+  - repo: local
+    hooks:
+      - id: prettier
+        name: prettier
+        entry: pnpm exec prettier --write --ignore-unknown
+        language: system
+      - id: oxlint
+        name: oxlint
+        entry: pnpm exec oxlint
+        language: system
+        types_or: [ts, javascript]
+      - id: tsc
+        name: tsc
+        entry: pnpm exec tsc --noEmit
+        language: system
+        pass_filenames: false
+        types_or: [ts, tsx]

@@ -46,6 +46,7 @@ pnpm install
 cp .env.example .env   # Google variables (docs/deployment.md#google-sign-in) and DATABASE_URL
 supabase start         # local Postgres; `supabase db reset` applies supabase/migrations
 pnpm dev
+pre-commit install   # prettier, oxlint and tsc run on each commit
 ```
 
 Tests run against a real Postgres at `TEST_DATABASE_URL` (default
