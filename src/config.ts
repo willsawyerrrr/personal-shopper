@@ -1,15 +1,15 @@
 import { parseEncryptionKey } from './users/credentials.ts'
 import { normalizeEmail } from './users/email.ts'
 
-export interface RemindersSyncConfig {
+interface RemindersSyncConfig {
   icloudUsername: string
   icloudAppSpecificPassword: string
   listName: string
   intervalMs: number
 }
 
-export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const
-export type LogLevel = (typeof LOG_LEVELS)[number]
+const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const
+type LogLevel = (typeof LOG_LEVELS)[number]
 
 export interface LegacyFiles {
   tokens: string

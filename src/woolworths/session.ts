@@ -1,6 +1,6 @@
 const BASE_URL = 'https://www.woolworths.com.au'
 
-export const REFRESH_COOKIE = 'w-aref'
+const REFRESH_COOKIE = 'w-aref'
 
 export const REQUIRED_COOKIES = [
   'w-rctx',
@@ -10,7 +10,7 @@ export const REQUIRED_COOKIES = [
 ] as const
 
 /** Akamai Bot Manager cookies; kept when present but not needed for a valid session. */
-export const OPTIONAL_COOKIES = ['bm_sv', '_abck', 'ak_bmsc'] as const
+const OPTIONAL_COOKIES = ['bm_sv', '_abck', 'ak_bmsc'] as const
 
 export const SESSION_COOKIES: readonly string[] = [...REQUIRED_COOKIES, ...OPTIONAL_COOKIES]
 
