@@ -1,4 +1,4 @@
-import { escapeHtml } from './html.ts'
+import { escapeHtml, formatTime } from './html.ts'
 
 export interface HouseholdView {
   members: string[]
@@ -11,7 +11,6 @@ export function renderHousehold(household: HouseholdView): string {
     .map((email) => `<li>${escapeHtml(email)}${email === household.you ? ' (you)' : ''}</li>`)
     .join('')
   return `<section class="household">
-    <h2>Household</h2>
     <p class="hint">Members share these items and one Woolworths account.</p>
     <ul class="members">${members}</ul>
     ${
@@ -37,8 +36,4 @@ export function renderHousehold(household: HouseholdView): string {
       <p class="hint">Joining discards your current items if nobody else is in your household.</p>
     </form>
   </section>`
-}
-
-function formatTime(ms: number): string {
-  return `${new Date(ms).toISOString().slice(0, 16).replace('T', ' ')} UTC`
 }

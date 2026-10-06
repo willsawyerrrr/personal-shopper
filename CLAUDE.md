@@ -76,7 +76,7 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
 
 `src/woolworths` is everything that talks to Woolworths' unofficial API;
 `src/app.ts` wires up Fastify, `src/login.ts` the Google sign-in routes,
-`src/admin.ts` the web app and its JSON API, `src/cart.ts` the cart route, `src/passkey.ts` the passkey routes,
+`src/admin.ts` the web app (pages rendered in `src/admin-pages.ts`) and its JSON API, `src/cart.ts` the cart route, `src/passkey.ts` the passkey routes,
 `src/tokens.ts` the token store, `src/items.ts` the item store, `src/db.ts` the
 Postgres connection and `src/users/` the per-user credential store, session
 storage, Woolworths clients and legacy-file import; `supabase/migrations` is the

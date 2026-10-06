@@ -108,20 +108,20 @@ Bearer tokens authorise the JSON API on `/items`; send
 household: members share items, and `POST /cart/items` adds to the household's
 Woolworths cart.
 
-| Request                                                       | Success                                                                       |
-| ------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `GET /items`                                                  | `200 {"items":[{word, stockcode, quantity, listing?}]}`                       |
-| `POST /items` with `{word, url, quantity?}`                   | `201` with the stored item; `400 {error}` if invalid                          |
-| `PATCH /items/:word` with any of the fields below             | `200` with the stored item; `400`, `404`, `409` below                         |
-| `DELETE /items/:word` (or `POST /items/:word/delete`)         | `204`                                                                         |
-| `PATCH /products/:stockcode/:quantity` with fields below      | `200 {words, stockcode, quantity, listing?}`; `400`, `404`, `409` below       |
-| `DELETE /products/:stockcode/:quantity` (or `POST …/delete`)  | `204`; `404` for an unknown product                                           |
-| `GET /` (HTML), `POST /sessions/:id/revoke` (`204` with JSON) | Browser UI and session revocation                                             |
-| `GET /household`                                              | `200 {"members":[{email, you}]}`                                              |
-| `POST /household/invites`                                     | `201 {code, expiresAt}` (epoch ms); `409 {error}` at the invite limit         |
-| `POST /household/join` with `{code}`                          | `204`; `400 {error}` invalid, expired or used; `409 {error}` already a member |
-| `POST /household/leave`                                       | `204`; `409 {error}` for a sole member                                        |
-| `POST /auth/logout`                                           | `204`; revokes the presented token                                            |
+| Request                                                                                                      | Success                                                                       |
+| ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `GET /items`                                                                                                 | `200 {"items":[{word, stockcode, quantity, listing?}]}`                       |
+| `POST /items` with `{word, url, quantity?}`                                                                  | `201` with the stored item; `400 {error}` if invalid                          |
+| `PATCH /items/:word` with any of the fields below                                                            | `200` with the stored item; `400`, `404`, `409` below                         |
+| `DELETE /items/:word` (or `POST /items/:word/delete`)                                                        | `204`                                                                         |
+| `PATCH /products/:stockcode/:quantity` with fields below                                                     | `200 {words, stockcode, quantity, listing?}`; `400`, `404`, `409` below       |
+| `DELETE /products/:stockcode/:quantity` (or `POST …/delete`)                                                 | `204`; `404` for an unknown product                                           |
+| `GET /`, `/items/new`, `/household/manage`, `/account` (HTML), `POST /sessions/:id/revoke` (`204` with JSON) | Browser UI and session revocation                                             |
+| `GET /household`                                                                                             | `200 {"members":[{email, you}]}`                                              |
+| `POST /household/invites`                                                                                    | `201 {code, expiresAt}` (epoch ms); `409 {error}` at the invite limit         |
+| `POST /household/join` with `{code}`                                                                         | `204`; `400 {error}` invalid, expired or used; `409 {error}` already a member |
+| `POST /household/leave`                                                                                      | `204`; `409 {error}` for a sole member                                        |
+| `POST /auth/logout`                                                                                          | `204`; revokes the presented token                                            |
 
 `PATCH /items/:word` changes only the fields sent, keeps every other entry and the item's position
 in the user's list, and saves atomically. `:word` is normalised like

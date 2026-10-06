@@ -10,14 +10,22 @@
    that user's household: its items, its Woolworths session, its passkey (see
    [Households](#households)). Endpoints,
    token lifetime and the client contract are in [`auth.md`](auth.md).
-2. **`/`** (`src/admin.ts`): lists, adds, edits, and removes the signed-in
-   user's items (the `items` table, `src/items.ts`), no restart required. Items
+2. **The web app** (`src/admin.ts`, pages in `src/admin-pages.ts`): signed-in
+   pages share a top navigation (marking the current page with
+   `aria-current="page"`, plus Sign out): **Items** (`/`) lists, edits and
+   removes the user's items, **Add item** (`/items/new`) adds one, **Household**
+   (`/household/manage`) manages the household and **Account** (`/account`)
+   shows the user's own active sessions with a revoke button and whether a
+   Woolworths passkey is registered. Form posts return to the page they came
+   from, showing validation errors there. The household page is not at
+   `/household` because `GET /household` is the JSON member list. Items
+   are the signed-in user's own (the `items` table, `src/items.ts`), changed with no restart required. Items
    are stored and matched per trigger word, but listed one row per product
    (`src/products.ts`): words sharing a stockcode and quantity appear together,
    display-cased, one per line under the product's listing, sorted by that title (case-insensitive, numbers
    in natural order; storage order is untouched). It is behind Google sign-in
    (`/login` is a "Sign in with Google" button; routes in
-   `src/login.ts`) and shows the user's own active sessions with a revoke button. Since
+   `src/login.ts`). Since
    Woolworths' search is broken (see risks below), there's no in-app product
    search; you find a product on woolworths.com.au yourself and paste its URL
    in, and the stockcode is parsed out of `/shop/productdetails/<stockcode>/...`.
@@ -25,7 +33,7 @@
    instead of the web UI's redirects: `GET /items`,
    `POST /items`, `PATCH /items/:word`, `DELETE /items/:word`,
    `PATCH /products/:stockcode/:quantity`, `DELETE /products/:stockcode/:quantity`,
-   the household routes below, and `401 {error}` when unauthenticated. The web app owns the root-level paths `/`, `/login`, `/logout`, `/items`, `/products`, `/household` and `/sessions`; everything else lives under `/auth`, `/cart`, `/woolworths` or `/healthz`. Saving a user's items replaces
+   the household routes below, and `401 {error}` when unauthenticated. The web app owns the root-level paths `/`, `/login`, `/logout`, `/account`, `/items`, `/products`, `/household` and `/sessions`; everything else lives under `/auth`, `/cart`, `/woolworths` or `/healthz`. Saving a user's items replaces
    them in one transaction, so a reader never sees a partial list. Each
    item also stores its `listing`, the product's title on woolworths.com.au,
    looked up with `WoolworthsClient.listing` (below) when the item is added or

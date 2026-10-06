@@ -6,11 +6,14 @@ import { authenticate, logAuthFailure, requestPath, sessionCookie } from './auth
 import type { AppConfig } from './config.ts'
 import { applyEdit, parseStockcode } from './item-edit.ts'
 import { applyGroupEdit, groupKey, removeGroup } from './products.ts'
-import { renderHousehold, type HouseholdView } from './admin-household.ts'
-import { renderItemRows } from './admin-items.ts'
-import { escapeHtml } from './html.ts'
+import {
+  renderAccountPage,
+  renderAddItemPage,
+  renderHouseholdPage,
+  renderItemsPage,
+} from './admin-pages.ts'
 import { InviteLimitError, type HouseholdStore } from './households.ts'
-import { normalizeWord, type ItemMapping, type ItemsConfig, type ItemStore } from './items.ts'
+import { normalizeWord, type ItemMapping, type ItemStore } from './items.ts'
 import { createListingBackfill, lookupListing } from './listings.ts'
 import type { CredentialStore } from './users/credentials.ts'
 import type { SessionSummary, TokenStore } from './tokens.ts'
@@ -113,21 +116,35 @@ export async function registerAdmin(
         reply.header('set-cookie', sessionCookie('', 0, secureCookie))
         return reply.redirect('/login')
       }
-      return reply.redirect('/')
+      return reply.redirect('/account')
     })
 
     admin.get('/', async (request, reply) => {
       const items = await store.load(emailOf(request))
       void backfillOf(request)
-      const sessions = await sessionsOf(request)
-      const passkey = passkeys && (await passkeys.has(emailOf(request)))
-      const members = await households.members(emailOf(request))
-      reply.type('text/html').send(
-        renderPage(items, sessions, current.get(request)?.id, undefined, passkey, undefined, {
-          members,
-          you: emailOf(request),
-        }),
-      )
+      reply.type('text/html').send(renderItemsPage(items))
+    })
+
+    admin.get('/items/new', async (_request, reply) => {
+      reply.type('text/html').send(renderAddItemPage())
+    })
+
+    admin.get('/account', async (request, reply) => {
+      const email = emailOf(request)
+      reply
+        .type('text/html')
+        .send(
+          renderAccountPage(
+            await sessionsOf(request),
+            current.get(request)?.id,
+            passkeys && (await passkeys.has(email)),
+          ),
+        )
+    })
+
+    // The household web page lives at `/household/manage`: `GET /household` is the JSON member list.
+    admin.get('/household/manage', async (request, reply) => {
+      reply.type('text/html').send(await householdPage(request, {}))
     })
 
     // Members of the household the user's items, Woolworths session and passkey are shared with.
@@ -138,32 +155,29 @@ export async function registerAdmin(
       })),
     }))
 
-    // Responds to a household action: JSON for API clients, else the web page
-    // (with `notice` or `error` shown), which is also where an invite code appears.
     const householdPage = async (
+      request: FastifyRequest,
+      extra: { error?: string; invite?: { code: string; expiresAt: number } },
+    ): Promise<string> => {
+      const email = emailOf(request)
+      return renderHouseholdPage(
+        { members: await households.members(email), you: email, invite: extra.invite },
+        extra.error,
+      )
+    }
+
+    // Responds to a household action from the web page: the page, with `error` or the new
+    // invite code shown.
+    const householdReply = async (
       request: FastifyRequest,
       reply: FastifyReply,
       status: number,
       extra: { error?: string; invite?: { code: string; expiresAt: number } },
-    ) => {
-      const email = emailOf(request)
-      const sessions = await sessionsOf(request)
-      const passkey = passkeys && (await passkeys.has(email))
-      return reply
+    ) =>
+      reply
         .code(status)
         .type('text/html')
-        .send(
-          renderPage(
-            await store.load(email),
-            sessions,
-            current.get(request)?.id,
-            extra.error,
-            passkey,
-            undefined,
-            { members: await households.members(email), you: email, invite: extra.invite },
-          ),
-        )
-    }
+        .send(await householdPage(request, extra))
 
     admin.post('/household/invites', async (request, reply) => {
       try {
@@ -171,7 +185,7 @@ export async function registerAdmin(
         if (wantsJson(request)) {
           return reply.code(201).send(invite)
         }
-        return householdPage(request, reply, 201, { invite })
+        return householdReply(request, reply, 201, { invite })
       } catch (error) {
         if (!(error instanceof InviteLimitError)) {
           throw error
@@ -179,7 +193,7 @@ export async function registerAdmin(
         const message = `Your household can have at most ${config.limits.maxInvitesPerHousehold} unexpired invites.`
         return wantsJson(request)
           ? reply.code(409).send({ error: message })
-          : householdPage(request, reply, 409, { error: message })
+          : householdReply(request, reply, 409, { error: message })
       }
     })
 
@@ -190,7 +204,7 @@ export async function registerAdmin(
           ? await households.join(emailOf(request), code)
           : 'invalid_invite'
       if (result === 'joined') {
-        return wantsJson(request) ? reply.code(204).send() : reply.redirect('/')
+        return wantsJson(request) ? reply.code(204).send() : reply.redirect('/household/manage')
       }
       const [status, error] =
         result === 'already_member'
@@ -198,18 +212,18 @@ export async function registerAdmin(
           : [400, 'That invite code is invalid, expired or already used.']
       return wantsJson(request)
         ? reply.code(status).send({ error })
-        : householdPage(request, reply, status, { error })
+        : householdReply(request, reply, status, { error })
     })
 
     admin.post('/household/leave', async (request, reply) => {
       const result = await households.leave(emailOf(request))
       if (result === 'left') {
-        return wantsJson(request) ? reply.code(204).send() : reply.redirect('/')
+        return wantsJson(request) ? reply.code(204).send() : reply.redirect('/household/manage')
       }
       const error = 'You are the only member of your household, so there is nothing to leave.'
       return wantsJson(request)
         ? reply.code(409).send({ error })
-        : householdPage(request, reply, 409, { error })
+        : householdReply(request, reply, 409, { error })
     })
 
     admin.get('/items', async (request) => {
@@ -235,11 +249,15 @@ export async function registerAdmin(
         if (wantsJson(request)) {
           return reply.code(400).send({ error })
         }
-        const sessions = await sessionsOf(request)
         return reply
           .code(400)
           .type('text/html')
-          .send(renderPage(items, sessions, current.get(request)?.id, error))
+          .send(
+            renderAddItemPage(
+              { word, url, quantity: quantity === undefined ? undefined : String(quantity) },
+              error,
+            ),
+          )
       }
       const listing = await lookupListing(lookupFor?.(emailOf(request)), stockcode, request.log)
       const mapping: ItemMapping = {
@@ -316,15 +334,15 @@ export async function registerAdmin(
         if (wantsJson(request)) {
           return reply.code(result.status).send({ error: result.error })
         }
-        const sessions = await sessionsOf(request)
         return reply
           .code(result.status)
           .type('text/html')
           .send(
-            renderPage(items, sessions, current.get(request)?.id, result.error, undefined, {
-              key: groupKey({ stockcode, quantity }),
-              values: fields,
-            }),
+            renderItemsPage(
+              items,
+              { key: groupKey({ stockcode, quantity }), values: fields },
+              result.error,
+            ),
           )
       }
       if (result.stockcodeChanged) {
@@ -406,94 +424,4 @@ function renderLoginPage(): string {
   <a class="button" href="/auth/google/login">Sign in with Google</a>
 </body>
 </html>`
-}
-
-function renderPage(
-  items: ItemsConfig,
-  sessions: SessionSummary[],
-  currentId: string | undefined,
-  error?: string,
-  passkey?: boolean,
-  edit?: { key: string; values: Record<string, unknown> },
-  household?: HouseholdView,
-): string {
-  const rows = renderItemRows(items, edit)
-
-  const sessionRows = sessions
-    .map(
-      (session) => `
-        <tr>
-          <td>${escapeHtml(session.client)}${session.id === currentId ? ' (this session)' : ''}</td>
-          <td>${escapeHtml(session.email)}</td>
-          <td>${formatTime(session.lastUsedAt)}</td>
-          <td>${formatTime(session.expiresAt)}</td>
-          <td>
-            <form method="post" action="/sessions/${session.id}/revoke">
-              <button type="submit">Revoke</button>
-            </form>
-          </td>
-        </tr>`,
-    )
-    .join('')
-
-  return `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>personal-shopper — items</title>
-  <style>${PAGE_STYLES}</style>
-</head>
-<body>
-  <div class="top-bar">
-    <h1>Shopping list items</h1>
-    <form method="post" action="/logout">
-      <button type="submit" class="logout">Sign out</button>
-    </form>
-  </div>
-  ${error ? `<p class="error">${escapeHtml(error)}</p>` : ''}
-  <section>
-    <div class="items">
-      <div class="item-head" aria-hidden="true"><span>Product</span><span>Stockcode</span><span>Qty</span><span></span></div>
-      ${rows || '<p class="hint">No items configured yet.</p>'}
-    </div>
-  </section>
-  <section>
-    <h2>Add an item</h2>
-    <p class="hint">Find the product on woolworths.com.au and paste its URL below.</p>
-    <form class="add" method="post" action="/items">
-      <label>Trigger word (what you'll say to Siri)
-        <input name="word" required placeholder="milk">
-      </label>
-      <label>Woolworths product URL or stockcode
-        <input name="url" required placeholder="https://www.woolworths.com.au/shop/productdetails/888137/...">
-      </label>
-      <label>Quantity
-        <input name="quantity" type="number" min="1" value="1">
-      </label>
-      <button type="submit">Add item</button>
-    </form>
-  </section>
-  ${
-    passkey === undefined
-      ? ''
-      : `<section>
-    <h2>Woolworths passkey</h2>
-    <p class="hint">${passkey ? 'Registered. The server signs in to Woolworths with it when your session expires.' : 'Not registered. Register one from the Chrome extension.'}</p>
-  </section>`
-  }
-  ${household ? renderHousehold(household) : ''}
-  <section>
-    <h2>Signed-in sessions</h2>
-    <table class="sessions">
-      <thead><tr><th>Client</th><th>Account</th><th>Last used</th><th>Expires</th><th></th></tr></thead>
-      <tbody>${sessionRows}</tbody>
-    </table>
-  </section>
-</body>
-</html>`
-}
-
-function formatTime(ms: number): string {
-  return `${new Date(ms).toISOString().slice(0, 16).replace('T', ' ')} UTC`
 }
