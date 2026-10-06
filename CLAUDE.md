@@ -88,6 +88,7 @@ Intents (clients of `/items` and `/cart/items`). See
 open risks.
 
 ```bash
+pre-commit install              # runs prettier, oxlint and tsc on commit (.pre-commit-config.yaml)
 pnpm run format:check
 pnpm run lint
 pnpm run typecheck
