@@ -30,7 +30,10 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   (`src/woolworths/passkey.ts`; no browser), which a user registers from the
   Chrome extension (virtual authenticator over `chrome.debugger`, uploaded to
   `PUT /woolworths/passkey` in `src/passkey.ts`; bearer token only, rate
-  limited; the web app's Account page can remove it) or by hand with `pnpm register-passkey`. Credentials are AES-256-GCM encrypted in
+  limited; it signs in with the credential at once and replaces the
+  household's stored session, answering 502 and leaving none if that fails;
+  `DELETE` and the web app's Account page remove the credential and the stored
+  session) or by hand with `pnpm register-passkey`. Credentials are AES-256-GCM encrypted in
   the app (`CREDENTIALS_ENCRYPTION_KEY`, required once any exists) before they
   reach the database, and never logged. Without a registered credential,
   `pnpm capture-session` (manual login) is the only recovery. No password or

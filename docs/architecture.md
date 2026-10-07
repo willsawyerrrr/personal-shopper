@@ -19,7 +19,7 @@
    Woolworths passkey is registered, with a "Remove passkey" button when one
    is (`POST /account/passkey/remove`: session cookie, same rate limit as
    `DELETE /woolworths/passkey`, both through `removePasskey` in
-   `src/passkey.ts`, which also drops the user's cached Woolworths session). Form posts return to the page they came
+   `src/passkey.ts`, which also deletes the household's stored Woolworths session). Form posts return to the page they came
    from, showing validation errors there. The household page is not at
    `/household` because `GET /household` is the JSON member list. Items
    are the signed-in user's own (the `items` table, `src/items.ts`), changed with no restart required. Items

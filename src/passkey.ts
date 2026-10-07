@@ -9,11 +9,18 @@ export const PASSKEY_RATE_LIMIT = { max: 10, timeWindow: '1 minute' }
 const PASSKEY_RP_ID = 'auth.woolworths.com.au'
 const SUPPORTED_KEY_TYPES = ['ed25519', 'ec', 'rsa']
 
-/** What the passkey routes need: the encrypted store and a hook to drop a user's cached session. */
+/** How the passkey routes change a household's stored Woolworths session. */
+export interface PasskeySessions {
+  /** Signs in with `credential` and stores the result as the household's session. */
+  replaceSession(email: string, credential: PasskeyCredential): Promise<void>
+  /** Deletes the household's stored session. */
+  clearSession(email: string): Promise<void>
+}
+
+/** What the passkey routes need: the encrypted store and the household session they keep in step with it. */
 export interface PasskeyOptions {
   credentials: CredentialStore
-  /** Called after a user's credential changes, so their next login uses the current one. */
-  invalidate: (email: string) => void
+  sessions: PasskeySessions
 }
 
 const text = (value: unknown): value is string => typeof value === 'string' && value !== ''
@@ -65,26 +72,31 @@ export function selectCredential(
   return { ok: false, error }
 }
 
-/** Removes `email`'s stored passkey credential and drops their cached Woolworths session. */
+/** Removes `email`'s stored passkey credential and their household's stored Woolworths session. */
 export async function removePasskey(
   email: string,
-  { credentials, invalidate }: PasskeyOptions,
+  { credentials, sessions }: PasskeyOptions,
 ): Promise<void> {
   await credentials.delete(email)
-  invalidate(email)
+  await sessions.clearSession(email)
 }
 
 /**
  * Registers `PUT`, `GET` and `DELETE /woolworths/passkey`, which store,
  * report on and remove the Woolworths passkey of the user the bearer token
  * belongs to. Authorised by a bearer token only, never the web session
- * cookie. Credential content is never logged.
+ * cookie. Credential content is never logged. `PUT` signs in with the
+ * credential at once and replaces the household's stored session with the
+ * result; when that fails it answers `502`, keeps the credential and leaves
+ * the household with no stored session. `DELETE` also deletes the stored
+ * session.
  */
 export async function registerPasskey(
   app: FastifyInstance,
   tokens: TokenStore,
-  { credentials, invalidate }: PasskeyOptions,
+  options: PasskeyOptions,
 ): Promise<void> {
+  const { credentials, sessions } = options
   await app.register(async (routes) => {
     const emails = new WeakMap<FastifyRequest, string>()
     const rateLimit = PASSKEY_RATE_LIMIT
@@ -105,7 +117,15 @@ export async function registerPasskey(
       }
       const email = emails.get(request) as string
       await credentials.put(email, [selected.credential])
-      invalidate(email)
+      try {
+        await sessions.replaceSession(email, selected.credential)
+      } catch (error) {
+        request.log.warn({ err: error }, 'woolworths passkey sign-in failed')
+        const reason = error instanceof Error ? error.message : String(error)
+        return reply.code(502).send({
+          error: `passkey saved, but signing in to Woolworths with it failed: ${reason}`,
+        })
+      }
       request.log.info('woolworths passkey registered')
       return { registered: true }
     })
@@ -115,7 +135,7 @@ export async function registerPasskey(
     }))
 
     routes.delete('/woolworths/passkey', { config: { rateLimit } }, async (request) => {
-      await removePasskey(emails.get(request) as string, { credentials, invalidate })
+      await removePasskey(emails.get(request) as string, options)
       request.log.info('woolworths passkey removed')
       return { registered: false }
     })

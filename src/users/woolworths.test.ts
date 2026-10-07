@@ -46,6 +46,16 @@ describe('PgSessionStorage', () => {
     expect((await storage.load())?.cookies).toEqual([{ name: 'w-aref', value: 'two' }])
   })
 
+  it("deletes the household's session for any member and leaves other households", async () => {
+    const storage = new PgSessionStorage(db.sql, 'me@example.com')
+    await storage.save(session('mine'))
+    await new PgSessionStorage(db.sql, 'you@example.com').save(session('yours'))
+    await storage.clear()
+    await expect(storage.load()).resolves.toBeUndefined()
+    await expect(new PgSessionStorage(db.sql, 'you@example.com').load()).resolves.toBeDefined()
+    await expect(storage.clear()).resolves.toBeUndefined()
+  })
+
   it('has no session for an unknown user', async () => {
     await expect(new PgSessionStorage(db.sql, 'nobody@example.com').load()).resolves.toBeUndefined()
   })
@@ -85,6 +95,32 @@ describe('UserWoolworths', () => {
     woolworths.invalidate('ME@example.com')
     expect(woolworths.sessionsFor('me@example.com')).not.toBe(mine)
     expect(woolworths.sessionsFor('you@example.com')).toBe(yours)
+  })
+
+  it('stores the passkey login as the session and replaces the old one', async () => {
+    const storage = new PgSessionStorage(db.sql, 'me@example.com')
+    await storage.save(session('old'))
+    vi.mocked(passkeyLogin).mockResolvedValue(session('fresh'))
+    await woolworths.replaceSession('me@example.com', { credentialId: 'new' })
+    expect(passkeyLogin).toHaveBeenCalledWith([{ credentialId: 'new' }])
+    expect((await storage.load())?.cookies).toEqual([{ name: 'w-aref', value: 'fresh' }])
+  })
+
+  it('deletes the session and rethrows when the passkey login fails', async () => {
+    const storage = new PgSessionStorage(db.sql, 'me@example.com')
+    await storage.save(session('old'))
+    vi.mocked(passkeyLogin).mockRejectedValue(new Error('rejected'))
+    await expect(woolworths.replaceSession('me@example.com', {})).rejects.toThrow('rejected')
+    await expect(storage.load()).resolves.toBeUndefined()
+  })
+
+  it('clears the stored session and drops the cached store', async () => {
+    const storage = new PgSessionStorage(db.sql, 'me@example.com')
+    await storage.save(session('old'))
+    const cached = woolworths.sessionsFor('me@example.com')
+    await woolworths.clearSession('me@example.com')
+    await expect(storage.load()).resolves.toBeUndefined()
+    expect(woolworths.sessionsFor('me@example.com')).not.toBe(cached)
   })
 
   it("adds to the cart with the signed-in user's own cookies", async () => {

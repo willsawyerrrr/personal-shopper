@@ -220,8 +220,13 @@ The body is a credential as returned by CDP `WebAuthn.getCredentials`, or an
 array of them, of which the first usable entry is stored. A credential is
 usable when its `rpId` is `auth.woolworths.com.au`, `credentialId`,
 `userHandle` and `privateKey` are non-empty strings, and `privateKey` is a
-base64 PKCS#8 Ed25519, EC or RSA key. It replaces any stored credential and
-drops the user's cached Woolworths session store, so the next login uses it.
+base64 PKCS#8 Ed25519, EC or RSA key. It replaces any stored credential, then
+signs in to Woolworths with it at once and replaces the household's stored
+session with the result, so carts are driven by the new account straight away.
+If that sign-in fails, the credential stays saved but the household's stored
+session is deleted (the old account never keeps driving the cart) and the
+response is `502`; registering again retries. `DELETE` removes the credential
+and deletes the household's stored session.
 
 | Method   | Success                                       |
 | -------- | --------------------------------------------- |
@@ -229,10 +234,11 @@ drops the user's cached Woolworths session store, so the next login uses it.
 | `GET`    | `200 {"registered": <whether one is stored>}` |
 | `DELETE` | `200 {"registered": false}`                   |
 
-| Status | Body                                                       |
-| ------ | ---------------------------------------------------------- |
-| `400`  | `{"error":"<message>"}`: the body has no usable credential |
-| `401`  | `{"error":"unauthorized"}`                                 |
+| Status | Body                                                                               |
+| ------ | ---------------------------------------------------------------------------------- |
+| `400`  | `{"error":"<message>"}`: the body has no usable credential                         |
+| `401`  | `{"error":"unauthorized"}`                                                         |
+| `502`  | `{"error":"<message>"}`: `PUT` stored the credential but signing in with it failed |
 
 `/account` shows whether the signed-in user has a passkey registered, a button
 that opens the extension's options page to register or replace it and, when one

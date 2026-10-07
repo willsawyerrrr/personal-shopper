@@ -19,6 +19,9 @@ describe('SessionStore', () => {
       save: async (session) => {
         stored = session
       },
+      clear: async () => {
+        stored = undefined
+      },
     }
     store = new SessionStore(storage)
   })

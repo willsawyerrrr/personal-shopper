@@ -25,4 +25,10 @@ export class PgSessionStorage implements SessionStorage {
       on conflict (household_id) do update
         set cookies = excluded.cookies, captured_at = excluded.captured_at`
   }
+
+  async clear(): Promise<void> {
+    await this.sql`
+      delete from woolworths_sessions
+      where household_id = (select household_id from users where email = ${normalizeEmail(this.email)})`
+  }
 }
