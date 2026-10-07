@@ -34,6 +34,8 @@ export interface SessionStorage {
   /** The stored session, or `undefined` when there is none. */
   load(): Promise<StoredSession | undefined>
   save(session: StoredSession): Promise<void>
+  /** Deletes the stored session, if any. */
+  clear(): Promise<void>
 }
 
 // wow-auth-token and prodwow-auth-token are short-lived JWTs (~1hr); treat
@@ -69,6 +71,10 @@ export class SessionStore {
 
   save(session: StoredSession): Promise<void> {
     return this.storage.save(session)
+  }
+
+  clear(): Promise<void> {
+    return this.storage.clear()
   }
 
   isExpired(session: StoredSession): boolean {

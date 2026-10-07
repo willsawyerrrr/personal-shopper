@@ -14,6 +14,8 @@ import { itemsYaml, seedItems, signInClient, signInWeb, testConfig } from './tes
 import { createTestDb } from './testing/db.ts'
 import { FakeGoogle } from './testing/google.ts'
 import { CredentialStore } from './users/credentials.ts'
+import { PgSessionStorage } from './users/sessions.ts'
+import { UserWoolworths } from './users/woolworths.ts'
 
 describe('admin', () => {
   let dir: string
@@ -46,7 +48,7 @@ describe('admin', () => {
     app = buildApp(config, {
       sql: db.sql,
       fetch: google.fetch,
-      passkeys: { credentials, invalidate: () => {} },
+      passkeys: { credentials, sessions: new UserWoolworths(db.sql, credentials) },
     })
     authHeader = { cookie: await signInWeb(app, google) }
     const unregistered = (await page()).body
@@ -60,7 +62,7 @@ describe('admin', () => {
 
   describe('removing the passkey', () => {
     let credentials: CredentialStore
-    let invalidate: ReturnType<typeof vi.fn<(email: string) => void>>
+    const stored = (email: string) => new PgSessionStorage(db.sql, email)
     const remove = (headers?: { cookie: string }) =>
       app.inject({
         method: 'POST',
@@ -70,11 +72,10 @@ describe('admin', () => {
 
     beforeEach(async () => {
       credentials = new CredentialStore(db.sql, randomBytes(32))
-      invalidate = vi.fn<(email: string) => void>()
       app = buildApp(config, {
         sql: db.sql,
         fetch: google.fetch,
-        passkeys: { credentials, invalidate },
+        passkeys: { credentials, sessions: new UserWoolworths(db.sql, credentials) },
       })
       authHeader = { cookie: await signInWeb(app, google) }
     })
@@ -89,13 +90,14 @@ describe('admin', () => {
       expect(await page()).toContain('Remove passkey</button>')
     })
 
-    it('removes the credential, drops the cached session and confirms', async () => {
+    it('removes the credential, deletes the stored session and confirms', async () => {
       await credentials.put('me@example.com', [{ credentialId: 'x' }])
+      await stored('me@example.com').save({ cookies: [], capturedAt: new Date().toISOString() })
       const response = await remove(authHeader)
       expect(response.statusCode).toBe(302)
       expect(response.headers.location).toBe('/account?passkey=removed')
       expect(await credentials.has('me@example.com')).toBe(false)
-      expect(invalidate).toHaveBeenCalledWith('me@example.com')
+      await expect(stored('me@example.com').load()).resolves.toBeUndefined()
       const shown = await app.inject({
         method: 'GET',
         url: response.headers.location as string,

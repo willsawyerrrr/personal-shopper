@@ -2,7 +2,7 @@ import type { Sql } from '../db.ts'
 import { WoolworthsClient } from '../woolworths/client.ts'
 import { passkeyLogin } from '../woolworths/passkey.ts'
 import { SessionStore } from '../woolworths/session.ts'
-import type { CredentialStore } from './credentials.ts'
+import type { CredentialStore, PasskeyCredential } from './credentials.ts'
 import { normalizeEmail } from './email.ts'
 import { PgSessionStorage } from './sessions.ts'
 
@@ -31,6 +31,29 @@ export class UserWoolworths {
   /** Drops the user's cached session store, so the next login reads their current credential. */
   invalidate(email: string): void {
     this.clients.delete(normalizeEmail(email))
+  }
+
+  /**
+   * Signs in with `credential` and stores the result as the household's
+   * session, replacing the previous one. When sign-in fails the stored session
+   * is deleted, so the previous account never drives the cart, and the error
+   * is rethrown.
+   */
+  async replaceSession(email: string, credential: PasskeyCredential): Promise<void> {
+    this.invalidate(email)
+    const sessions = this.sessionsFor(email)
+    try {
+      await sessions.save(await passkeyLogin([credential]))
+    } catch (error) {
+      await sessions.clear()
+      throw error
+    }
+  }
+
+  /** Deletes the household's stored session and drops the cached session store. */
+  async clearSession(email: string): Promise<void> {
+    this.invalidate(email)
+    await this.sessionsFor(email).clear()
   }
 
   private entry(email: string) {

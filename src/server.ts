@@ -30,7 +30,7 @@ const app = buildApp(config, {
   cart: (email) => woolworths.clientFor(email),
   lookup: (email) => woolworths.clientFor(email),
   ...(credentials && {
-    passkeys: { credentials, invalidate: (email) => woolworths.invalidate(email) },
+    passkeys: { credentials, sessions: woolworths },
   }),
 })
 app.addHook('onClose', () => sql.end())

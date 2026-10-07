@@ -11,6 +11,17 @@ import { signInClient, signInWeb, testConfig } from './testing/app.ts'
 import { createTestDb } from './testing/db.ts'
 import { FakeGoogle } from './testing/google.ts'
 import { CredentialStore } from './users/credentials.ts'
+import { PgSessionStorage } from './users/sessions.ts'
+import { UserWoolworths } from './users/woolworths.ts'
+import { passkeyLogin } from './woolworths/passkey.ts'
+import type { StoredSession } from './woolworths/session.ts'
+
+vi.mock('./woolworths/passkey.ts', () => ({ passkeyLogin: vi.fn() }))
+
+const session = (aref: string): StoredSession => ({
+  cookies: [{ name: 'w-aref', value: aref }],
+  capturedAt: new Date().toISOString(),
+})
 
 const pkcs8 = (type: 'ed25519' | 'ec' | 'rsa' | 'x25519'): string => {
   const { privateKey } =
@@ -73,7 +84,7 @@ describe('/woolworths/passkey', () => {
   let google: FakeGoogle
   let app: FastifyInstance
   let credentials: CredentialStore
-  let invalidate: ReturnType<typeof vi.fn<(email: string) => void>>
+  let stored: PgSessionStorage
   let output: string
   let bearer: Record<string, string>
 
@@ -95,11 +106,13 @@ describe('/woolworths/passkey', () => {
     db = await createTestDb()
     google = await FakeGoogle.create()
     credentials = new CredentialStore(db.sql, randomBytes(32))
-    invalidate = vi.fn()
+    stored = new PgSessionStorage(db.sql, 'me@example.com')
+    vi.mocked(passkeyLogin).mockReset()
+    vi.mocked(passkeyLogin).mockResolvedValue(session('new'))
     app = buildApp(testConfig(dir, { logLevel: 'info' }), {
       sql: db.sql,
       fetch: google.fetch,
-      passkeys: { credentials, invalidate },
+      passkeys: { credentials, sessions: new UserWoolworths(db.sql, credentials) },
       logStream: new Writable({
         write(chunk: Buffer, _encoding, callback) {
           output += chunk.toString()
@@ -108,6 +121,7 @@ describe('/woolworths/passkey', () => {
       }),
     })
     bearer = { authorization: `Bearer ${await signInClient(app, google)}` }
+    await stored.save(session('old'))
   })
 
   afterEach(async () => {
@@ -115,13 +129,38 @@ describe('/woolworths/passkey', () => {
     await db.close()
   })
 
-  it('stores the first usable credential of an array and invalidates the session', async () => {
+  const aref = async () => (await stored.load())?.cookies[0]?.value
+
+  it('stores the first usable credential of an array and signs in with it', async () => {
     const usable = credential({ credentialId: 'b3Ro' })
     const response = await call('PUT', [credential({ rpId: 'example.com' }), usable])
     expect(response.statusCode).toBe(200)
     expect(response.json()).toEqual({ registered: true })
     await expect(credentials.get('me@example.com')).resolves.toEqual([usable])
-    expect(invalidate).toHaveBeenCalledWith('me@example.com')
+    expect(passkeyLogin).toHaveBeenCalledWith([usable])
+    expect(await aref()).toBe('new')
+  })
+
+  it('replaces the stored session with the new account', async () => {
+    const replacement = credential({ credentialId: 'bmV3' })
+    vi.mocked(passkeyLogin).mockResolvedValue(session('other-account'))
+    expect((await call('PUT', replacement)).statusCode).toBe(200)
+    expect(passkeyLogin).toHaveBeenCalledWith([replacement])
+    expect(await aref()).toBe('other-account')
+  })
+
+  it('keeps the credential, deletes the session and answers 502 when sign-in fails', async () => {
+    vi.mocked(passkeyLogin).mockRejectedValue(new Error('Woolworths passkey login was rejected'))
+    const value = credential()
+    const response = await call('PUT', value)
+    expect(response.statusCode).toBe(502)
+    expect(response.json()).toEqual({
+      error:
+        'passkey saved, but signing in to Woolworths with it failed: Woolworths passkey login was rejected',
+    })
+    await expect(credentials.get('me@example.com')).resolves.toEqual([value])
+    await expect(stored.load()).resolves.toBeUndefined()
+    expect(output).not.toContain(value.privateKey)
   })
 
   it('replaces an existing credential', async () => {
@@ -136,7 +175,8 @@ describe('/woolworths/passkey', () => {
     expect(response.statusCode).toBe(400)
     expect(response.json()).toEqual({ error: 'credential must be for auth.woolworths.com.au' })
     await expect(credentials.has('me@example.com')).resolves.toBe(false)
-    expect(invalidate).not.toHaveBeenCalled()
+    expect(passkeyLogin).not.toHaveBeenCalled()
+    expect(await aref()).toBe('old')
   })
 
   it('reports whether a passkey is registered', async () => {
@@ -154,13 +194,12 @@ describe('/woolworths/passkey', () => {
     await expect(credentials.has('me@example.com')).resolves.toBe(true)
   })
 
-  it('removes the credential and invalidates the session', async () => {
+  it('removes the credential and deletes the stored session', async () => {
     await call('PUT', credential())
-    invalidate.mockClear()
     const response = await call('DELETE')
     expect(response.json()).toEqual({ registered: false })
     await expect(credentials.has('me@example.com')).resolves.toBe(false)
-    expect(invalidate).toHaveBeenCalledWith('me@example.com')
+    await expect(stored.load()).resolves.toBeUndefined()
   })
 
   it('rejects missing and cookie authorisation', async () => {
