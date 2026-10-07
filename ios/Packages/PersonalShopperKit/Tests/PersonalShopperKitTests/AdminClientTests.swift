@@ -437,7 +437,7 @@ extension AdminClientTests {
 
     @MainActor @Test func editFormStartsFromTheGroup() throws {
         let model = try editModel()
-        #expect(model.words == "Milk, Full Cream Milk")
+        #expect(model.words == ["milk", "full cream milk"])
         #expect(model.group.listing == "Milk 2L")
         #expect(model.product == "123")
         #expect(model.quantity == 2)
@@ -446,12 +446,6 @@ extension AdminClientTests {
 
     @MainActor @Test func editFormValidatesFields() throws {
         let model = try editModel()
-        for empty in ["  ", " , ,"] {
-            model.words = empty
-            #expect(model.wordsError != nil, "\(empty)")
-            #expect(!model.canSubmit)
-        }
-        model.words = "milk"
         for invalid in ["", "abc", "0", "-5", "https://example.com/shop/productdetails/1/x"] {
             model.product = invalid
             #expect(model.productError != nil, "\(invalid)")
@@ -468,16 +462,44 @@ extension AdminClientTests {
         #expect(!model.canSubmit)
     }
 
-    @MainActor @Test func editFormParsesWords() throws {
+    @MainActor @Test func editFormAddsNormalisedPhrases() throws {
         let model = try editModel()
-        model.words = " Oat Milk,, milk , OAT milk ,Oats"
-        #expect(model.parsedWords == ["oat milk", "milk", "oats"])
+        model.newWord = "  Skim   MILK "
+        model.addWord()
+        #expect(model.words == ["milk", "full cream milk", "skim milk"])
+        #expect(model.newWord.isEmpty)
+    }
+
+    @MainActor @Test func editFormIgnoresDuplicateAndEmptyPhrases() throws {
+        let model = try editModel()
+        for phrase in [" MILK ", "Full  Cream Milk", "   "] {
+            model.newWord = phrase
+            model.addWord()
+            #expect(model.newWord.isEmpty)
+        }
+        #expect(model.words == ["milk", "full cream milk"])
+    }
+
+    @MainActor @Test func editFormRemovesPhrasesButKeepsOne() throws {
+        let model = try editModel()
+        model.removeWords(at: [0, 1])
+        #expect(model.words == ["milk", "full cream milk"])
+        model.removeWords(at: [0])
+        #expect(model.words == ["full cream milk"])
+        model.removeWords(at: [0])
+        #expect(model.words == ["full cream milk"])
+        #expect(model.wordsError == nil)
+        #expect(model.canSubmit)
     }
 
     @MainActor @Test func editFormSavesTrimmedFields() async throws {
         StubURLProtocol.stub(body: #"{"words":["oat milk","oats"],"stockcode":456,"quantity":3}"#)
         let model = try editModel()
-        model.words = " Oat milk , Oats "
+        model.newWord = " Oat milk "
+        model.addWord()
+        model.newWord = "Oats"
+        model.addWord()
+        model.removeWords(at: [0, 1])
         model.product = "https://www.woolworths.com.au/shop/productdetails/456/oat-milk"
         model.quantity = 3
         await model.submit()
@@ -493,7 +515,8 @@ extension AdminClientTests {
     @MainActor @Test func editFormShowsServerErrorAndAllowsRetry() async throws {
         StubURLProtocol.stub(status: 409, body: #"{"error":"\"bread\" is already used by another item."}"#)
         let model = try editModel()
-        model.words = "bread"
+        model.newWord = "bread"
+        model.addWord()
         await model.submit()
         #expect(model.phase == .failed("\"bread\" is already used by another item."))
         #expect(!model.signedOut)

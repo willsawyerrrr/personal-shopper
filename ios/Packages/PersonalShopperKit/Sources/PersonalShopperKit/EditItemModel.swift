@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// State behind the edit-item sheet, which edits a product and all its trigger words.
+/// State behind the edit-item sheet, which edits a product and all its trigger phrases.
 @MainActor
 @Observable
 public final class EditItemModel {
@@ -15,8 +15,10 @@ public final class EditItemModel {
     public static let quantityRange = 1...99
 
     public let group: ItemGroup
-    /// The trigger words, separated by commas.
-    public var words: String
+    /// The trigger phrases: lower-cased, unique, in order.
+    public private(set) var words: [String]
+    /// The text of the phrase being typed, before it is added to `words`.
+    public var newWord = ""
     /// A Woolworths product URL or a stockcode.
     public var product: String
     public var quantity: Int
@@ -28,7 +30,7 @@ public final class EditItemModel {
 
     public init(group: ItemGroup, makeClient: @escaping @MainActor () throws -> AdminClient) {
         self.group = group
-        self.words = group.wordsText
+        self.words = group.words
         self.product = String(group.stockcode)
         self.quantity = group.quantity
         self.makeClient = makeClient
@@ -45,16 +47,23 @@ public final class EditItemModel {
         productReference == nil ? "Enter a woolworths.com.au product link or a stockcode." : nil
     }
 
-    /// `words` split on commas, trimmed, lower-cased and de-duplicated.
-    public var parsedWords: [String] {
-        var seen = Set<String>()
-        return words.split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-            .filter { !$0.isEmpty && seen.insert($0).inserted }
+    /// Appends `newWord` to `words`, trimmed, lower-cased and with inner whitespace collapsed,
+    /// unless it is empty or already present. Clears `newWord` either way.
+    public func addWord() {
+        let phrase = newWord.split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased()
+        newWord = ""
+        if !phrase.isEmpty, !words.contains(phrase) { words.append(phrase) }
+    }
+
+    /// Removes the phrases at `offsets`, unless that would leave none.
+    public func removeWords(at offsets: IndexSet) {
+        var remaining = words
+        remaining.remove(atOffsets: offsets)
+        if !remaining.isEmpty { words = remaining }
     }
 
     public var wordsError: String? {
-        parsedWords.isEmpty ? "Enter at least one trigger word." : nil
+        words.isEmpty ? "Add at least one trigger phrase." : nil
     }
 
     public var canSubmit: Bool {
@@ -67,7 +76,7 @@ public final class EditItemModel {
         do {
             try await makeClient().update(
                 group,
-                words: parsedWords,
+                words: words,
                 product: productReference,
                 quantity: quantity
             )

@@ -6,7 +6,8 @@ Woolworths product without opening the web app.
 
 - **App** (`App/`): Items tab (one row per product, titled with its
   Woolworths listing, its trigger words beneath it, pull to refresh, tap a
-  row to edit its trigger words, quantity and product link or stockcode,
+  row to edit its trigger phrases (add one at a time; remove with swipe or
+  Edit, keeping at least one), quantity and product link or stockcode,
   swipe to delete a product with all its words, add by pasted URL) and Settings tab (Sign in
   with Google / Sign out, test connection, and Household: members, create and
   share an invite code, join with a code, leave).

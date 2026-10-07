@@ -12,12 +12,21 @@ struct EditItemSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    TextField("Trigger words, e.g. milk, full cream milk", text: $model.words)
+                Section("Trigger phrases") {
+                    ForEach(model.words, id: \.self) { word in
+                        Text(ItemGroup.displayCase(word))
+                    }
+                    .onDelete { model.removeWords(at: $0) }
+                    .deleteDisabled(model.words.count <= 1)
+                    TextField("Add trigger phrase", text: $model.newWord)
                         .textInputAutocapitalization(.words)
+                        .submitLabel(.done)
+                        .onSubmit { model.addWord() }
                     if let error = model.wordsError {
                         Text(error).foregroundStyle(.red).font(.footnote)
                     }
+                }
+                Section {
                     Stepper("Quantity: \(model.quantity)", value: $model.quantity, in: EditItemModel.quantityRange)
                 }
                 Section("Product") {
@@ -41,6 +50,7 @@ struct EditItemSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .secondaryAction) { EditButton() }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { Task { await save() } }.disabled(!model.canSubmit)
                 }
