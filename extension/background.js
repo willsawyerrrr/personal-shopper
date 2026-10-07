@@ -2,6 +2,7 @@ import { clearSession, getSession, isExpired, SERVER_URL } from './auth.js'
 import { uploadPasskey } from './passkey-api.js'
 import { registerPasskey } from './passkey-flow.js'
 import { CancelledError, IncognitoNotAllowedError, UnauthorizedError } from './passkey-logic.js'
+import { openOptionsForRegistration } from './options-tab.js'
 import { openRegistrationTab } from './passkey-window.js'
 
 const STATE_KEY = 'passkeyState'
@@ -64,10 +65,12 @@ async function start({ normalWindow } = {}) {
   }
 }
 
-chrome.runtime.onMessage.addListener((message) => {
+chrome.runtime.onMessage.addListener((message, sender) => {
   if (message?.type === 'passkey/start') void start({ normalWindow: message.normalWindow })
   if (message?.type === 'passkey/cancel') running?.abort()
-  if (message?.type === 'options/open') void chrome.runtime.openOptionsPage()
+  if (message?.type === 'options/open' && sender.tab && sender.origin === SERVER_URL) {
+    void openOptionsForRegistration(chrome)
+  }
 })
 
 // A worker restart loses the registration, so a state left in progress is stale.

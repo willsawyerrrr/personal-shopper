@@ -102,3 +102,34 @@ export class IncognitoNotAllowedError extends Error {
     this.name = 'IncognitoNotAllowedError'
   }
 }
+
+/** The query parameter the web app's button adds to open the options page. */
+export const AUTO_REGISTER_PARAM = 'register'
+
+/**
+ * Decides whether the options page should start a registration on load.
+ * `search` is `location.search`; the parameter is only honoured with the value
+ * `1`. Returns `{ start: true }`, or `{ start: false, reason }` where `reason`
+ * is `'not-requested'`, `'signed-out'`, `'running'` or `'needs-incognito'`.
+ * `state` is the stored registration state; `incognitoAllowed` whether the
+ * extension may run in Incognito.
+ */
+export function decideAutoRegister({ search, signedIn, state, incognitoAllowed }) {
+  if (new URLSearchParams(search).get(AUTO_REGISTER_PARAM) !== '1') {
+    return { start: false, reason: 'not-requested' }
+  }
+  if (!signedIn) return { start: false, reason: 'signed-out' }
+  if (state?.phase === 'registering' || state?.phase === 'uploading') {
+    return { start: false, reason: 'running' }
+  }
+  if (!incognitoAllowed) return { start: false, reason: 'needs-incognito' }
+  return { start: true }
+}
+
+/** `search` with the auto-register parameter removed. */
+export function withoutAutoRegister(search) {
+  const params = new URLSearchParams(search)
+  params.delete(AUTO_REGISTER_PARAM)
+  const rest = params.toString()
+  return rest ? `?${rest}` : ''
+}
