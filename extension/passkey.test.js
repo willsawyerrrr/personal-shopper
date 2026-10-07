@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fetchRegistered, removePasskey, uploadPasskey } from './passkey-api.js'
 import { registerPasskey } from './passkey-flow.js'
+import { openOptionsForRegistration } from './options-tab.js'
 import { openRegistrationTab } from './passkey-window.js'
 import {
   AUTHENTICATOR_OPTIONS,
@@ -9,9 +10,11 @@ import {
   incognitoWasGranted,
   REGISTRATION_TIMEOUT_MS,
   UnauthorizedError,
+  decideAutoRegister,
   describeStatus,
   isTimedOut,
   selectCredential,
+  withoutAutoRegister,
 } from './passkey-logic.js'
 
 const credential = (overrides = {}) => ({
@@ -346,5 +349,87 @@ describe('openRegistrationTab', () => {
     await close()
     expect(api.windows.remove).not.toHaveBeenCalled()
     expect(api.extension.isAllowedIncognitoAccess).not.toHaveBeenCalled()
+  })
+})
+
+describe('decideAutoRegister', () => {
+  const ready = { search: '?register=1', signedIn: true, state: undefined, incognitoAllowed: true }
+
+  it('starts when requested, signed in, idle and Incognito is allowed', () => {
+    expect(decideAutoRegister(ready)).toEqual({ start: true })
+    expect(decideAutoRegister({ ...ready, state: { phase: 'failed', error: 'x' } })).toEqual({
+      start: true,
+    })
+  })
+
+  it('skips without the parameter or with another value', () => {
+    for (const search of ['', '?other=1', '?register=0']) {
+      expect(decideAutoRegister({ ...ready, search })).toEqual({
+        start: false,
+        reason: 'not-requested',
+      })
+    }
+  })
+
+  it('skips when signed out', () => {
+    expect(decideAutoRegister({ ...ready, signedIn: false })).toEqual({
+      start: false,
+      reason: 'signed-out',
+    })
+  })
+
+  it('skips while a registration is running', () => {
+    for (const phase of ['registering', 'uploading']) {
+      expect(decideAutoRegister({ ...ready, state: { phase } })).toEqual({
+        start: false,
+        reason: 'running',
+      })
+    }
+  })
+
+  it('skips without Incognito access', () => {
+    expect(decideAutoRegister({ ...ready, incognitoAllowed: false })).toEqual({
+      start: false,
+      reason: 'needs-incognito',
+    })
+  })
+})
+
+describe('withoutAutoRegister', () => {
+  it('removes only the register parameter', () => {
+    expect(withoutAutoRegister('?register=1')).toBe('')
+    expect(withoutAutoRegister('?a=b&register=1')).toBe('?a=b')
+    expect(withoutAutoRegister('')).toBe('')
+  })
+})
+
+describe('openOptionsForRegistration', () => {
+  const options = 'chrome-extension://id/options.html'
+  const api = (contexts) => ({
+    runtime: {
+      getURL: (path) => `chrome-extension://id/${path}`,
+      getContexts: vi.fn().mockResolvedValue(contexts),
+    },
+    tabs: { create: vi.fn().mockResolvedValue({}), update: vi.fn().mockResolvedValue({}) },
+    windows: { update: vi.fn().mockResolvedValue({}) },
+  })
+
+  it('opens a new tab when no options tab is open', async () => {
+    const chrome = api([{ documentUrl: 'chrome-extension://id/popup.html', tabId: 1, windowId: 1 }])
+    await openOptionsForRegistration(chrome)
+    expect(chrome.runtime.getContexts).toHaveBeenCalledWith({ contextTypes: ['TAB'] })
+    expect(chrome.tabs.create).toHaveBeenCalledWith({ url: `${options}?register=1` })
+    expect(chrome.tabs.update).not.toHaveBeenCalled()
+  })
+
+  it('reuses and focuses an open options tab, whatever its query', async () => {
+    const chrome = api([{ documentUrl: `${options}?x=1#top`, tabId: 7, windowId: 3 }])
+    await openOptionsForRegistration(chrome)
+    expect(chrome.tabs.update).toHaveBeenCalledWith(7, {
+      url: `${options}?register=1`,
+      active: true,
+    })
+    expect(chrome.windows.update).toHaveBeenCalledWith(3, { focused: true })
+    expect(chrome.tabs.create).not.toHaveBeenCalled()
   })
 })

@@ -48,7 +48,7 @@ The options page registers the passkey the server signs in to Woolworths with
 when its session expires, without the CLI. Needs a Google
 sign-in, and `CREDENTIALS_ENCRYPTION_KEY` set on the server.
 
-1. Options → "Register passkey" (the web app's Account page has a button that opens the options page). The extension opens a new Incognito window
+1. Options → "Register passkey", or the web app's Account page button, which opens the options page with `?register=1` and starts registration there. The extension opens a new Incognito window
    at the Woolworths login (password managers are normally off there, so they
    cannot answer the passkey prompt) and attaches a virtual authenticator to
    its tab with `chrome.debugger` (CDP `WebAuthn.enable` and
@@ -80,6 +80,11 @@ turn its passkey handling off.
 
 "Cancel" (or dismissing the debugging bar, or closing the window or tab) stops
 the registration and does the same cleanup, closing the Incognito window. A failure is shown on the options page.
+The options page removes `?register=1` from its URL on load, so a reload does
+not register again, and starts registration unless you are signed out, a
+registration is already running, or Incognito access is off (it then shows the
+Incognito help instead; "Continue in a normal window" stays an explicit choice)
+(`decideAutoRegister` in `passkey-logic.js`).
 Once registered the page offers "Replace passkey" and "Remove passkey"
 (`DELETE /woolworths/passkey`); the web app's Account page shows the registration too and can remove it.
 
@@ -128,7 +133,9 @@ digit mapped `0-9a-f` to `a-p`).
   host permission below (no extra warning). It marks the page
   (`data-extension-installed` on `<html>`) so the Account page can show its
   "Register passkey" button, and relays that button's click to the service
-  worker, which opens this options page. The page needs no extension ID, so it
+  worker. The worker accepts the message only from a tab on the hosted origin
+  and opens `options.html?register=1` in a new tab, or navigates and focuses an
+  already-open options tab (`options-tab.js`). The page needs no extension ID, so it
   works for the unpacked and the Web Store IDs alike. A local dev server is not
   covered; add its origin to `content_scripts[].matches` to try it.
 - `host_permissions` — required for the popup's and options page's `fetch` to

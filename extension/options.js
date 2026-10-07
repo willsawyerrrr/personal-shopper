@@ -1,7 +1,12 @@
 import { clearSession, getSession, isExpired, SERVER_URL, signIn, signOut } from './auth.js'
 import { createInvite, fetchMembers, joinHousehold, leaveHousehold } from './household-api.js'
 import { fetchRegistered, removePasskey } from './passkey-api.js'
-import { describeStatus, incognitoWasGranted } from './passkey-logic.js'
+import {
+  decideAutoRegister,
+  describeStatus,
+  incognitoWasGranted,
+  withoutAutoRegister,
+} from './passkey-logic.js'
 
 const STATE_KEY = 'passkeyState'
 
@@ -131,10 +136,29 @@ async function init() {
     }),
   )
 
-  registerButton.addEventListener('click', async () => {
+  async function startRegistration() {
     await chrome.runtime.sendMessage({ type: 'passkey/start' })
     await renderPasskey()
-  })
+  }
+  registerButton.addEventListener('click', startRegistration)
+
+  // The web app's button opens this page with `?register=1`; the parameter is
+  // dropped first so a reload does not register again.
+  async function autoRegister() {
+    const { search } = location
+    history.replaceState(null, '', `${location.pathname}${withoutAutoRegister(search)}`)
+    const { [STATE_KEY]: state } = await chrome.storage.session.get(STATE_KEY)
+    const decision = decideAutoRegister({
+      search,
+      signedIn: !isExpired(await getSession()),
+      state,
+      incognitoAllowed: await chrome.extension.isAllowedIncognitoAccess(),
+    })
+    if (decision.start) await startRegistration()
+    else if (decision.reason === 'needs-incognito') {
+      await chrome.storage.session.set({ [STATE_KEY]: { phase: 'needsIncognito' } })
+    }
+  }
   document.getElementById('registerNormal').addEventListener('click', async () => {
     await chrome.runtime.sendMessage({ type: 'passkey/start', normalWindow: true })
     await renderPasskey()
@@ -173,6 +197,7 @@ async function init() {
   await renderAccount()
   await renderPasskey()
   await renderHousehold()
+  await autoRegister()
 }
 
 init()
