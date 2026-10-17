@@ -37,6 +37,7 @@ signed in ([`auth.md`](auth.md#api-client-sign-in)). An unmapped phrase is a
 `404` and an expired Woolworths session a `502`; nothing is queued.
 
 Say "Add to my Woolworths cart with Personal Shopper" and answer "What do you
-want to add?". The "Add Woolworths Product" intent ("Add a product to Personal
+want to add?", or "Add several items to my cart with Personal Shopper" to be
+asked "What next?" after each item until you say "that's it". The "Add Woolworths Product" intent ("Add a product to Personal
 Shopper") adds a trigger word to the user's items from a product link instead; it
 does not add to the cart.

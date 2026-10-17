@@ -22,6 +22,10 @@ Woolworths product without opening the web app.
   required `item` ("What do you want to add?"), calls `POST /cart/items` and
   speaks the result, e.g. "Added 2 × Milk" or the server's "no mapping
   configured" message. Runs in the background without opening the app.
+- **`AddManyToCartIntent`** (`App/AddItemIntent.swift`): the same, repeated.
+  After "What do you want to add?" it adds each answer, speaks the result and
+  asks "What next?" until the answer is "that's it", "done" or similar
+  (`DoneSpeech`).
 - **`Packages/PersonalShopperKit`**: API client, PKCE and sign-in, Keychain and
   settings storage, product URL parsing and the add-item form, shared by all
   of the above.
@@ -97,6 +101,10 @@ to Personal Shopper" and answer the prompt for the link.
 
 To add to the cart, say "Add to my Woolworths cart with Personal Shopper" and
 answer "What do you want to add?" with a mapped item such as "milk".
+
+To add several items in one go, say "Add several items to my cart with
+Personal Shopper" (or "Start a shopping list with Personal Shopper"), then
+name one item at a time. Say "that's it" to finish.
 
 ## TestFlight
 

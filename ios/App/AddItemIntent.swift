@@ -71,6 +71,35 @@ struct AddToCartIntent: AppIntent {
     }
 }
 
+struct AddManyToCartIntent: AppIntent {
+    static let title: LocalizedStringResource = "Add Many to My Woolworths Cart"
+    static let description = IntentDescription(
+        "Keeps asking what to add to your Woolworths cart until you say \"that's it\".")
+    static let openAppWhenRun = false
+
+    @Parameter(title: "Item", requestValueDialog: "What do you want to add?")
+    var item: String
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Add several items to my Woolworths cart")
+    }
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let client = try SettingsStore().client()
+        var spoken = item
+        while !DoneSpeech.isDone(spoken) {
+            let reply: String
+            do {
+                reply = try await client.addToCartDialog(item: spoken.trimmingCharacters(in: .whitespacesAndNewlines))
+            } catch {
+                throw AddItemIntentError.failed(error.localizedDescription)
+            }
+            spoken = try await $item.requestValue(IntentDialog("\(reply). What next?"))
+        }
+        return .result(dialog: "Okay, that's everything.")
+    }
+}
+
 struct PersonalShopperShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
@@ -81,6 +110,15 @@ struct PersonalShopperShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Add to Cart",
             systemImageName: "cart"
+        )
+        AppShortcut(
+            intent: AddManyToCartIntent(),
+            phrases: [
+                "Add several items to my cart with \(.applicationName)",
+                "Start a shopping list with \(.applicationName)",
+            ],
+            shortTitle: "Add Many to Cart",
+            systemImageName: "cart.fill.badge.plus"
         )
         AppShortcut(
             intent: AddItemIntent(),
