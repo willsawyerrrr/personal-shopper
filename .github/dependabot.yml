@@ -6,9 +6,22 @@ updates:
       interval: weekly
     commit-message:
       prefix: 'chore'
+    # The Node major follows the Fly.io server's runtime.
+    ignore:
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
     groups:
       npm:
         patterns: ['*']
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: 'chore'
+    ignore:
+      - dependency-name: node
+        update-types: ['version-update:semver-major']
   - package-ecosystem: github-actions
     directory: /
     schedule:
