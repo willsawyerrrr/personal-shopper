@@ -12,7 +12,7 @@ final class ShareViewController: UIViewController {
     private func present() async {
         let text = await sharedText()
         let model = AddItemModel(urlText: text) { try SettingsStore().client() }
-        let root = ShareView(model: model, hasLink: model.link != nil, signedIn: SettingsStore().isSignedIn) { [weak self] in
+        let root = ShareView(model: model, hasLink: model.link != nil, signInState: SettingsStore().signInState) { [weak self] in
             self?.extensionContext?.completeRequest(returningItems: nil)
         } cancel: { [weak self] in
             self?.extensionContext?.cancelRequest(withError: CocoaError(.userCancelled))
