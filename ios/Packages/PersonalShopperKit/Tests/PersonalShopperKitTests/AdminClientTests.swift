@@ -299,6 +299,11 @@ struct SettingsStoreTests {
         func write(_ token: String?) throws { value.withLock { $0 = token } }
     }
 
+    struct FailingTokens: TokenStore {
+        func read() throws -> String? { throw KeychainError(status: -34018) }
+        func write(_ token: String?) throws {}
+    }
+
     func store() -> SettingsStore {
         SettingsStore(tokens: MemoryTokens())
     }
@@ -314,6 +319,25 @@ struct SettingsStoreTests {
         try tokens.write("ps_tok")
         #expect(configured.isSignedIn)
         _ = try configured.client()
+    }
+
+    @Test func reportsSignInState() throws {
+        let tokens = MemoryTokens()
+        let configured = SettingsStore(tokens: tokens)
+        #expect(configured.signInState == .signedOut)
+        try tokens.write("")
+        #expect(configured.signInState == .signedOut)
+        try tokens.write("ps_tok")
+        #expect(configured.signInState == .signedIn)
+    }
+
+    @Test func reportsUnreadableKeychain() {
+        let configured = SettingsStore(tokens: FailingTokens())
+        guard case .unreadable = configured.signInState else {
+            Issue.record("Expected .unreadable")
+            return
+        }
+        #expect(!configured.isSignedIn)
     }
 
     @Test func unauthorizedClearsToken() async throws {

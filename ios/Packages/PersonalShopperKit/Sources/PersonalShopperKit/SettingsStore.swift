@@ -5,6 +5,13 @@ public enum SharedConfig {
     public static let serverURL = "https://personal-shopper.willsawyerrrr.dev"
 }
 
+public enum SignInState: Equatable, Sendable {
+    case signedIn
+    case signedOut
+    /// The Keychain refused the read, so the token's presence is unknown.
+    case unreadable(String)
+}
+
 /// The access token (Keychain) the app, share extension and App Intent all read.
 public struct SettingsStore: Sendable {
     private let tokens: any TokenStore
@@ -13,7 +20,15 @@ public struct SettingsStore: Sendable {
         self.tokens = tokens
     }
 
-    public var isSignedIn: Bool { ((try? tokens.read()) ?? nil)?.isEmpty == false }
+    public var signInState: SignInState {
+        do {
+            return try tokens.read()?.isEmpty == false ? .signedIn : .signedOut
+        } catch {
+            return .unreadable(error.localizedDescription)
+        }
+    }
+
+    public var isSignedIn: Bool { signInState == .signedIn }
 
     /// A client for the saved settings. A `401` from the server clears the token.
     ///

@@ -84,7 +84,8 @@ access group; nothing is embedded in the app.
 In the Woolworths app or Safari, open a product, tap Share, then Personal
 Shopper (enable it under "More" in the share sheet's app row the first time).
 Set a trigger word, and tap Add. Signed out, the extension
-says "Open Personal Shopper to sign in."
+says "Open Personal Shopper to sign in."; if the Keychain refuses the read, it
+shows the Keychain error instead.
 
 If Personal Shopper is missing, scroll the share sheet's app row, tap More,
 and turn it on under Favourites (reinstall the app if it is still absent).
