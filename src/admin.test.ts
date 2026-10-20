@@ -578,6 +578,53 @@ describe('admin', () => {
         ])
       })
 
+      it('names a product on every word, shows the listing beneath, and clears it', async () => {
+        const named = await app.inject({
+          method: 'PATCH',
+          url: '/products/1/1',
+          headers: json,
+          payload: { name: '  Milk  ' },
+        })
+        expect(named.statusCode).toBe(200)
+        expect(named.json()).toMatchObject({ name: 'Milk', listing: 'Full Cream Milk 2L' })
+        expect(parse(await itemsYaml(db.sql))['milk']).toMatchObject({ name: 'Milk' })
+        const { body } = await app.inject({ method: 'GET', url: '/', headers: authHeader })
+        expect(body).toContain('<strong class="view">Milk</strong>')
+        expect(body).toContain('<div class="view words">Full Cream Milk 2L</div>')
+        const listed = await app.inject({ method: 'GET', url: '/items', headers: json })
+        expect(
+          listed.json().items.filter((item: { name?: string }) => item.name === 'Milk'),
+        ).toHaveLength(2)
+        const cleared = await app.inject({
+          method: 'PATCH',
+          url: '/products/1/1',
+          headers: json,
+          payload: { name: '' },
+        })
+        expect(cleared.json()).not.toHaveProperty('name')
+      })
+
+      it('rejects a name over 80 characters', async () => {
+        const response = await app.inject({
+          method: 'PATCH',
+          url: '/products/1/1',
+          headers: json,
+          payload: { name: 'x'.repeat(81) },
+        })
+        expect(response.statusCode).toBe(400)
+      })
+
+      it('edits the name from the web form', async () => {
+        const response = await app.inject({
+          method: 'POST',
+          url: '/products/1/1/edit',
+          headers: { ...authHeader, ...form },
+          payload: 'words=Milk%2C+Full+Cream+Milk&url=1&quantity=1&name=Moo',
+        })
+        expect(response.statusCode).toBe(302)
+        expect(parse(await itemsYaml(db.sql))['full cream milk']).toMatchObject({ name: 'Moo' })
+      })
+
       it('joins another product when its stockcode and quantity match', async () => {
         const response = await app.inject({
           method: 'PATCH',
@@ -681,6 +728,31 @@ describe('admin', () => {
       expect(await itemsYaml(db.sql)).toContain('bread:')
     })
 
+    it('adds an item with a name, and shares it with the rest of the product', async () => {
+      const add = (payload: Record<string, unknown>) =>
+        app.inject({ method: 'POST', url: '/items', headers: json, payload })
+      const first = await add({ word: 'loaf', url: '888137', name: ' Bread ' })
+      expect(first.json()).toMatchObject({ word: 'loaf', name: 'Bread' })
+      const second = await add({ word: 'toast', url: '888137' })
+      expect(second.json()).toMatchObject({ word: 'toast', name: 'Bread' })
+      const renamed = await add({ word: 'sandwiches', url: '888137', name: 'Sarnies' })
+      expect(renamed.json().name).toBe('Sarnies')
+      const stored = parse(await itemsYaml(db.sql))
+      expect(stored['loaf'].name).toBe('Sarnies')
+      expect(stored['toast'].name).toBe('Sarnies')
+    })
+
+    it('rejects a name over 80 characters when adding', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/items',
+        headers: json,
+        payload: { word: 'loaf', url: '888137', name: 'x'.repeat(81) },
+      })
+      expect(response.statusCode).toBe(400)
+      expect(response.json().error).toContain('80')
+    })
+
     it('rejects a URL without a stockcode', async () => {
       const response = await app.inject({
         method: 'POST',
@@ -724,6 +796,19 @@ describe('admin', () => {
           eggs: { stockcode: 3, quantity: 1 },
         })
         expect(Object.keys(parse(await itemsYaml(db.sql)))).toEqual(['milk', 'bread', 'eggs'])
+      })
+
+      it('sets the name from PATCH /items/:word', async () => {
+        const response = await patch('milk', { name: 'Moo' })
+        expect(response.json()).toEqual({
+          word: 'milk',
+          stockcode: 1,
+          quantity: 1,
+          listing: 'Milk 2L',
+          name: 'Moo',
+        })
+        expect(parse(await itemsYaml(db.sql))['milk'].name).toBe('Moo')
+        expect((await patch('milk', { name: 'x'.repeat(81) })).statusCode).toBe(400)
       })
 
       it('renames the phrase in place, normalised', async () => {

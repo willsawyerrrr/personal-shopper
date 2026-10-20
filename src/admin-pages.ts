@@ -65,6 +65,7 @@ export function renderAddItemPage(
     word?: string | undefined
     url?: string | undefined
     quantity?: string | undefined
+    name?: string | undefined
   } = {},
   error?: string,
 ): string {
@@ -82,6 +83,9 @@ export function renderAddItemPage(
       </label>
       <label>Quantity
         <input name="quantity" type="number" min="1" value="${field(values.quantity ?? '1')}">
+      </label>
+      <label>Name (optional)
+        <input name="name" maxlength="80" value="${field(values.name)}">
       </label>
       <button type="submit">Add item</button>
     </form>

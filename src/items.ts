@@ -7,6 +7,8 @@ export interface ItemMapping {
   quantity: number
   /** The product's title on woolworths.com.au, looked up by the server. */
   listing?: string
+  /** The household's own name for the product, shared by all its words. */
+  name?: string
 }
 
 export type ItemsConfig = Record<string, ItemMapping>
@@ -29,16 +31,22 @@ export class ItemStore {
   /** The user's household's items in their stored order; none when it has none. */
   async load(email: string): Promise<ItemsConfig> {
     const rows = await this.sql<
-      { word: string; stockcode: number; quantity: number; listing: string | null }[]
+      {
+        word: string
+        stockcode: number
+        quantity: number
+        listing: string | null
+        name: string | null
+      }[]
     >`
-      select i.word, i.stockcode, i.quantity, i.listing from items i
+      select i.word, i.stockcode, i.quantity, i.listing, i.name from items i
       join users u on u.household_id = i.household_id
       where u.email = ${normalizeEmail(email)}
       order by i.position`
     return Object.fromEntries(
-      rows.map(({ word, stockcode, quantity, listing }) => [
+      rows.map(({ word, stockcode, quantity, listing, name }) => [
         word,
-        { stockcode, quantity, ...(listing ? { listing } : {}) },
+        { stockcode, quantity, ...(listing ? { listing } : {}), ...(name ? { name } : {}) },
       ]),
     )
   }
@@ -53,6 +61,7 @@ export class ItemStore {
       stockcode: mapping.stockcode,
       quantity: mapping.quantity,
       listing: mapping.listing ?? null,
+      name: mapping.name ?? null,
     }))
     await this.sql.begin(async (tx) => {
       await tx`delete from items where household_id = ${householdId}`

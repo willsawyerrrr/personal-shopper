@@ -12,6 +12,13 @@ struct EditItemSheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    TextField("Name (optional)", text: $model.name)
+                        .textInputAutocapitalization(.words)
+                    if let error = model.nameError {
+                        Text(error).foregroundStyle(.red).font(.footnote)
+                    }
+                }
                 Section("Trigger phrases") {
                     ForEach(model.words, id: \.self) { word in
                         Text(ItemGroup.displayCase(word))

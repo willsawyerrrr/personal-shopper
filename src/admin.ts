@@ -4,7 +4,7 @@ import { PAGE_STYLES } from './admin-styles.ts'
 import { UserRateLimiter } from './rate-limit.ts'
 import { authenticate, logAuthFailure, requestPath, sessionCookie } from './auth.ts'
 import type { AppConfig } from './config.ts'
-import { applyEdit, parseStockcode } from './item-edit.ts'
+import { applyEdit, parseName, parseStockcode } from './item-edit.ts'
 import { applyGroupEdit, groupKey, removeGroup } from './products.ts'
 import {
   renderAccountPage,
@@ -250,9 +250,9 @@ export async function registerAdmin(
     })
 
     admin.post<{
-      Body: { word?: string; url?: string; quantity?: string | number }
+      Body: { word?: string; url?: string; quantity?: string | number; name?: unknown }
     }>('/items', async (request, reply) => {
-      const { word, url, quantity } = request.body
+      const { word, url, quantity, name } = request.body
       const items = await store.load(emailOf(request))
       const stockcode = parseStockcode(url ?? '')
       const error = !word?.trim()
@@ -260,25 +260,46 @@ export async function registerAdmin(
         : !stockcode
           ? 'Could not find a stockcode in that URL — paste a link like /shop/productdetails/123456/product-name, or the stockcode itself.'
           : undefined
-      if (error || !word || !stockcode) {
+      const named = parseName(name)
+      const problem = error ?? (named.ok ? undefined : named.error)
+      if (problem || !word || !stockcode || !named.ok) {
         if (wantsJson(request)) {
-          return reply.code(400).send({ error })
+          return reply.code(400).send({ error: problem })
         }
         return reply
           .code(400)
           .type('text/html')
           .send(
             renderAddItemPage(
-              { word, url, quantity: quantity === undefined ? undefined : String(quantity) },
-              error,
+              {
+                word,
+                url,
+                quantity: quantity === undefined ? undefined : String(quantity),
+                name: typeof name === 'string' ? name : undefined,
+              },
+              problem,
             ),
           )
       }
       const listing = await lookupListing(lookupFor?.(emailOf(request)), stockcode, request.log)
+      const mappedQuantity = Math.max(1, Number(quantity) || 1)
+      const groupName =
+        named.name ??
+        Object.values(items).find(
+          (item) => item.stockcode === stockcode && item.quantity === mappedQuantity && item.name,
+        )?.name
       const mapping: ItemMapping = {
         stockcode,
-        quantity: Math.max(1, Number(quantity) || 1),
+        quantity: mappedQuantity,
         ...(listing ? { listing } : {}),
+        ...(groupName ? { name: groupName } : {}),
+      }
+      if (named.name) {
+        for (const [key, item] of Object.entries(items)) {
+          if (item.stockcode === stockcode && item.quantity === mappedQuantity) {
+            items[key] = { ...item, name: named.name }
+          }
+        }
       }
       items[normalizeWord(word)] = mapping
       await store.save(emailOf(request), items)

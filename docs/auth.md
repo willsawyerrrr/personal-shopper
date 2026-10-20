@@ -108,20 +108,19 @@ Bearer tokens authorise the JSON API on `/items`; send
 household: members share items, and `POST /cart/items` adds to the household's
 Woolworths cart.
 
-| Request                                                      | Success                                                                       |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| `GET /items`                                                 | `200 {"items":[{word, stockcode, quantity, listing?}]}`                       |
-| `POST /items` with `{word, url, quantity?}`                  | `201` with the stored item; `400 {error}` if invalid                          |
-| `PATCH /items/:word` with any of the fields below            | `200` with the stored item; `400`, `404`, `409` below                         |
-| `DELETE /items/:word` (or `POST /items/:word/delete`)        | `204`                                                                         |
-| `PATCH /products/:stockcode/:quantity` with fields below     | `200 {words, stockcode, quantity, listing?}`; `400`, `404`, `409` below       |
-| `DELETE /products/:stockcode/:quantity` (or `POST …/delete`) | `204`; `404` for an unknown product                                           |
-| XX                                                           |
-| `GET /household`                                             | `200 {"members":[{email, you}]}`                                              |
-| `POST /household/invites`                                    | `201 {code, expiresAt}` (epoch ms); `409 {error}` at the invite limit         |
-| `POST /household/join` with `{code}`                         | `204`; `400 {error}` invalid, expired or used; `409 {error}` already a member |
-| `POST /household/leave`                                      | `204`; `409 {error}` for a sole member                                        |
-| `POST /auth/logout`                                          | `204`; revokes the presented token                                            |
+| Request                                                      | Success                                                                        |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| `GET /items`                                                 | `200 {"items":[{word, stockcode, quantity, listing?, name?}]}`                 |
+| `POST /items` with `{word, url, quantity?, name?}`           | `201` with the stored item; `400 {error}` if invalid                           |
+| `PATCH /items/:word` with any of the fields below            | `200` with the stored item; `400`, `404`, `409` below                          |
+| `DELETE /items/:word` (or `POST /items/:word/delete`)        | `204`                                                                          |
+| `PATCH /products/:stockcode/:quantity` with fields below     | `200 {words, stockcode, quantity, listing?, name?}`; `400`, `404`, `409` below |
+| `DELETE /products/:stockcode/:quantity` (or `POST …/delete`) | `204`; `404` for an unknown product                                            |
+| `GET /household`                                             | `200 {"members":[{email, you}]}`                                               |
+| `POST /household/invites`                                    | `201 {code, expiresAt}` (epoch ms); `409 {error}` at the invite limit          |
+| `POST /household/join` with `{code}`                         | `204`; `400 {error}` invalid, expired or used; `409 {error}` already a member  |
+| `POST /household/leave`                                      | `204`; `409 {error}` for a sole member                                         |
+| `POST /auth/logout`                                          | `204`; revokes the presented token                                             |
 
 `PATCH /items/:word` changes only the fields sent, keeps every other entry and the item's position
 in the user's list, and saves atomically. `:word` is normalised like
@@ -133,6 +132,7 @@ in the user's list, and saves atomically. `:word` is normalised like
 | `url`       | Product URL or stockcode, parsed like `POST`; takes precedence over `stockcode` |
 | `stockcode` | Positive integer                                                                |
 | `quantity`  | Positive integer                                                                |
+| `name`      | Display name, trimmed, at most 80 characters; blank clears it (`400` if longer) |
 
 `listing` is the product's title as shown on woolworths.com.au (for example
 `Maleny Dairies Full Cream 2L`), shown as the product's title. It is
@@ -148,10 +148,15 @@ any `GET /items` or `GET /`, so a later list contains it.
 | `404`  | `{"error":"<message>"}`: no item for `:word`                    |
 | `409`  | `{"error":"<message>"}`: `word` is already used by another item |
 
+`name` is the household's own name for a product. It belongs to the product: a
+write sets it on every word sharing the stockcode and quantity, `POST /items`
+gives a word added to a named product that product's name, and it is absent
+when unset.
+
 Items are stored per trigger word, in order, and `GET /items` lists them that
 way. A product is the set of words sharing a stockcode and quantity;
-clients list one row per product, titled with its `listing` (else the first
-word), with the words beneath it display-cased (`Full Cream Milk`, `Coca-Cola`;
+clients list one row per product, titled with its `name` (else its `listing`,
+else the first word) and the `listing` beneath a `name`, with the words beneath it display-cased (`Full Cream Milk`, `Coca-Cola`;
 display only, the stored words stay lower-case). `POST /items` with a
 stockcode and quantity an existing product has adds the word to that product.
 

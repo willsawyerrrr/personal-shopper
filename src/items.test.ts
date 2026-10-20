@@ -66,6 +66,15 @@ describe('ItemStore', () => {
     expect(Object.keys(loaded)).toEqual(['milk', 'bread'])
   })
 
+  it('round-trips display names', async () => {
+    const items: ItemsConfig = {
+      milk: { stockcode: 1, quantity: 1, name: 'Milk' },
+      bread: { stockcode: 2, quantity: 1 },
+    }
+    await store.save('me@example.com', items)
+    expect(await store.load('me@example.com')).toEqual(items)
+  })
+
   it('replaces the previous items on save', async () => {
     await store.save('me@example.com', { milk: { stockcode: 1, quantity: 1 } })
     await store.save('me@example.com', { bread: { stockcode: 2, quantity: 1 } })

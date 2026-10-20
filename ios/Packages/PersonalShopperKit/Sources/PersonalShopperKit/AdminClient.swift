@@ -75,30 +75,33 @@ public struct AdminClient: Sendable {
 
     /// Adds or replaces the item for `word` and returns the stored item.
     @discardableResult
-    public func add(word: String, url: URL, quantity: Int) async throws -> Item {
+    public func add(word: String, url: URL, quantity: Int, name: String? = nil) async throws -> Item {
         struct Body: Encodable {
             let word: String
             let url: String
             let quantity: Int
+            let name: String?
         }
-        let body = Body(word: word, url: url.absoluteString, quantity: quantity)
+        let body = Body(word: word, url: url.absoluteString, quantity: quantity, name: name)
         let data = try await send("POST", path: "/items", body: JSONEncoder().encode(body))
         return try decode(Item.self, from: data)
     }
 
     /// Changes the product `group` and returns it as stored. Only the arguments given
     /// change: `words` replaces the group's whole set of trigger words, `product` is a
-    /// product URL or stockcode.
+    /// product URL or stockcode, `name` the custom display name (empty clears it).
     @discardableResult
     public func update(
-        _ group: ItemGroup, words: [String]? = nil, product: String? = nil, quantity: Int? = nil
+        _ group: ItemGroup, words: [String]? = nil, product: String? = nil, quantity: Int? = nil,
+        name: String? = nil
     ) async throws -> ItemGroup {
         struct Body: Encodable {
             let words: [String]?
             let url: String?
             let quantity: Int?
+            let name: String?
         }
-        let body = Body(words: words, url: product, quantity: quantity)
+        let body = Body(words: words, url: product, quantity: quantity, name: name)
         let data = try await send("PATCH", path: path(of: group), body: JSONEncoder().encode(body))
         return try decode(ItemGroup.self, from: data)
     }

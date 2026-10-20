@@ -13,8 +13,11 @@ public final class EditItemModel {
     }
 
     public static let quantityRange = 1...99
+    public static let maxNameLength = 80
 
     public let group: ItemGroup
+    /// The custom display name; empty clears it.
+    public var name: String
     /// The trigger phrases: lower-cased, unique, in order.
     public private(set) var words: [String]
     /// The text of the phrase being typed, before it is added to `words`.
@@ -30,6 +33,7 @@ public final class EditItemModel {
 
     public init(group: ItemGroup, makeClient: @escaping @MainActor () throws -> AdminClient) {
         self.group = group
+        self.name = group.name ?? ""
         self.words = group.words
         self.product = String(group.stockcode)
         self.quantity = group.quantity
@@ -62,12 +66,17 @@ public final class EditItemModel {
         if !remaining.isEmpty { words = remaining }
     }
 
+    public var nameError: String? {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).unicodeScalars.count > Self.maxNameLength
+            ? "Use at most \(Self.maxNameLength) characters." : nil
+    }
+
     public var wordsError: String? {
         words.isEmpty ? "Add at least one trigger phrase." : nil
     }
 
     public var canSubmit: Bool {
-        wordsError == nil && productError == nil && Self.quantityRange.contains(quantity) && phase != .submitting
+        nameError == nil && wordsError == nil && productError == nil && Self.quantityRange.contains(quantity) && phase != .submitting
     }
 
     public func submit() async {
@@ -78,7 +87,8 @@ public final class EditItemModel {
                 group,
                 words: words,
                 product: productReference,
-                quantity: quantity
+                quantity: quantity,
+                name: name.trimmingCharacters(in: .whitespacesAndNewlines)
             )
             phase = .saved
         } catch {

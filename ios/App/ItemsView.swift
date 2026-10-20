@@ -30,6 +30,12 @@ struct ItemsView: View {
                         VStack(alignment: .leading) {
                             Text(group.title)
                                 .font(.headline)
+                            if let subtitle = group.subtitle {
+                                Text(subtitle)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                            }
                             Text(group.wordsText)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
