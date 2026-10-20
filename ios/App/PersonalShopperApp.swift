@@ -7,9 +7,15 @@ struct PersonalShopperApp: App {
 
     var body: some Scene {
         WindowGroup {
-            TabView {
-                Tab("Items", systemImage: "list.bullet") { ItemsView(session: session) }
-                Tab("Settings", systemImage: "gearshape") { SettingsView(session: session) }
+            Group {
+                if session.signedIn {
+                    TabView {
+                        Tab("Items", systemImage: "list.bullet") { ItemsView(session: session) }
+                        Tab("Settings", systemImage: "gearshape") { SettingsView(session: session) }
+                    }
+                } else {
+                    SignInView(session: session)
+                }
             }
             .onChange(of: scenePhase) { if scenePhase == .active { session.refresh() } }
         }

@@ -59,9 +59,7 @@ struct ItemsView: View {
                 }
             }
             .overlay {
-                if !session.signedIn {
-                    ContentUnavailableView("Signed out", systemImage: "person.crop.circle.badge.exclamationmark", description: Text("Sign in with Google in Settings."))
-                } else if loaded, groups.isEmpty, error == nil {
+                if loaded, groups.isEmpty, error == nil {
                     ContentUnavailableView("No items", systemImage: "cart", description: Text("Tap + or share a Woolworths product to this app."))
                 }
             }

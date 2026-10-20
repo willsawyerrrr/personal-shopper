@@ -9,8 +9,8 @@ Woolworths product without opening the web app.
   name, then its trigger words, pull to refresh, tap a
   row to edit its name, trigger phrases (add one at a time; remove with swipe or
   Edit, keeping at least one), quantity and product link or stockcode,
-  swipe to delete a product with all its words, add by pasted URL) and Settings tab (Sign in
-  with Google / Sign out, test connection, and Household: members, create and
+  swipe to delete a product with all its words, add by pasted URL) and Settings tab (Sign
+  out, test connection, and Household: members, create and
   share an invite code, join with a code, leave).
 - **Share extension** (`ShareExtension/`): appears in the iOS share sheet for
   URLs and text. Pulls the `woolworths.com.au/shop/productdetails/<stockcode>`
@@ -33,8 +33,8 @@ Woolworths product without opening the web app.
 
 ## Signing in
 
-Google is the only way in ([`docs/auth.md`](../docs/auth.md)). Settings > Sign
-in with Google opens `GET /auth/start` in `ASWebAuthenticationSession` with a
+Google is the only way in ([`docs/auth.md`](../docs/auth.md)). While signed
+out, the app shows only a full-screen Sign in with Google screen; it opens `GET /auth/start` in `ASWebAuthenticationSession` with a
 PKCE S256 challenge and a random `state`. The server redirects to
 `dev.willsawyerrrr.personal-shopper://auth` (the registered URL scheme) with a
 one-time `code`; the app checks `state`, redeems the code with the PKCE
@@ -75,7 +75,7 @@ xcodegen generate
 The Keychain group
 `dev.willsawyerrrr.personal-shopper` is created by automatic signing.
 
-Open the app, then Settings: tap Sign in with Google, then Test connection.
+Open the app, tap Sign in with Google, then Settings > Test connection.
 The app talks to `https://personal-shopper.willsawyerrrr.dev`. The token lives
 in the Keychain, shared with the extension and intents through the Keychain
 access group; nothing is embedded in the app.

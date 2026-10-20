@@ -1,23 +1,17 @@
-import AuthenticationServices
 import PersonalShopperKit
 import SwiftUI
 
 struct SettingsView: View {
     let session: Session
-    @Environment(\.webAuthenticationSession) private var webAuthenticationSession
     @State private var message: String?
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    if session.signedIn {
-                        NavigationLink("Household") { HouseholdView(session: session) }
-                        Button("Test connection") { Task { await test() } }
-                        Button("Sign out", role: .destructive) { Task { await signOut() } }
-                    } else {
-                        Button("Sign in with Google") { Task { await signIn() } }
-                    }
+                    NavigationLink("Household") { HouseholdView(session: session) }
+                    Button("Test connection") { Task { await test() } }
+                    Button("Sign out", role: .destructive) { Task { await signOut() } }
                 } footer: {
                     Text("The access token is kept in the Keychain and shared with the Share extension.")
                 }
@@ -25,21 +19,6 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
         }
-    }
-
-    private func signIn() async {
-        do {
-            let attempt = try SignIn(serverURL: SharedConfig.serverURL)
-            let callback = try await webAuthenticationSession.authenticate(
-                using: attempt.startURL, callbackURLScheme: SignIn.callbackScheme)
-            try await session.store.completeSignIn(attempt, callback: callback)
-            message = "Signed in."
-        } catch ASWebAuthenticationSessionError.canceledLogin {
-            message = nil
-        } catch {
-            message = error.localizedDescription
-        }
-        session.refresh()
     }
 
     private func signOut() async {
