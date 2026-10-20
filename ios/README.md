@@ -94,6 +94,11 @@ After changing `project.yml`, run `xcodegen generate` then
 `NSExtensionActivationRule`; pass the built
 `PlugIns/ShareExtension.appex/Info.plist` to check a build.
 
+## Items list
+
+Swipe an item right and tap "Add to Cart" to add it to your Woolworths cart,
+the same as saying its first trigger word to Siri.
+
 ## Shortcuts and Siri
 
 The App Intent is what Shortcuts and Siri use, separate from the share sheet.

@@ -5,6 +5,7 @@ struct ItemsView: View {
     let session: Session
     @State private var groups: [ItemGroup] = []
     @State private var error: String?
+    @State private var notice: String?
     @State private var loaded = false
     @State private var adding = false
     @State private var editing: ItemGroup?
@@ -16,6 +17,12 @@ struct ItemsView: View {
                     Section {
                         Label(error, systemImage: "exclamationmark.triangle")
                             .foregroundStyle(.red)
+                    }
+                }
+                if let notice {
+                    Section {
+                        Label(notice, systemImage: "cart.badge.plus")
+                            .foregroundStyle(.green)
                     }
                 }
                 ForEach(groups) { group in
@@ -33,6 +40,12 @@ struct ItemsView: View {
                         }
                     }
                     .tint(.primary)
+                    .swipeActions(edge: .leading) {
+                        Button("Add to Cart", systemImage: "cart.badge.plus") {
+                            Task { await addToCart(group) }
+                        }
+                        .tint(.green)
+                    }
                 }
                 .onDelete { offsets in
                     let removed = offsets.map { groups[$0] }
@@ -76,6 +89,18 @@ struct ItemsView: View {
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    private func addToCart(_ group: ItemGroup) async {
+        guard let word = group.words.first else { return }
+        do {
+            notice = try await session.store.client().addToCartDialog(item: word)
+            error = nil
+        } catch {
+            notice = nil
+            self.error = error.localizedDescription
+        }
+        session.refresh()
     }
 
     private func remove(_ removed: [ItemGroup]) async {
