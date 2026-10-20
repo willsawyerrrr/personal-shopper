@@ -19,7 +19,7 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   discards the joiner's previous household if they were its only member.
   Tokens stay per user. Everything lives in Supabase Postgres
   (`DATABASE_URL`, server-side only; schema in `supabase/migrations`, applied
-  by the Supabase CLI, never auto-migrated; RLS on with no policies).
+  by the deploy workflow, never by the server; RLS on with no policies).
 - Item matching is exact, hand-maintained mapping (per household: spoken term →
   stockcode + quantity), not fuzzy search or NLU. A user who wants a different
   brand edits their mapping.
@@ -59,8 +59,8 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   every auth rejection a `warn` with a `reason` (never a token, code, ID
   token, secret or cookie). Merges to `main` deploy via
   `.github/workflows/deploy-server.yml` after CI passes (repo secret
-  `FLY_API_TOKEN`); migrations stay manual, applied before merging code that
-  needs them. See [`docs/deployment.md`](docs/deployment.md).
+  `FLY_API_TOKEN`), which first applies unapplied migrations through the
+  Supabase Management API (repo secret `SUPABASE_ACCESS_TOKEN`). See [`docs/deployment.md`](docs/deployment.md).
 - Voice capture: a shared iCloud Reminders list is the queue the server
   syncs into the owner's cart (`REMINDERS_OWNER_EMAIL`, required when the sync
   is enabled; Siri's built-in "add X to my Shopping List"); the iOS

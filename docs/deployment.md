@@ -37,8 +37,8 @@ registered, below).
 
 The schema is `supabase/migrations/*.sql`. Apply it with the Supabase CLI
 (`supabase link --project-ref <ref>` then `supabase db push`, or
-`supabase db reset` against the local stack from `supabase start`); the server
-never migrates. Every table has row level security enabled with no policies,
+`supabase db reset` against the local stack from `supabase start`); the deploy
+applies new migrations (see Updating) and the server never migrates. Every table has row level security enabled with no policies,
 so only the privileged role in `DATABASE_URL` can read or write; the server is
 its only client and the Supabase client keys are not used. Use the pooler
 connection string for `DATABASE_URL`: the server does not use prepared
@@ -181,12 +181,16 @@ only when it changed server code, the `Dockerfile`, `fly.toml` or the
 dependencies. It can also be run by hand from the Actions tab. The rebuilt
 image rolls the machine; the data is in the database and persists.
 
-Migrations are not applied by the deploy. Apply new ones with the Supabase CLI
-(`supabase db push`) before merging code that needs them.
+Before deploying, the workflow runs `scripts/apply-migrations.sh`, which
+applies every `supabase/migrations/*.sql` the project's migration history lacks
+(matched by name, in filename order) through the Supabase Management API, so
+the schema is in place before the new image rolls out. Write migrations that
+stay compatible with the previous image, which keeps serving until the roll.
 
-The workflow needs the repo secret `FLY_API_TOKEN`, created with
-`fly tokens create deploy` (from the app's directory) and stored under that
-name.
+The workflow needs the repo secrets `FLY_API_TOKEN`, created with
+`fly tokens create deploy` (from the app's directory), and
+`SUPABASE_ACCESS_TOKEN`, a Supabase personal access token; each is stored under
+that name.
 
 ## Logs
 
