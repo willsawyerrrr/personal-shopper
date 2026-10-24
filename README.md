@@ -43,11 +43,16 @@ through `POST /cart/items`, authorised by the app's bearer token.
 
 ```bash
 pnpm install
-cp .env.example .env   # Google variables (docs/deployment.md#google-sign-in) and DATABASE_URL
 supabase start         # local Postgres; `supabase db reset` applies supabase/migrations
 pnpm dev
 pre-commit install   # prettier, oxlint and tsc run on each commit
 ```
+
+`pnpm dev` and `pnpm start` load the server's configuration from the Personal Shopper
+[1Password Environment](https://developer.1password.com/docs/environments/) (`pypsxvgj5p7ioxffch5lil4w5u`)
+through `op run --environment`; there is no `.env` file. The variables are listed in
+[`docs/deployment.md`](docs/deployment.md#configuration). Run the scripts the same way:
+`op run --environment pypsxvgj5p7ioxffch5lil4w5u -- pnpm run passkey-login`.
 
 Tests run against a real Postgres at `TEST_DATABASE_URL` (default
 `postgres://postgres@localhost:54329/postgres`; each test uses its own schema):
