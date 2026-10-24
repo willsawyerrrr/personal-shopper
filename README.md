@@ -48,11 +48,12 @@ pnpm dev
 pre-commit install   # prettier, oxlint and tsc run on each commit
 ```
 
-`pnpm dev` and `pnpm start` load the server's configuration from the Personal Shopper
-[1Password Environment](https://developer.1password.com/docs/environments/) (`pypsxvgj5p7ioxffch5lil4w5u`)
+`pnpm dev` and `pnpm start` load the server's configuration from the Apple Development
+(`b5zkkwxuutlttwbrv5xhgojye4`), General Purpose (`3i642eynjpsx2uctyqlexobgge`) and Personal Shopper (`pypsxvgj5p7ioxffch5lil4w5u`)
+[1Password Environments](https://developer.1password.com/docs/environments/)
 through `op run --environment`; there is no `.env` file. The variables are listed in
 [`docs/deployment.md`](docs/deployment.md#configuration). Run the scripts the same way:
-`op run --environment pypsxvgj5p7ioxffch5lil4w5u -- pnpm run passkey-login`.
+`op run --environment b5zkkwxuutlttwbrv5xhgojye4 --environment 3i642eynjpsx2uctyqlexobgge --environment pypsxvgj5p7ioxffch5lil4w5u -- pnpm run passkey-login`.
 
 Tests run against a real Postgres at `TEST_DATABASE_URL` (default
 `postgres://postgres@localhost:54329/postgres`; each test uses its own schema):

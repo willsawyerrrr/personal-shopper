@@ -60,7 +60,7 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   token, secret or cookie). Merges to `main` deploy via
   `.github/workflows/deploy-server.yml` after CI passes (`FLY_API_TOKEN` from the
   Environment), which first applies unapplied migrations through the
-  Supabase Management API (`SUPABASE_ACCESS_TOKEN` from the Environment). See [`docs/deployment.md`](docs/deployment.md).
+  Supabase Management API (`SUPABASE_ACCESS_TOKEN` from General Purpose). See [`docs/deployment.md`](docs/deployment.md).
 - Voice capture: a shared iCloud Reminders list is the queue the server
   syncs into the owner's cart (`REMINDERS_OWNER_EMAIL`, required when the sync
   is enabled; Siri's built-in "add X to my Shopping List"); the iOS
@@ -71,7 +71,7 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
 - iOS release: merges to `main` touching `ios/**` ship to TestFlight via
   `.github/workflows/deploy-ios.yml` (platform's reusable `ios-testflight.yml`).
   Needs `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` and `DEVELOPMENT_TEAM` from the
-  Environments, and an App Store Connect app record for
+  Apple Development Environment, and an App Store Connect app record for
   `dev.willsawyerrrr.personal-shopper`. See
   [`ios/README.md`](ios/README.md#testflight).
 
@@ -108,14 +108,14 @@ xcodebuild test -project ios/PersonalShopper.xcodeproj -scheme PersonalShopper -
 ```
 
 iOS device signing: write `DEVELOPMENT_TEAM = <team ID>` to the gitignored
-`ios/Config/Local.xcconfig` from the Environment, included optionally by
+`ios/Config/Local.xcconfig` from the Apple Development Environment, included optionally by
 `Config/Shared.xcconfig`. Never set the team in the Xcode UI or commit the ID. See
 [`ios/README.md`](ios/README.md#setup).
 
-Secrets and configuration live in the Personal Shopper 1Password Environment
-(`pypsxvgj5p7ioxffch5lil4w5u`; Apple Development is `b5zkkwxuutlttwbrv5xhgojye4`), listed in
+Secrets and configuration live in the shared Apple Development (`b5zkkwxuutlttwbrv5xhgojye4`) and General
+Purpose (`3i642eynjpsx2uctyqlexobgge`) 1Password Environments and the Personal Shopper one (`pypsxvgj5p7ioxffch5lil4w5u`), listed in
 [`docs/deployment.md`](docs/deployment.md#configuration). Run commands under
-`op run --environment pypsxvgj5p7ioxffch5lil4w5u -- <command>`; workflows load it with
+`op run --environment b5zkkwxuutlttwbrv5xhgojye4 --environment 3i642eynjpsx2uctyqlexobgge --environment pypsxvgj5p7ioxffch5lil4w5u -- <command>` (shared first, project last; the last wins on a clash); workflows load it with
 `willsawyerrrr/platform/.github/actions/load-op-environment` (repo secret
 `OP_SERVICE_ACCOUNT_TOKEN`, repo variable `OP_ENVIRONMENT_IDS`, the only ones).
 
