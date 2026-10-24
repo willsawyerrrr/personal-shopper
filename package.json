@@ -9,8 +9,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "start": "node --env-file=.env dist/src/server.js",
-    "dev": "tsx watch --env-file=.env src/server.ts",
+    "start": "op run --environment b5zkkwxuutlttwbrv5xhgojye4 --environment 3i642eynjpsx2uctyqlexobgge --environment pypsxvgj5p7ioxffch5lil4w5u -- node dist/src/server.js",
+    "dev": "op run --environment b5zkkwxuutlttwbrv5xhgojye4 --environment 3i642eynjpsx2uctyqlexobgge --environment pypsxvgj5p7ioxffch5lil4w5u -- tsx watch src/server.ts",
     "lint": "oxlint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
