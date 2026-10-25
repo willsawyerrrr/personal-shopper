@@ -50,28 +50,48 @@ interface Container {
 }
 
 /** Runs the script against a fake page and returns what it installed. */
-function load() {
+function load({ native = true, container = true } = {}) {
   const posted: Posted[] = []
   const original = {
     create: vi.fn(async () => 'native-create'),
     get: vi.fn(async () => 'native-get'),
   }
-  const credentials = { ...original } as unknown as Container
+  const navigator: { credentials?: Container } = container
+    ? { credentials: { ...original } as unknown as Container }
+    : {}
   const window: Record<string, unknown> = {
     webkit: { messageHandlers: { passkey: { postMessage: (m: Posted) => posted.push(m) } } },
   }
   window.top = window
-  const PublicKeyCredential = Object.assign(function () {}, {
-    isUserVerifyingPlatformAuthenticatorAvailable: async () => false,
-    isConditionalMediationAvailable: async () => true,
-  })
-  new Function('navigator', 'location', 'window', 'PublicKeyCredential', script)(
-    { credentials },
+  if (native) {
+    window.PublicKeyCredential = Object.assign(function () {}, {
+      isUserVerifyingPlatformAuthenticatorAvailable: async () => false,
+      isConditionalMediationAvailable: async () => true,
+    })
+  }
+  new Function('navigator', 'location', 'window', script)(
+    navigator,
     new URL(`${ORIGIN}/u/login`),
     window,
-    PublicKeyCredential,
   )
-  return { credentials, original, posted, PublicKeyCredential }
+  const PublicKeyCredential = window.PublicKeyCredential as PublicKeyCredentialStatics &
+    (new () => object)
+  return { credentials: navigator.credentials!, original, posted, PublicKeyCredential }
+}
+
+interface PublicKeyCredentialStatics {
+  isUserVerifyingPlatformAuthenticatorAvailable: () => Promise<boolean>
+  isConditionalMediationAvailable: () => Promise<boolean>
+  isPasskeyPlatformAuthenticatorAvailable: () => Promise<boolean>
+  getClientCapabilities: () => Promise<Record<string, boolean>>
+  parseCreationOptionsFromJSON: (json: object) => {
+    challenge: Uint8Array
+    user: { id: Uint8Array }
+  }
+  parseRequestOptionsFromJSON: (json: object) => {
+    challenge: Uint8Array
+    allowCredentials: { id: Uint8Array }[]
+  }
 }
 
 const challenge = Uint8Array.from([1, 2, 3, 4])
@@ -288,5 +308,72 @@ describe('passkey authenticator script', () => {
       true,
     )
     await expect(PublicKeyCredential.isConditionalMediationAvailable()).resolves.toBe(false)
+  })
+
+  it.each([
+    ['a browser without PublicKeyCredential', { native: false }],
+    ['a browser without navigator.credentials', { native: false, container: false }],
+  ])('defines the WebAuthn surface pages detect in %s', async (_name, env) => {
+    const { credentials, PublicKeyCredential } = load(env)
+    expect(typeof PublicKeyCredential).toBe('function')
+    await expect(PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()).resolves.toBe(
+      true,
+    )
+    await expect(PublicKeyCredential.isConditionalMediationAvailable()).resolves.toBe(false)
+    await expect(PublicKeyCredential.isPasskeyPlatformAuthenticatorAvailable()).resolves.toBe(true)
+    await expect(PublicKeyCredential.getClientCapabilities()).resolves.toMatchObject({
+      passkeyPlatformAuthenticator: true,
+      userVerifyingPlatformAuthenticator: true,
+      conditionalCreate: false,
+      conditionalGet: false,
+    })
+    expect(await credentials.create(creationOptions())).toBeInstanceOf(PublicKeyCredential)
+  })
+
+  it('serialises credentials with toJSON', async () => {
+    const { credentials } = load({ native: false })
+    const created = (await credentials.create(creationOptions())) as unknown as {
+      toJSON: () => Record<string, Record<string, unknown>>
+    } & Created
+    const json = created.toJSON()
+    expect(json).toMatchObject({
+      id: created.id,
+      rawId: created.id,
+      type: 'public-key',
+      authenticatorAttachment: 'platform',
+      clientExtensionResults: {},
+    })
+    expect(Buffer.from(json.response!.attestationObject as string, 'base64url')).toEqual(
+      Buffer.from(created.response.attestationObject),
+    )
+    expect(json.response).toMatchObject({
+      publicKeyAlgorithm: -7,
+      transports: ['internal', 'hybrid'],
+    })
+
+    const asserted = (await credentials.get({
+      publicKey: { challenge, rpId: RP_ID },
+    })) as unknown as {
+      toJSON: () => Record<string, Record<string, string>>
+    } & Asserted
+    expect(asserted.toJSON().response!.signature).toBe(
+      Buffer.from(asserted.response.signature).toString('base64url'),
+    )
+  })
+
+  it('parses options from JSON', () => {
+    const { PublicKeyCredential } = load({ native: false })
+    const b64 = Buffer.from([1, 2, 3]).toString('base64url')
+    const creation = PublicKeyCredential.parseCreationOptionsFromJSON({
+      challenge: b64,
+      user: { id: b64 },
+    })
+    expect(Buffer.from(creation.challenge)).toEqual(Buffer.from([1, 2, 3]))
+    expect(Buffer.from(creation.user.id)).toEqual(Buffer.from([1, 2, 3]))
+    const request = PublicKeyCredential.parseRequestOptionsFromJSON({
+      challenge: b64,
+      allowCredentials: [{ type: 'public-key', id: b64 }],
+    })
+    expect(Buffer.from(request.allowCredentials[0]!.id)).toEqual(Buffer.from([1, 2, 3]))
   })
 })

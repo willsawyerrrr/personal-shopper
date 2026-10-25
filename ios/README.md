@@ -116,8 +116,12 @@ A `WKUserScript` (`PersonalShopperKit/Resources/passkey-authenticator.js`,
 document start, all frames) replaces `navigator.credentials.create` and `get`
 for public-key requests with a software authenticator, so the system passkey
 UI never appears: an ES256 key pair from WebCrypto, `none` attestation, user
-present and verified, and `isUserVerifyingPlatformAuthenticatorAvailable`
-resolving `true`. Created credentials are kept in memory for the frame (so
+present and verified. It also defines the WebAuthn surface pages
+feature-detect before offering a passkey (`PublicKeyCredential` with
+`isUserVerifyingPlatformAuthenticatorAvailable` and
+`isPasskeyPlatformAuthenticatorAvailable` resolving `true`, `getClientCapabilities`,
+the `parse*OptionsFromJSON` helpers, and `toJSON` on credentials) when the web
+view lacks them. The web view presents a Mobile Safari user agent. Created credentials are kept in memory for the frame (so
 `get` can sign for them) and posted to the `passkey` message handler; the app
 uploads one only when it comes from a frame on `auth.woolworths.com.au`, as
 `{rpId, credentialId, userHandle, privateKey}` (standard base64, PKCS#8 key).
