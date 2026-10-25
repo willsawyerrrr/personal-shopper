@@ -66,11 +66,12 @@ To run on a device, set your team in the gitignored `Config/Local.xcconfig`
 work for the simulator and CI):
 
 ```bash
-cp Config/Local.xcconfig.example Config/Local.xcconfig
-# set DEVELOPMENT_TEAM; find the ID in Xcode > Settings > Accounts > Manage
-# Certificates, or developer.apple.com > Membership details > Team ID
+op run --environment b5zkkwxuutlttwbrv5xhgojye4 --environment 3i642eynjpsx2uctyqlexobgge --environment pypsxvgj5p7ioxffch5lil4w5u -- \
+  sh -c 'echo "DEVELOPMENT_TEAM = $DEVELOPMENT_TEAM" > Config/Local.xcconfig'
 xcodegen generate
 ```
+
+`DEVELOPMENT_TEAM` comes from the Apple Development 1Password Environment.
 
 The Keychain group
 `dev.willsawyerrrr.personal-shopper` is created by automatic signing.
@@ -121,9 +122,11 @@ archive the app and upload it to TestFlight through
 `ios-testflight.yml`. Run it by hand from the Actions tab
 (`workflow_dispatch`). Requires:
 
-- Repo secrets `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_P8` (an App Store
-  Connect API key).
-- Repo variable `DEVELOPMENT_TEAM` (the team ID; never committed).
+- Variables `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_P8` (an App Store Connect API key)
+  and `DEVELOPMENT_TEAM` (the team ID; never committed), in the Apple Development
+  1Password Environment. Repo secret `OP_SERVICE_ACCOUNT_TOKEN` and
+  repo variable `OP_ENVIRONMENT_IDS` (`b5zkkwxuutlttwbrv5xhgojye4 3i642eynjpsx2uctyqlexobgge pypsxvgj5p7ioxffch5lil4w5u`) let the workflow load them; see
+  [`docs/deployment.md`](../docs/deployment.md#configuration).
 - An App Store Connect app record for `dev.willsawyerrrr.personal-shopper`
   (the extension, `.share`, is signed with it).
 

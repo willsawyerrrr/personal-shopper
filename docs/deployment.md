@@ -33,6 +33,43 @@ registered, below).
   renamed with an `.imported` suffix afterwards; once all are, the volume and
   the four path variables can be removed.
 
+## Configuration
+
+Secrets and settings live in three [1Password Environments](https://developer.1password.com/docs/environments/); IDs are not secrets.
+Apple Development (`b5zkkwxuutlttwbrv5xhgojye4`) and Shared (`3i642eynjpsx2uctyqlexobgge`) hold the account-level secrets
+(`DEVELOPMENT_TEAM`, `SUPABASE_ACCESS_TOKEN`, …); Personal Shopper (`pypsxvgj5p7ioxffch5lil4w5u`) holds `FLY_API_TOKEN` and the server's variables.
+Local commands run under `op run --environment b5zkkwxuutlttwbrv5xhgojye4 --environment 3i642eynjpsx2uctyqlexobgge --environment pypsxvgj5p7ioxffch5lil4w5u -- <command>` (`pnpm dev` and `pnpm start` already do).
+In production Fly secrets and `fly.toml` supply the server's variables.
+
+CI loads the Environments with `willsawyerrrr/platform/.github/actions/load-op-environment`,
+which exports every variable to later steps. It uses the repo secret `OP_SERVICE_ACCOUNT_TOKEN`
+(a service account scoped to the three Environments) and the repo variable `OP_ENVIRONMENT_IDS`
+(`b5zkkwxuutlttwbrv5xhgojye4 3i642eynjpsx2uctyqlexobgge pypsxvgj5p7ioxffch5lil4w5u`: Apple Development, Shared, then Personal Shopper; the last Environment wins on a
+duplicate name). The reusable `ios-testflight.yml` loads them the same way.
+
+| Variable                                                                     | Used by         | Notes                                                                                                                                                                                                             |
+| ---------------------------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FLY_API_TOKEN`                                                              | deploy workflow | `fly tokens create deploy`                                                                                                                                                                                        |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                                   | server          | Google OAuth web client ([Google sign-in](#google-sign-in)); the redirect URI registered with Google is `${PUBLIC_BASE_URL}/auth/google/callback`                                                                 |
+| `DATABASE_URL`                                                               | server, scripts | Postgres connection string of the privileged role the server connects as; the schema is in `supabase/migrations`                                                                                                  |
+| `CREDENTIALS_ENCRYPTION_KEY`                                                 | server          | 32 bytes, base64 or hex (`openssl rand -base64 32`), encrypting stored passkey credentials; required once any credential exists                                                                                   |
+| `REMINDERS_OWNER_EMAIL`                                                      | server, scripts | The user the Reminders sync, file import and scripts act for; required when the Reminders sync is enabled                                                                                                         |
+| `PUBLIC_BASE_URL`                                                            | server          | Origin the server is reached at, without a path                                                                                                                                                                   |
+| `ALLOWED_CLIENT_REDIRECTS`                                                   | server          | Comma-separated redirect URIs `/auth/start` accepts, matched exactly; defaults to the iOS app's `dev.willsawyerrrr.personal-shopper://auth`. Add the Chrome extension's `https://<extension-id>.chromiumapp.org/` |
+| `PORT`                                                                       | server          | Default `3000`                                                                                                                                                                                                    |
+| `LOG_LEVEL`                                                                  | server          | `fatal`, `error`, `warn`, `info` (default), `debug` (also logs `/healthz`), `trace` or `silent`                                                                                                                   |
+| `TRUST_PROXY`                                                                | server          | `true` behind a reverse proxy so rate limiting uses `X-Forwarded-For`; default `false`                                                                                                                            |
+| `ITEMS_PATH`, `TOKEN_STORE_PATH`, `SESSION_PATH`, `PASSKEY_CREDENTIALS_PATH` | server          | Files of an earlier single-user deployment, imported into the owner's rows at startup then renamed `.imported`; defaults `items.yml`, `tokens.json`, `session.json`, `passkey-credentials.json`                   |
+| `MAX_USERS`                                                                  | server          | Total users; default `50`                                                                                                                                                                                         |
+| `MAX_INVITES_PER_HOUSEHOLD`                                                  | server          | Unexpired invites per household; default `5`                                                                                                                                                                      |
+| `MAX_TOKENS_PER_USER`                                                        | server          | Unexpired tokens per user; default `20`                                                                                                                                                                           |
+| `USER_RATE_LIMIT_PER_MINUTE`                                                 | server          | Authenticated requests per minute per user on `/` and `/cart`; default `120`                                                                                                                                      |
+| `IP_RATE_LIMIT_PER_MINUTE`                                                   | server          | Requests per minute per client IP on each `/auth/*` route and `POST /cart/items`; default `30`                                                                                                                    |
+| `SESSION_KEEPALIVE_INTERVAL_MS`                                              | server          | Woolworths login heartbeat; `0` disables; default `21600000`                                                                                                                                                      |
+| `ICLOUD_USERNAME`, `ICLOUD_APP_SPECIFIC_PASSWORD`                            | server          | Set both to enable the Reminders sync; the password is generated at appleid.apple.com. See [`architecture.md`](architecture.md)                                                                                   |
+| `REMINDERS_LIST_NAME`                                                        | server          | Default `Shopping List`                                                                                                                                                                                           |
+| `REMINDERS_SYNC_INTERVAL_MS`                                                 | server          | Default `300000`                                                                                                                                                                                                  |
+
 ## Database
 
 The schema is `supabase/migrations/*.sql`. Apply it with the Supabase CLI
@@ -98,7 +135,7 @@ One-off setup in [Google Cloud Console](https://console.cloud.google.com/);
    for the Chrome extension (the default covers only the iOS app; the
    extension ID is pinned in `extension/manifest.json`).
 
-5. For local development put the same values in `.env` with
+5. For local development set the same values in the Personal Shopper Environment with
    `PUBLIC_BASE_URL=http://localhost:3000`, run `pnpm dev` and open
    `http://localhost:3000/`.
 
@@ -187,10 +224,9 @@ applies every `supabase/migrations/*.sql` the project's migration history lacks
 the schema is in place before the new image rolls out. Write migrations that
 stay compatible with the previous image, which keeps serving until the roll.
 
-The workflow needs the repo secrets `FLY_API_TOKEN`, created with
-`fly tokens create deploy` (from the app's directory), and
-`SUPABASE_ACCESS_TOKEN`, a Supabase personal access token; each is stored under
-that name.
+The workflow loads `FLY_API_TOKEN` (Personal Shopper Environment; created with
+`fly tokens create deploy` from the app's directory) and `SUPABASE_ACCESS_TOKEN` (General
+Purpose Environment; a Supabase personal access token). See [Configuration](#configuration) for how CI reaches the Environment.
 
 ## Logs
 
