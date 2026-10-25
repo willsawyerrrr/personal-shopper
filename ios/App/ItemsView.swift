@@ -65,7 +65,14 @@ struct ItemsView: View {
             }
             .navigationTitle("Items")
             .toolbar {
-                Button("Add", systemImage: "plus") { adding = true }
+                ToolbarItem(placement: .topBarLeading) {
+                    Link(destination: URL(string: "https://www.woolworths.com.au")!) {
+                        Label("Open Woolworths", systemImage: "cart")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Add", systemImage: "plus") { adding = true }
+                }
             }
             .refreshable { await load() }
             .task(id: session.signedIn) { await load() }

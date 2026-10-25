@@ -4,7 +4,8 @@ Native SwiftUI client for the server's JSON API (`src/admin.ts`): list, add,
 edit and remove items, plus a Share extension and an App Intent that add a
 Woolworths product without opening the web app.
 
-- **App** (`App/`): Items tab (one row per product, titled with its
+- **App** (`App/`): Items tab (a cart button opens the Woolworths app,
+  or its website when the app isn't installed; one row per product, titled with its
   custom name (else its Woolworths listing), the listing beneath a custom
   name, then its trigger words, pull to refresh, tap a
   row to edit its name, trigger phrases (add one at a time; remove with swipe or
