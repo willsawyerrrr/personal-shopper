@@ -49,7 +49,7 @@ pre-commit install   # prettier, oxlint and tsc run on each commit
 ```
 
 `pnpm dev` and `pnpm start` load the server's configuration from the Apple Development
-(`b5zkkwxuutlttwbrv5xhgojye4`), General Purpose (`3i642eynjpsx2uctyqlexobgge`) and Personal Shopper (`pypsxvgj5p7ioxffch5lil4w5u`)
+(`b5zkkwxuutlttwbrv5xhgojye4`), Shared (`3i642eynjpsx2uctyqlexobgge`) and Personal Shopper (`pypsxvgj5p7ioxffch5lil4w5u`)
 [1Password Environments](https://developer.1password.com/docs/environments/)
 through `op run --environment`; there is no `.env` file. The variables are listed in
 [`docs/deployment.md`](docs/deployment.md#configuration). Run the scripts the same way:

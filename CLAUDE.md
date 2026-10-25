@@ -60,7 +60,7 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   token, secret or cookie). Merges to `main` deploy via
   `.github/workflows/deploy-server.yml` after CI passes (`FLY_API_TOKEN` from the
   Environment), which first applies unapplied migrations through the
-  Supabase Management API (`SUPABASE_ACCESS_TOKEN` from General Purpose). See [`docs/deployment.md`](docs/deployment.md).
+  Supabase Management API (`SUPABASE_ACCESS_TOKEN` from Shared). See [`docs/deployment.md`](docs/deployment.md).
 - Voice capture: a shared iCloud Reminders list is the queue the server
   syncs into the owner's cart (`REMINDERS_OWNER_EMAIL`, required when the sync
   is enabled; Siri's built-in "add X to my Shopping List"); the iOS

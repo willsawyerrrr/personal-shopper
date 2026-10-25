@@ -36,7 +36,7 @@ registered, below).
 ## Configuration
 
 Secrets and settings live in three [1Password Environments](https://developer.1password.com/docs/environments/); IDs are not secrets.
-Apple Development (`b5zkkwxuutlttwbrv5xhgojye4`) and General Purpose (`3i642eynjpsx2uctyqlexobgge`) hold the account-level secrets
+Apple Development (`b5zkkwxuutlttwbrv5xhgojye4`) and Shared (`3i642eynjpsx2uctyqlexobgge`) hold the account-level secrets
 (`DEVELOPMENT_TEAM`, `SUPABASE_ACCESS_TOKEN`, …); Personal Shopper (`pypsxvgj5p7ioxffch5lil4w5u`) holds `FLY_API_TOKEN` and the server's variables.
 Local commands run under `op run --environment b5zkkwxuutlttwbrv5xhgojye4 --environment 3i642eynjpsx2uctyqlexobgge --environment pypsxvgj5p7ioxffch5lil4w5u -- <command>` (`pnpm dev` and `pnpm start` already do).
 In production Fly secrets and `fly.toml` supply the server's variables.
@@ -44,7 +44,7 @@ In production Fly secrets and `fly.toml` supply the server's variables.
 CI loads the Environments with `willsawyerrrr/platform/.github/actions/load-op-environment`,
 which exports every variable to later steps. It uses the repo secret `OP_SERVICE_ACCOUNT_TOKEN`
 (a service account scoped to the three Environments) and the repo variable `OP_ENVIRONMENT_IDS`
-(`b5zkkwxuutlttwbrv5xhgojye4 3i642eynjpsx2uctyqlexobgge pypsxvgj5p7ioxffch5lil4w5u`: Apple Development, General Purpose, then Personal Shopper; the last Environment wins on a
+(`b5zkkwxuutlttwbrv5xhgojye4 3i642eynjpsx2uctyqlexobgge pypsxvgj5p7ioxffch5lil4w5u`: Apple Development, Shared, then Personal Shopper; the last Environment wins on a
 duplicate name). The reusable `ios-testflight.yml` loads them the same way.
 
 | Variable                                                                     | Used by         | Notes                                                                                                                                                                                                             |
