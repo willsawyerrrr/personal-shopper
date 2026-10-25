@@ -81,14 +81,43 @@
       }),
     )
 
-  const credentialObject = (id, response) => ({
-    id: base64url(id),
-    rawId: buffer(id),
-    type: 'public-key',
-    authenticatorAttachment: 'platform',
-    response,
-    getClientExtensionResults: () => ({}),
-  })
+  // `PublicKeyCredential` is absent in a bare WKWebView; pages feature-detect
+  // it before offering a passkey, so define it when missing.
+  if (typeof window.PublicKeyCredential !== 'function') {
+    const PublicKeyCredential = class PublicKeyCredential {}
+    Object.defineProperty(window, 'PublicKeyCredential', {
+      value: PublicKeyCredential,
+      configurable: true,
+      writable: true,
+    })
+  }
+  const PKC = window.PublicKeyCredential
+  const define = (target, props) => {
+    for (const [name, value] of Object.entries(props)) {
+      Object.defineProperty(target, name, { value, configurable: true, writable: true })
+    }
+  }
+
+  const credentialObject = (id, response, json) => {
+    const credential = Object.create(PKC.prototype)
+    define(credential, {
+      id: base64url(id),
+      rawId: buffer(id),
+      type: 'public-key',
+      authenticatorAttachment: 'platform',
+      response,
+      getClientExtensionResults: () => ({}),
+      toJSON: () => ({
+        id: base64url(id),
+        rawId: base64url(id),
+        type: 'public-key',
+        authenticatorAttachment: 'platform',
+        clientExtensionResults: {},
+        response: json,
+      }),
+    })
+    return credential
+  }
 
   const create = async (publicKey) => {
     const params = publicKey.pubKeyCredParams ?? []
@@ -127,14 +156,26 @@
       privateKey: base64(pkcs8),
     })
 
-    return credentialObject(id, {
-      clientDataJSON: buffer(clientData('webauthn.create', publicKey.challenge)),
-      attestationObject: buffer(attestationObject),
-      getTransports: () => ['internal', 'hybrid'],
-      getAuthenticatorData: () => buffer(authenticatorData),
-      getPublicKey: () => buffer(spki),
-      getPublicKeyAlgorithm: () => -7,
-    })
+    const createData = clientData('webauthn.create', publicKey.challenge)
+    return credentialObject(
+      id,
+      {
+        clientDataJSON: buffer(createData),
+        attestationObject: buffer(attestationObject),
+        getTransports: () => ['internal', 'hybrid'],
+        getAuthenticatorData: () => buffer(authenticatorData),
+        getPublicKey: () => buffer(spki),
+        getPublicKeyAlgorithm: () => -7,
+      },
+      {
+        clientDataJSON: base64url(createData),
+        attestationObject: base64url(attestationObject),
+        authenticatorData: base64url(authenticatorData),
+        transports: ['internal', 'hybrid'],
+        publicKey: base64url(spki),
+        publicKeyAlgorithm: -7,
+      },
+    )
   }
 
   const get = async (publicKey) => {
@@ -162,14 +203,26 @@
         ),
       ),
     )
-    return credentialObject(unbase64url(encodedId), {
-      clientDataJSON: buffer(data),
-      authenticatorData: buffer(authenticatorData),
-      signature: buffer(signature),
-      userHandle: buffer(credential.userHandle),
-    })
+    return credentialObject(
+      unbase64url(encodedId),
+      {
+        clientDataJSON: buffer(data),
+        authenticatorData: buffer(authenticatorData),
+        signature: buffer(signature),
+        userHandle: buffer(credential.userHandle),
+      },
+      {
+        clientDataJSON: base64url(data),
+        authenticatorData: base64url(authenticatorData),
+        signature: base64url(signature),
+        userHandle: base64url(credential.userHandle),
+      },
+    )
   }
 
+  if (!navigator.credentials) {
+    Object.defineProperty(navigator, 'credentials', { value: {}, configurable: true })
+  }
   const container = navigator.credentials
   const originalCreate = container.create?.bind(container)
   const originalGet = container.get?.bind(container)
@@ -178,11 +231,37 @@
       const publicKey = publicKeyOf(options)
       return publicKey ? handler(publicKey) : original?.(options)
     }
-  container.create = intercept(originalCreate, create)
-  container.get = intercept(originalGet, get)
+  define(container, {
+    create: intercept(originalCreate, create),
+    get: intercept(originalGet, get),
+  })
 
-  if (typeof PublicKeyCredential === 'function') {
-    PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = async () => true
-    PublicKeyCredential.isConditionalMediationAvailable = async () => false
-  }
+  const descriptors = (list) => list?.map((entry) => ({ ...entry, id: unbase64url(entry.id) }))
+  define(PKC, {
+    isUserVerifyingPlatformAuthenticatorAvailable: async () => true,
+    isConditionalMediationAvailable: async () => false,
+    isPasskeyPlatformAuthenticatorAvailable: async () => true,
+    getClientCapabilities: async () => ({
+      passkeyPlatformAuthenticator: true,
+      userVerifyingPlatformAuthenticator: true,
+      conditionalCreate: false,
+      conditionalGet: false,
+      hybridTransport: false,
+      relatedOrigins: false,
+      signalAllAcceptedCredentials: false,
+      signalCurrentUserDetails: false,
+      signalUnknownCredential: false,
+    }),
+    parseCreationOptionsFromJSON: (json) => ({
+      ...json,
+      challenge: unbase64url(json.challenge),
+      user: { ...json.user, id: unbase64url(json.user.id) },
+      excludeCredentials: descriptors(json.excludeCredentials),
+    }),
+    parseRequestOptionsFromJSON: (json) => ({
+      ...json,
+      challenge: unbase64url(json.challenge),
+      allowCredentials: descriptors(json.allowCredentials),
+    }),
+  })
 })()

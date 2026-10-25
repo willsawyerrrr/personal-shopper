@@ -12,10 +12,14 @@ struct PasskeyWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
+        configuration.applicationNameForUserAgent = "Version/18.0 Mobile/15E148 Safari/604.1"
         configuration.userContentController.addUserScript(
             WKUserScript(source: PasskeyScript.source, injectionTime: .atDocumentStart, forMainFrameOnly: false))
         configuration.userContentController.add(context.coordinator, name: PasskeyScript.messageHandler)
         let webView = WKWebView(frame: .zero, configuration: configuration)
+        #if DEBUG
+            webView.isInspectable = true
+        #endif
         webView.load(URLRequest(url: PasskeyScript.loginURL))
         return webView
     }
