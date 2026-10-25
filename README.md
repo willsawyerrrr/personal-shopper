@@ -22,7 +22,8 @@ then kept alive by the server through Woolworths' `/auth/heartbeat` refresh. Set
 If the refresh is rejected, the server signs in again over plain HTTP with a
 passkey registered once via `pnpm register-passkey` (encrypted with
 `CREDENTIALS_ENCRYPTION_KEY` and stored in the database; Chrome is needed only
-to register it).
+to register it that way, or register it from the iOS app or the Chrome
+extension).
 `pnpm passkey-login` does the same login by hand. Without a registered
 passkey, re-run `pnpm capture-session`.
 

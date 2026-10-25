@@ -613,4 +613,115 @@ extension AdminClientTests {
         #expect(model.phase == .editing)
         #expect(StubURLProtocol.requests.withLock { $0.isEmpty })
     }
+
+    private static let credential = PasskeyCredential(
+        rpId: "auth.woolworths.com.au", credentialId: "Y3JlZA==", userHandle: "dXNlcg==", privateKey: "a2V5")
+
+    @MainActor private func passkeyModel() throws -> PasskeyModel {
+        let client = client
+        return PasskeyModel { client }
+    }
+
+    @Test func reportsWhetherAPasskeyIsRegistered() async throws {
+        StubURLProtocol.stub(body: #"{"registered":true}"#)
+        #expect(try await client.passkeyRegistered())
+        let request = try #require(StubURLProtocol.requests.withLock { $0.first })
+        #expect(request.httpMethod == "GET")
+        #expect(request.url?.absoluteString == "https://example.test/woolworths/passkey")
+    }
+
+    @Test func registersAPasskey() async throws {
+        StubURLProtocol.stub(body: #"{"registered":true}"#)
+        try await client.register(Self.credential)
+        let request = try #require(StubURLProtocol.requests.withLock { $0.first })
+        #expect(request.httpMethod == "PUT")
+        #expect(request.url?.absoluteString == "https://example.test/woolworths/passkey")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer ps_tok")
+        let body = try JSONSerialization.jsonObject(with: try #require(request.httpBody)) as? [String: String]
+        #expect(
+            body == [
+                "rpId": "auth.woolworths.com.au", "credentialId": "Y3JlZA==", "userHandle": "dXNlcg==",
+                "privateKey": "a2V5",
+            ])
+    }
+
+    @Test func reportsAFailedWoolworthsSignIn() async throws {
+        StubURLProtocol.stub(status: 502, body: #"{"error":"passkey saved, but signing in to Woolworths with it failed: nope"}"#)
+        await #expect(
+            throws: AdminError.rejected("The passkey was saved, but signing in to Woolworths with it failed. Try again.")
+        ) {
+            try await client.register(Self.credential)
+        }
+    }
+
+    @Test func removesAPasskey() async throws {
+        StubURLProtocol.stub(body: #"{"registered":false}"#)
+        try await client.removePasskey()
+        let request = try #require(StubURLProtocol.requests.withLock { $0.first })
+        #expect(request.httpMethod == "DELETE")
+        #expect(request.url?.absoluteString == "https://example.test/woolworths/passkey")
+    }
+
+    @Test func readsTheCredentialTheScriptPosts() throws {
+        let message: [String: Any] = [
+            "rpId": "auth.woolworths.com.au", "credentialId": "Y3JlZA==", "userHandle": "dXNlcg==",
+            "privateKey": "a2V5",
+        ]
+        #expect(PasskeyCredential(message: message) == Self.credential)
+    }
+
+    @Test func ignoresOtherMessages() {
+        let good: [String: Any] = [
+            "rpId": "auth.woolworths.com.au", "credentialId": "Y3JlZA==", "userHandle": "dXNlcg==",
+            "privateKey": "a2V5",
+        ]
+        #expect(PasskeyCredential(message: good.merging(["rpId": "example.com"]) { $1 }) == nil)
+        #expect(PasskeyCredential(message: good.merging(["privateKey": ""]) { $1 }) == nil)
+        #expect(PasskeyCredential(message: good.filter { $0.key != "userHandle" }) == nil)
+        #expect(PasskeyCredential(message: "passkey") == nil)
+    }
+
+    @Test func bundlesTheAuthenticatorScript() {
+        #expect(PasskeyScript.source.contains("navigator.credentials"))
+    }
+
+    @MainActor @Test func passkeyModelLoadsRegistration() async throws {
+        StubURLProtocol.stub(body: #"{"registered":true}"#)
+        let model = try passkeyModel()
+        #expect(model.registered == nil)
+        await model.load()
+        #expect(model.registered == true)
+    }
+
+    @MainActor @Test func passkeyModelRegistersTheScriptsCredential() async throws {
+        StubURLProtocol.stub(body: #"{"registered":true}"#)
+        let model = try passkeyModel()
+        await model.register(message: ["rpId": "example.com", "credentialId": "a", "userHandle": "b", "privateKey": "c"])
+        #expect(StubURLProtocol.requests.withLock { $0.isEmpty })
+        await model.register(
+            message: [
+                "rpId": "auth.woolworths.com.au", "credentialId": "Y3JlZA==", "userHandle": "dXNlcg==",
+                "privateKey": "a2V5",
+            ])
+        #expect(model.registered == true)
+        #expect(model.phase == .idle)
+        #expect(StubURLProtocol.requests.withLock { $0.count } == 1)
+    }
+
+    @MainActor @Test func passkeyModelReportsAFailedRegistration() async throws {
+        StubURLProtocol.stub(status: 502)
+        let model = try passkeyModel()
+        await model.register(Self.credential)
+        #expect(model.registered == nil)
+        #expect(model.phase == .failed("The passkey was saved, but signing in to Woolworths with it failed. Try again."))
+        model.dismissFailure()
+        #expect(model.phase == .idle)
+    }
+
+    @MainActor @Test func passkeyModelRemovesThePasskey() async throws {
+        StubURLProtocol.stub(body: #"{"registered":false}"#)
+        let model = try passkeyModel()
+        await model.remove()
+        #expect(model.registered == false)
+    }
 }

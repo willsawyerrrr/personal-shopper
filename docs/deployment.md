@@ -154,7 +154,8 @@ pnpm passkey-login      # signs in over plain HTTP and stores the session
 ```
 
 Each script acts for `--user <email>`, else `REMINDERS_OWNER_EMAIL`; each user
-registers their own passkey, or they can register it from the Chrome extension
+registers their own passkey, or they can register it from the iOS app
+([`ios/README.md`](../ios/README.md#woolworths-passkey)) or the Chrome extension
 ([`extension/README.md`](../extension/README.md#woolworths-passkey)).
 
 Use `pnpm capture-session` instead of `passkey-login` to pick your Direct to
