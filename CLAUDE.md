@@ -28,9 +28,11 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   the rotating `w-aref` cookie. When the refresh is rejected the server signs
   in over plain HTTP with the user's stored passkey credential
   (`src/woolworths/passkey.ts`; no browser), which a user registers from the
-  Chrome extension (virtual authenticator over `chrome.debugger`, uploaded to
-  `PUT /woolworths/passkey` in `src/passkey.ts`; bearer token only, rate
-  limited; it signs in with the credential at once and replaces the
+  iOS app (a web view on the Woolworths login whose WebAuthn calls a bundled
+  software authenticator answers, `ios/.../passkey-authenticator.js`) or the
+  Chrome extension (virtual authenticator over `chrome.debugger`), both
+  uploaded to `PUT /woolworths/passkey` in `src/passkey.ts` (bearer token
+  only, rate limited; it signs in with the credential at once and replaces the
   household's stored session, answering 502 and leaving none if that fails;
   `DELETE` and the web app's Account page remove the credential and the stored
   session) or by hand with `pnpm register-passkey`. Credentials are AES-256-GCM encrypted in

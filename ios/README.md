@@ -10,7 +10,7 @@ Woolworths product without opening the web app.
   row to edit its name, trigger phrases (add one at a time; remove with swipe or
   Edit, keeping at least one), quantity and product link or stockcode,
   swipe to delete a product with all its words, add by pasted URL) and Settings tab (Sign
-  out, test connection, and Household: members, create and
+  out, test connection, Woolworths passkey, and Household: members, create and
   share an invite code, join with a code, leave).
 - **Share extension** (`ShareExtension/`): appears in the iOS share sheet for
   URLs and text. Pulls the `woolworths.com.au/shop/productdetails/<stockcode>`
@@ -100,6 +100,33 @@ After changing `project.yml`, run `xcodegen generate` then
 
 Swipe an item right and tap "Add to Cart" to add it to your Woolworths cart,
 the same as saying its first trigger word to Siri.
+
+## Woolworths passkey
+
+Settings > Woolworths passkey shows whether the household has a passkey the
+server signs in to Woolworths with, and registers, replaces or removes it
+(`GET`, `PUT` and `DELETE /woolworths/passkey`). Register passkey opens the
+Woolworths login (`https://www.woolworths.com.au/shop/securelogin`) in a
+`WKWebView` with a fresh, non-persistent data store. Log in and accept the
+prompt to create a passkey; the screen then closes. A failure, including the
+server's sign-in to Woolworths with the new passkey failing, is shown on the
+screen.
+
+A `WKUserScript` (`PersonalShopperKit/Resources/passkey-authenticator.js`,
+document start, all frames) replaces `navigator.credentials.create` and `get`
+for public-key requests with a software authenticator, so the system passkey
+UI never appears: an ES256 key pair from WebCrypto, `none` attestation, user
+present and verified, and `isUserVerifyingPlatformAuthenticatorAvailable`
+resolving `true`. Created credentials are kept in memory for the frame (so
+`get` can sign for them) and posted to the `passkey` message handler; the app
+uploads one only when it comes from a frame on `auth.woolworths.com.au`, as
+`{rpId, credentialId, userHandle, privateKey}` (standard base64, PKCS#8 key).
+The private key leaves the page only to the signed-in server, and is never
+stored on the device.
+
+The script is tested in Node (`src/ios-passkey-authenticator.test.ts`)
+against the server's `selectCredential`, with signatures verified against the
+COSE public key. It has not been exercised against the live Woolworths login.
 
 ## Shortcuts and Siri
 

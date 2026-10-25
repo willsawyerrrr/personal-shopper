@@ -143,6 +143,27 @@ public struct AdminClient: Sendable {
         _ = try await send("POST", path: "/household/leave")
     }
 
+    /// Whether the server holds a Woolworths passkey for the signed-in user's household.
+    public func passkeyRegistered() async throws -> Bool {
+        struct Response: Decodable { let registered: Bool }
+        return try decode(Response.self, from: await send("GET", path: "/woolworths/passkey")).registered
+    }
+
+    /// Stores `credential` as the household's Woolworths passkey. The server signs in
+    /// with it at once, so this fails if Woolworths rejects it.
+    public func register(_ credential: PasskeyCredential) async throws {
+        do {
+            _ = try await send("PUT", path: "/woolworths/passkey", body: JSONEncoder().encode(credential))
+        } catch AdminError.woolworthsSessionExpired {
+            throw AdminError.rejected("The passkey was saved, but signing in to Woolworths with it failed. Try again.")
+        }
+    }
+
+    /// Removes the household's Woolworths passkey and its stored Woolworths session.
+    public func removePasskey() async throws {
+        _ = try await send("DELETE", path: "/woolworths/passkey")
+    }
+
     private func send(_ method: String, path: String, body: Data? = nil, authorized: Bool = true) async throws -> Data {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             throw AdminError.invalidURL

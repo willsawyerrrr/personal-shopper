@@ -45,7 +45,8 @@ the bearer token (`household-api.js`, `household.test.js`).
 ## Woolworths passkey
 
 The options page registers the passkey the server signs in to Woolworths with
-when its session expires, without the CLI. Needs a Google
+when its session expires, without the CLI (the iOS app can register it too:
+[`ios/README.md`](../ios/README.md#woolworths-passkey)). Needs a Google
 sign-in, and `CREDENTIALS_ENCRYPTION_KEY` set on the server.
 
 1. Options → "Register passkey", or the web app's Account page button, which opens the options page with `?register=1` and starts registration there. The extension opens a new Incognito window

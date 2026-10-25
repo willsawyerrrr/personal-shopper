@@ -10,6 +10,7 @@ struct SettingsView: View {
             Form {
                 Section {
                     NavigationLink("Household") { HouseholdView(session: session) }
+                    NavigationLink("Woolworths passkey") { PasskeyView(session: session) }
                     Button("Test connection") { Task { await test() } }
                     Button("Sign out", role: .destructive) { Task { await signOut() } }
                 } footer: {

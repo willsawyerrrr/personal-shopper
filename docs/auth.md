@@ -221,7 +221,8 @@ Content-Type: application/json
 {"credentialId": "…", "rpId": "auth.woolworths.com.au", "privateKey": "…", "userHandle": "…", …}
 ```
 
-The body is a credential as returned by CDP `WebAuthn.getCredentials`, or an
+The body is a credential as returned by CDP `WebAuthn.getCredentials` (the
+Chrome extension) or built by the iOS app's software authenticator, or an
 array of them, of which the first usable entry is stored. A credential is
 usable when its `rpId` is `auth.woolworths.com.au`, `credentialId`,
 `userHandle` and `privateKey` are non-empty strings, and `privateKey` is a
@@ -245,7 +246,8 @@ and deletes the household's stored session.
 | `401`  | `{"error":"unauthorized"}`                                                         |
 | `502`  | `{"error":"<message>"}`: `PUT` stored the credential but signing in with it failed |
 
-`/account` shows whether the signed-in user has a passkey registered, a button
+The iOS app (Settings > Woolworths passkey) registers, replaces and removes it
+with this endpoint too. `/account` shows whether the signed-in user has a passkey registered, a button
 that opens the extension's options page to register or replace it and, when one
 is registered, a "Remove passkey" button (`POST /account/passkey/remove`, session
 cookie, same rate limit and effect as `DELETE`) that redirects back to

@@ -6,7 +6,7 @@ let package = Package(
     platforms: [.iOS(.v18)],
     products: [.library(name: "PersonalShopperKit", targets: ["PersonalShopperKit"])],
     targets: [
-        .target(name: "PersonalShopperKit"),
+        .target(name: "PersonalShopperKit", resources: [.copy("Resources/passkey-authenticator.js")]),
         .testTarget(name: "PersonalShopperKitTests", dependencies: ["PersonalShopperKit"]),
     ]
 )

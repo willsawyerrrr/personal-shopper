@@ -183,6 +183,18 @@ Akamai Bot Manager. Two paths produce a user's stored session:
   Collect store/pickup slot by hand, then extracts the required cookies into
   the user's session.
 
+The iOS app registers a user's passkey without the CLI
+([`ios/README.md`](../ios/README.md#woolworths-passkey)): Settings > Woolworths
+passkey opens the Woolworths login in a `WKWebView` with a user script
+(`passkey-authenticator.js` in `PersonalShopperKit`) that replaces
+`navigator.credentials.create` and `get` for public-key requests with a
+software ES256 authenticator (WebCrypto, `none` attestation). The script posts
+each credential it creates to a native message handler, which accepts it only
+from a frame on `auth.woolworths.com.au` and uploads it with
+`PUT /woolworths/passkey` in the form below; the screen reports the server's
+error, including a failed Woolworths sign-in, and dismisses on success. The
+same screen shows whether a passkey is registered and removes it with `DELETE`.
+
 The Chrome extension registers a user's passkey without the CLI
 ([`extension/README.md`](../extension/README.md#woolworths-passkey)): its
 service worker attaches a virtual authenticator to a new tab with
