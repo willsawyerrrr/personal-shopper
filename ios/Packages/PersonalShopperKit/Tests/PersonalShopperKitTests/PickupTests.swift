@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 
 @testable import PersonalShopperKit
@@ -8,6 +9,21 @@ struct PickupLinkTests {
 
     @Test func findsTheLinkInAMessage() {
         #expect(PickupLink.parse("Your order is ready! Tap \(link) when you arrive.") == link)
+    }
+
+    @Test func findsTheShortLinkAsReceived() {
+        let short = "https://w.wowpu.com.au/48neum1"
+        #expect(PickupLink.parse("Your order is ready! \(short) See you soon") == short)
+    }
+
+    @Test func ignoresOtherShortLinks() {
+        #expect(PickupLink.parse("https://w.wowpu.com.au/") == nil)
+        #expect(PickupLink.parse("https://w.wowpu.com.au/a/b") == nil)
+        #expect(PickupLink.parse("http://w.wowpu.com.au/48neum1") == nil)
+        #expect(PickupLink.parse("https://w.wowpu.com.au:8443/48neum1") == nil)
+        #expect(PickupLink.parse("https://user@w.wowpu.com.au/48neum1") == nil)
+        #expect(PickupLink.parse("https://w.wowpu.com.au.evil.test/48neum1") == nil)
+        #expect(PickupLink.parse("https://evil.test/w.wowpu.com.au/48neum1") == nil)
     }
 
     @Test func ignoresOtherLinks() {
@@ -103,5 +119,36 @@ struct PickupModelTests {
         #expect(model.link == link)
         #expect(!model.adopt("hello"))
         #expect(model.link == link)
+    }
+}
+
+struct PickupInboxTests {
+    final class MemoryStore: TokenStore, @unchecked Sendable {
+        private let value = Mutex<String?>(nil)
+        func read() throws -> String? { value.withLock { $0 } }
+        func write(_ token: String?) throws { value.withLock { $0 = token } }
+    }
+
+    let link = "https://myorder.woolworths.com.au/pickup/order?token=0b6f1c9e-1d2a-4c3b-9e8f-123456789abc"
+
+    @Test func handsOverTheLinkOnce() throws {
+        let inbox = PickupInbox(store: MemoryStore())
+        #expect(try inbox.leave("Ready! \(link) See you soon"))
+        #expect(try inbox.take() == link)
+        #expect(try inbox.take() == nil)
+    }
+
+    @Test func ignoresTextWithoutAPickupLink() throws {
+        let inbox = PickupInbox(store: MemoryStore())
+        #expect(try !inbox.leave("https://www.woolworths.com.au/shop/productdetails/1/milk"))
+        #expect(try inbox.take() == nil)
+    }
+
+    @Test func laterLinkReplacesEarlier() throws {
+        let inbox = PickupInbox(store: MemoryStore())
+        let other = link.replacingOccurrences(of: "0b6f1c9e", with: "11111111")
+        try inbox.leave(link)
+        try inbox.leave(other)
+        #expect(try inbox.take() == other)
     }
 }

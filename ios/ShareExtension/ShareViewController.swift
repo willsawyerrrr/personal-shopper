@@ -10,12 +10,23 @@ final class ShareViewController: UIViewController {
     }
 
     private func present() async {
-        let text = await sharedText()
-        let model = AddItemModel(urlText: text) { try SettingsStore().client() }
-        let root = ShareView(model: model, hasLink: model.link != nil, signInState: SettingsStore().signInState) { [weak self] in
-            self?.extensionContext?.completeRequest(returningItems: nil)
-        } cancel: { [weak self] in
-            self?.extensionContext?.cancelRequest(withError: CocoaError(.userCancelled))
+        let candidates = await sharedCandidates()
+        let root: AnyView
+        if let text = candidates.first(where: { PickupLink.parse($0) != nil }) {
+            root = AnyView(
+                PickupShareView(leave: { try PickupInbox().leave(text) }) { [weak self] in
+                    self?.extensionContext?.completeRequest(returningItems: nil)
+                })
+        } else {
+            // Falls back to whatever was shared so the form can explain the problem.
+            let text = candidates.first { ProductLink.parse($0) != nil } ?? candidates.first ?? ""
+            let model = AddItemModel(urlText: text) { try SettingsStore().client() }
+            root = AnyView(
+                ShareView(model: model, hasLink: model.link != nil, signInState: SettingsStore().signInState) { [weak self] in
+                    self?.extensionContext?.completeRequest(returningItems: nil)
+                } cancel: { [weak self] in
+                    self?.extensionContext?.cancelRequest(withError: CocoaError(.userCancelled))
+                })
         }
         let host = UIHostingController(rootView: root)
         addChild(host)
@@ -25,9 +36,8 @@ final class ShareViewController: UIViewController {
         host.didMove(toParent: self)
     }
 
-    /// The first shared URL or text that contains a Woolworths product link,
-    /// falling back to whatever was shared so the form can explain the problem.
-    private func sharedText() async -> String {
+    /// Every shared text and URL, as strings.
+    private func sharedCandidates() async -> [String] {
         let items = (extensionContext?.inputItems as? [NSExtensionItem]) ?? []
         var candidates: [String] = []
         for item in items {
@@ -45,7 +55,7 @@ final class ShareViewController: UIViewController {
                 }
             }
         }
-        return candidates.first { ProductLink.parse($0) != nil } ?? candidates.first ?? ""
+        return candidates
     }
 }
 
