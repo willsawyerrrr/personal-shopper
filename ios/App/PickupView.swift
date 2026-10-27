@@ -5,12 +5,14 @@ import UIKit
 /// Tells Woolworths the customer is on their way to, or has parked for, a Direct to boot pickup.
 struct PickupView: View {
     let session: Session
+    @Binding var sharedLink: String?
     @State private var model: PickupModel
     @AppStorage("pickup.readClipboard") private var readClipboard = false
     @Environment(\.scenePhase) private var scenePhase
 
-    init(session: Session) {
+    init(session: Session, sharedLink: Binding<String?>) {
         self.session = session
+        _sharedLink = sharedLink
         let location = LocationProvider()
         _model = State(
             initialValue: PickupModel(makeClient: { try session.store.client() }, locate: { try await location.current() })
@@ -33,7 +35,7 @@ struct PickupView: View {
                     }
                 }
                 Section {
-                    TextField("https://myorder.woolworths.com.au/…", text: $model.link, axis: .vertical)
+                    TextField("https://w.wowpu.com.au/…", text: $model.link, axis: .vertical)
                         .keyboardType(.URL)
                         .textContentType(.URL)
                         .textInputAutocapitalization(.never)
@@ -68,6 +70,11 @@ struct PickupView: View {
             }
             .navigationTitle("Pickup")
             .task(id: scenePhase) { await pickUpClipboard() }
+            .onChange(of: sharedLink, initial: true) {
+                guard let link = sharedLink else { return }
+                model.adopt(link)
+                sharedLink = nil
+            }
         }
     }
 

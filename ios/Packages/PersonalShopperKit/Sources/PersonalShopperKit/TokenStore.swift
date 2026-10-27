@@ -14,17 +14,20 @@ public struct KeychainError: Error, LocalizedError {
     }
 }
 
-/// Stores the access token as a generic-password item. With no explicit
+/// Stores a secret (by default the access token) as a generic-password item. With no explicit
 /// access group the item lands in the first `keychain-access-groups` entry of
 /// the signing entitlements, which the app and the share extension both
 /// declare, so they read the same item.
 public struct KeychainTokenStore: TokenStore {
     private let service: String
-    private let account = "access-token"
+    private let account: String
     private let accessGroup: String?
 
-    public init(service: String = SharedConfig.keychainService, accessGroup: String? = nil) {
+    public init(
+        service: String = SharedConfig.keychainService, account: String = "access-token", accessGroup: String? = nil
+    ) {
         self.service = service
+        self.account = account
         self.accessGroup = accessGroup
     }
 

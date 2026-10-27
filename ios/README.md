@@ -15,7 +15,7 @@ Woolworths product without opening the web app.
   out, test connection, Woolworths passkey, and Household: members, create and
   share an invite code, join with a code, leave).
 - **Share extension** (`ShareExtension/`): appears in the iOS share sheet for
-  URLs and text. Pulls the `woolworths.com.au/shop/productdetails/<stockcode>`
+  URLs and text. Hands a pickup link to the Pickup tab (below); otherwise pulls the `woolworths.com.au/shop/productdetails/<stockcode>`
   link out of what was shared, shows trigger word and quantity, then
   calls the API.
 - **App Intent** (`App/AddItemIntent.swift`): `AddItemIntent` for Shortcuts
@@ -98,6 +98,17 @@ After changing `project.yml`, run `xcodegen generate` then
 `NSExtensionActivationRule`; pass the built
 `PlugIns/ShareExtension.appex/Info.plist` to check a build.
 
+## Share a pickup link
+
+Share the Woolworths ready-order link (or the message containing it) from
+Messages, Mail or Safari to Personal Shopper. The extension saves the link in
+the Keychain item shared with the app (no other app can read it; the link is
+never logged) and says "Link saved"; iOS gives share extensions no reliable way
+to open their app, so open Personal Shopper yourself. On foreground, while
+signed in, the app takes the link out of the Keychain, selects the Pickup tab
+and fills it. The extension's activation rule cannot inspect text, so it also
+appears for other URLs and text, where it shows the product form's message.
+
 ## Items list
 
 Swipe an item right and tap "Add to Cart" to add it to your Woolworths cart,
@@ -109,7 +120,10 @@ The Pickup tab tells Woolworths a Direct to boot order's customer is on their
 way or has parked, for the ready-order link in Woolworths' SMS or email
 (`https://myorder.woolworths.com.au/pickup/order?token=…`). Fill the link with
 the paste button (which never triggers the iOS paste prompt) or type it; text
-around a link is ignored. "Use the link on my clipboard" fills it when the
+around a link is ignored. Both the short `https://w.wowpu.com.au/<code>` link
+Woolworths texts and the `myorder` URL it redirects to are accepted and sent
+as received, never resolved on the device (the server must accept short links
+for them to work end to end). "Use the link on my clipboard" fills it when the
 tab opens, reading the clipboard only after iOS reports a web link on it; iOS
 asks to allow pasting unless Paste from Other Apps is Allow for the app.
 
