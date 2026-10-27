@@ -210,8 +210,11 @@ starts sign-in again.
 `POST /pickup/en-route` and `POST /pickup/arrived` tell Woolworths a Direct to
 boot customer is on their way, or has parked in a bay. Both accept a bearer
 token only and share `/cart/items`' rate limits. `link` is the
-`https://myorder.woolworths.com.au/pickup/order?token=<uuid>` link from the
-ready-order SMS or email.
+`https://w.wowpu.com.au/<code>` short link from the ready-order SMS, or the
+`https://myorder.woolworths.com.au/pickup/order?token=<uuid>` link it redirects
+to (also sent by email). A short link is resolved with one request that does
+not follow redirects; its `Location` must be a valid `myorder` link, else `422`.
+An unreachable short link answers `502`.
 
 ```
 POST {PUBLIC_BASE_URL}/pickup/en-route

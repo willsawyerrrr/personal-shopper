@@ -40,7 +40,8 @@ The `ios/` app (see [`ios/README.md`](ios/README.md)) manages items and adds a
 product from the iOS share sheet. Its Siri App Intent adds an item to the cart
 through `POST /cart/items`, authorised by the app's bearer token. The server can
 also tell Woolworths you are on your way to, or parked for, a Direct to boot pickup
-(`POST /pickup/en-route`, `POST /pickup/arrived`).
+(`POST /pickup/en-route`, `POST /pickup/arrived`), given either the short link
+from the ready-order text or the full link it redirects to.
 
 ## Development
 

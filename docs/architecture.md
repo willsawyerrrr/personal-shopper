@@ -59,9 +59,12 @@
    [`auth.md`](auth.md#adding-to-the-cart).
 5. **Pickup arrival**: `POST /pickup/en-route` and `POST /pickup/arrived`
    (`src/pickup.ts`) tell Woolworths a Direct to boot customer is on their way or
-   has parked in a bay. The body carries the `myorder.woolworths.com.au/pickup/order`
-   link from the ready-order SMS or email, checked strictly before any call.
-   `PickupClient` (`src/woolworths/pickup.ts`) exchanges it at
+   has parked in a bay. The body carries the `w.wowpu.com.au/<code>` short link
+   from the ready-order SMS, or the `myorder.woolworths.com.au/pickup/order` link
+   it redirects to, each checked strictly before any call. A short link is
+   resolved with one 5s request that never follows redirects and sends no
+   cookies; its `Location` must pass the `myorder` check. `PickupClient`
+   (`src/woolworths/pickup.ts`) exchanges the long link at
    `prod-apix.woolworths.com.au/signed-link-provider/SignedLink/Verify` for a
    short-lived bearer token (its `orderNo` claim names the order), not the
    household's session, then calls `/handover/portal/v1/wow/customer/orders/<orderNo>`:
