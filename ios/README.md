@@ -10,7 +10,8 @@ Woolworths product without opening the web app.
   name, then its trigger words, pull to refresh, tap a
   row to edit its name, trigger phrases (add one at a time; remove with swipe or
   Edit, keeping at least one), quantity and product link or stockcode,
-  swipe to delete a product with all its words, add by pasted URL) and Settings tab (Sign
+  swipe to delete a product with all its words, add by pasted URL), Pickup tab
+  (tell Woolworths you're on your way or have parked) and Settings tab (Sign
   out, test connection, Woolworths passkey, and Household: members, create and
   share an invite code, join with a code, leave).
 - **Share extension** (`ShareExtension/`): appears in the iOS share sheet for
@@ -101,6 +102,24 @@ After changing `project.yml`, run `xcodegen generate` then
 
 Swipe an item right and tap "Add to Cart" to add it to your Woolworths cart,
 the same as saying its first trigger word to Siri.
+
+## Pickup
+
+The Pickup tab tells Woolworths a Direct to boot order's customer is on their
+way or has parked, for the ready-order link in Woolworths' SMS or email
+(`https://myorder.woolworths.com.au/pickup/order?token=…`). Fill the link with
+the paste button (which never triggers the iOS paste prompt) or type it; text
+around a link is ignored. "Use the link on my clipboard" fills it when the
+tab opens, reading the clipboard only after iOS reports a web link on it; iOS
+asks to allow pasting unless Paste from Other Apps is Allow for the app.
+
+"I'm on my way" asks for when-in-use location the first time, takes one fix
+and calls `POST /pickup/en-route` with the link and coordinates; "I've parked
+in a bay" calls `POST /pickup/arrived` with the link. The returned status
+title, description and collection method are shown. An invalid or expired link
+(`422`), a Woolworths failure (`502`), a rate limit (`429`) and denied
+location each show their own message. The link and coordinates are held in
+memory only and never logged. Geofence-triggered calls are not supported.
 
 ## Woolworths passkey
 

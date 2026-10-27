@@ -75,7 +75,9 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   to boot customer is on their way or parked, from the link in the ready-order
   message. `src/woolworths/pickup.ts` exchanges the link for a short-lived
   token (not the household's session) and never logs the link, token or
-  coordinates. See [`docs/architecture.md`](docs/architecture.md).
+  coordinates. The iOS app's Pickup tab calls them (link pasted or read from
+  the clipboard, one-shot when-in-use location for `en-route`). See
+  [`docs/architecture.md`](docs/architecture.md).
 - iOS release: merges to `main` touching `ios/**` ship to TestFlight via
   `.github/workflows/deploy-ios.yml` (platform's reusable `ios-testflight.yml`).
   Needs `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` and `DEVELOPMENT_TEAM` from the

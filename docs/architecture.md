@@ -67,7 +67,8 @@
    household's session, then calls `/handover/portal/v1/wow/customer/orders/<orderNo>`:
    `featureStatus` (location consent) then `enroute`, or `Checkin/atdrivebay`.
    A link Woolworths rejects is a `422`, other upstream failures a `502`. Links,
-   tokens and coordinates are never logged. Contract in
+   tokens and coordinates are never logged. The iOS app's Pickup tab is the
+   client. Contract in
    [`auth.md`](auth.md#pickup-arrival).
 6. **`WoolworthsClient`** (`src/woolworths/client.ts`) calls Woolworths'
    unofficial API directly. `POST /api/v3/ui/trolley/update` for cart changes
