@@ -205,6 +205,33 @@ A missing, malformed, expired or revoked token gets
 `401 {"error":"unauthorized"}`. On `401` the client discards the token and
 starts sign-in again.
 
+### Pickup arrival
+
+`POST /pickup/en-route` and `POST /pickup/arrived` tell Woolworths a Direct to
+boot customer is on their way, or has parked in a bay. Both accept a bearer
+token only and share `/cart/items`' rate limits. `link` is the
+`https://myorder.woolworths.com.au/pickup/order?token=<uuid>` link from the
+ready-order SMS or email.
+
+```
+POST {PUBLIC_BASE_URL}/pickup/en-route
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{"link": "https://myorder.woolworths.com.au/pickup/order?token=<uuid>", "latitude": -33.8688, "longitude": 151.2093}
+```
+
+`POST /pickup/arrived` takes `{"link": "..."}` only.
+
+| Status | Body                                                                                                       |
+| ------ | ---------------------------------------------------------------------------------------------------------- |
+| `200`  | `{"statusTitle", "statusDescription", "collectionMethod"}`: the order's status after the call              |
+| `400`  | `{"error":"link is required"}` or `{"error":"latitude and longitude are required"}` (finite, within range) |
+| `401`  | `{"error":"unauthorized"}`                                                                                 |
+| `422`  | `{"error":"..."}`: not a Woolworths pickup link, or Woolworths says it is invalid or expired               |
+| `429`  | `{"error":"rate_limited"}`: over a rate limit; `Retry-After` gives the seconds to wait                     |
+| `502`  | `{"error":"<message>"}`: Woolworths failed or answered unexpectedly                                        |
+
 ### Registering a Woolworths passkey
 
 `/woolworths/passkey` stores the Woolworths passkey the server signs in with

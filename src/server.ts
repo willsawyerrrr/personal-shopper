@@ -8,6 +8,7 @@ import { syncReminders } from './reminders/sync.ts'
 import { CredentialStore, credentialsStored } from './users/credentials.ts'
 import { importLegacyFiles } from './users/import.ts'
 import { UserWoolworths } from './users/woolworths.ts'
+import { PickupClient } from './woolworths/pickup.ts'
 
 const config = loadConfig()
 const { ownerEmail } = config
@@ -29,6 +30,7 @@ const app = buildApp(config, {
   sql,
   cart: (email) => woolworths.clientFor(email),
   lookup: (email) => woolworths.clientFor(email),
+  pickup: new PickupClient(),
   ...(credentials && {
     passkeys: { credentials, sessions: woolworths },
   }),

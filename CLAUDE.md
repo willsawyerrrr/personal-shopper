@@ -70,6 +70,12 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   (`src/cart.ts`, bearer token only, rate limited). See
   [`docs/siri-setup.md`](docs/siri-setup.md) and
   [`docs/architecture.md`](docs/architecture.md#reminders-queue).
+- Pickup arrival: `POST /pickup/en-route` and `POST /pickup/arrived`
+  (`src/pickup.ts`, bearer token only, rate limited) tell Woolworths a Direct
+  to boot customer is on their way or parked, from the link in the ready-order
+  message. `src/woolworths/pickup.ts` exchanges the link for a short-lived
+  token (not the household's session) and never logs the link, token or
+  coordinates. See [`docs/architecture.md`](docs/architecture.md).
 - iOS release: merges to `main` touching `ios/**` ship to TestFlight via
   `.github/workflows/deploy-ios.yml` (platform's reusable `ios-testflight.yml`).
   Needs `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` and `DEVELOPMENT_TEAM` from the
@@ -81,7 +87,7 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
 
 `src/woolworths` is everything that talks to Woolworths' unofficial API;
 `src/app.ts` wires up Fastify, `src/login.ts` the Google sign-in routes,
-`src/admin.ts` the web app (pages rendered in `src/admin-pages.ts`) and its JSON API, `src/cart.ts` the cart route, `src/passkey.ts` the passkey routes,
+`src/admin.ts` the web app (pages rendered in `src/admin-pages.ts`) and its JSON API, `src/cart.ts` the cart route, `src/pickup.ts` the pickup arrival routes, `src/passkey.ts` the passkey routes,
 `src/tokens.ts` the token store, `src/items.ts` the item store, `src/db.ts` the
 Postgres connection and `src/users/` the per-user credential store, session
 storage, Woolworths clients and legacy-file import; `supabase/migrations` is the

@@ -11,9 +11,11 @@ import { HouseholdStore } from './households.ts'
 import { ItemStore } from './items.ts'
 import { registerLogin } from './login.ts'
 import { registerPasskey, type PasskeyOptions } from './passkey.ts'
+import { registerPickup } from './pickup.ts'
 import { registerPrivacy } from './privacy.ts'
 import { TokenStore } from './tokens.ts'
 import type { CartClient, ProductLookup } from './woolworths/client.ts'
+import type { PickupNotifier } from './woolworths/pickup.ts'
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -35,6 +37,8 @@ export interface AppOptions {
   now?: () => number
   /** Resolves a user's cart; enables `POST /cart/items`, which does not exist without it. */
   cart?: (email: string) => CartClient
+  /** Enables `POST /pickup/en-route` and `POST /pickup/arrived`, which do not exist without it. */
+  pickup?: PickupNotifier
   /** Resolves a user's product lookup for listing text; without it items are stored without one. */
   lookup?: (email: string) => ProductLookup
   /** Enables `/woolworths/passkey` and the admin page's passkey status; neither exists without it. */
@@ -99,6 +103,10 @@ export function buildApp(config: AppConfig, options: AppOptions): FastifyInstanc
   void registerAdmin(app, config, tokens, items, households, options.lookup, options.passkeys, now)
   if (options.cart) {
     void registerCart(app, config, tokens, items, options.cart, now)
+  }
+
+  if (options.pickup) {
+    void registerPickup(app, config, tokens, options.pickup, now)
   }
 
   if (options.passkeys) {
