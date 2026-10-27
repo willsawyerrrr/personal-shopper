@@ -2,6 +2,9 @@ const API_URL = 'https://prod-apix.woolworths.com.au'
 const PORTAL_ORIGIN = 'https://myorder.woolworths.com.au'
 const PICKUP_PATH = '/pickup/order'
 const TIMEOUT_MS = 10_000
+const SHORT_LINK_ORIGIN = 'https://w.wowpu.com.au'
+const SHORT_LINK_PATH = /^\/[A-Za-z0-9]{3,32}$/
+const SHORT_LINK_TIMEOUT_MS = 5_000
 const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -49,6 +52,29 @@ export function isPickupLink(link: string): boolean {
 }
 
 /**
+ * Whether `link` is the https `w.wowpu.com.au/<code>` short link Woolworths
+ * texts for a ready order: a single alphanumeric code, with no userinfo, port,
+ * query or fragment.
+ */
+export function isShortPickupLink(link: string): boolean {
+  let url: URL
+  try {
+    url = new URL(link)
+  } catch {
+    return false
+  }
+  return (
+    url.protocol === 'https:' &&
+    url.origin === SHORT_LINK_ORIGIN &&
+    !url.username &&
+    !url.password &&
+    !url.search &&
+    !url.hash &&
+    SHORT_LINK_PATH.test(url.pathname)
+  )
+}
+
+/**
  * Drives the Woolworths pickup portal. Its calls authenticate with an access
  * token that Woolworths exchanges for the SMS or email link, not with the
  * household's Woolworths session.
@@ -78,10 +104,13 @@ export class PickupClient implements PickupNotifier {
 
   /** Exchanges the link for an access token and the order's API URL, taken from the token's `orderNo` claim. */
   private async verify(link: string): Promise<{ orderUrl: string; token: string }> {
-    if (!isPickupLink(link)) {
+    const longLink = isShortPickupLink(link) ? await this.resolveShortLink(link) : link
+    if (!isPickupLink(longLink)) {
       throw new InvalidPickupLinkError('not a Woolworths pickup link')
     }
-    const response = await this.send(`${API_URL}/signed-link-provider/SignedLink/Verify`, { link })
+    const response = await this.send(`${API_URL}/signed-link-provider/SignedLink/Verify`, {
+      link: longLink,
+    })
     if (response.status >= 400 && response.status < 500) {
       throw new InvalidPickupLinkError('pickup link is invalid or expired')
     }
@@ -94,6 +123,35 @@ export class PickupClient implements PickupNotifier {
     return {
       orderUrl: `${API_URL}/handover/portal/v1/wow/customer/orders/${encodeURIComponent(orderNo)}`,
       token,
+    }
+  }
+
+  /**
+   * Resolves a short link with a single request that never follows redirects
+   * and sends no cookies. The `Location` must be a valid pickup link.
+   */
+  private async resolveShortLink(link: string): Promise<string> {
+    let response: Response
+    try {
+      response = await this.fetchImpl(link, {
+        method: 'GET',
+        redirect: 'manual',
+        credentials: 'omit',
+        signal: AbortSignal.timeout(SHORT_LINK_TIMEOUT_MS),
+        headers: { 'User-Agent': USER_AGENT },
+      })
+    } catch {
+      throw new PickupUpstreamError('Woolworths short link request failed')
+    }
+    await response.body?.cancel().catch(() => undefined)
+    const location = response.headers.get('location')
+    if (response.status < 300 || response.status >= 400 || !location) {
+      throw new InvalidPickupLinkError('not a Woolworths pickup link')
+    }
+    try {
+      return new URL(location, link).href
+    } catch {
+      throw new InvalidPickupLinkError('not a Woolworths pickup link')
     }
   }
 

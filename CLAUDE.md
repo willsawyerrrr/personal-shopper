@@ -73,7 +73,9 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
 - Pickup arrival: `POST /pickup/en-route` and `POST /pickup/arrived`
   (`src/pickup.ts`, bearer token only, rate limited) tell Woolworths a Direct
   to boot customer is on their way or parked, from the link in the ready-order
-  message. `src/woolworths/pickup.ts` exchanges the link for a short-lived
+  message (the `w.wowpu.com.au` short link or the `myorder` link it redirects
+  to; a short link is resolved with one non-redirect-following request).
+  `src/woolworths/pickup.ts` exchanges the link for a short-lived
   token (not the household's session) and never logs the link, token or
   coordinates. The iOS app's Pickup tab calls them (link pasted or read from
   the clipboard, one-shot when-in-use location for `en-route`). See

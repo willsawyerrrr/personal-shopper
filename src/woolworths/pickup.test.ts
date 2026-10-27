@@ -4,10 +4,12 @@ import {
   PickupClient,
   PickupUpstreamError,
   isPickupLink,
+  isShortPickupLink,
 } from './pickup.ts'
 
 const TOKEN = '11111111-2222-3333-4444-555555555555'
 const LINK = `https://myorder.woolworths.com.au/pickup/order?token=${TOKEN}`
+const SHORT = 'https://w.wowpu.com.au/48neum1'
 const JWT = `x.${Buffer.from(JSON.stringify({ orderNo: '123456789', scope: 'pickup' })).toString('base64url')}.y`
 const ORDER_URL =
   'https://prod-apix.woolworths.com.au/handover/portal/v1/wow/customer/orders/123456789'
@@ -145,5 +147,102 @@ describe('PickupClient', () => {
     const error = await new PickupClient(fetchMock).arrived(LINK).catch((e: unknown) => e)
     expect(error).toBeInstanceOf(PickupUpstreamError)
     expect((error as Error).message).not.toContain(TOKEN)
+  })
+})
+
+describe('isShortPickupLink', () => {
+  it('accepts the short link from the ready-order message', () => {
+    expect(isShortPickupLink(SHORT)).toBe(true)
+  })
+
+  it.each([
+    'http://w.wowpu.com.au/48neum1',
+    'https://wowpu.com.au/48neum1',
+    'https://w.wowpu.com.au.evil.example/48neum1',
+    'https://user@w.wowpu.com.au/48neum1',
+    'https://w.wowpu.com.au:8443/48neum1',
+    'https://w.wowpu.com.au/48neum1?x=1',
+    'https://w.wowpu.com.au/48neum1#x',
+    'https://w.wowpu.com.au/',
+    'https://w.wowpu.com.au/ab',
+    'https://w.wowpu.com.au/a/b',
+    'https://w.wowpu.com.au/48-neum1',
+  ])('rejects %s', (link) => {
+    expect(isShortPickupLink(link)).toBe(false)
+  })
+})
+
+describe('PickupClient with a short link', () => {
+  const redirect = (location: string | null, status = 301) =>
+    new Response(null, { status, headers: location ? { location } : {} })
+
+  it('resolves the short link once, then verifies the long link', async () => {
+    const { fetchMock, client } = setup(json(status('Arrived')))
+    fetchMock.mockReset()
+    fetchMock
+      .mockResolvedValueOnce(redirect(LINK))
+      .mockResolvedValueOnce(json({ accessToken: JWT }))
+      .mockResolvedValueOnce(json(status('Arrived')))
+    await client.arrived(SHORT)
+    const [url, init] = fetchMock.mock.calls[0]!
+    expect(url).toBe(SHORT)
+    expect(init).toMatchObject({ method: 'GET', redirect: 'manual', credentials: 'omit' })
+    expect(init!.headers).not.toHaveProperty('Cookie')
+    expect(init!.signal).toBeInstanceOf(AbortSignal)
+    expect(call(fetchMock, 1).body).toEqual({ link: LINK })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('resolves a relative Location against the short link', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(redirect('/elsewhere'))
+    await expect(new PickupClient(fetchMock).arrived(SHORT)).rejects.toBeInstanceOf(
+      InvalidPickupLinkError,
+    )
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    'https://w.wowpu.com.au:8443/48neum1?x=1',
+    'https://w.wowpu.com.au/ab',
+    'http://w.wowpu.com.au/48neum1',
+    'https://w.wowpu.com.au.evil.example/48neum1',
+    'https://w.wowpu.com.au:8443/48neum1',
+    'https://user@w.wowpu.com.au/48neum1',
+  ])('rejects %s without any request', async (link) => {
+    const fetchMock = vi.fn<typeof fetch>()
+    await expect(new PickupClient(fetchMock).arrived(link)).rejects.toBeInstanceOf(
+      InvalidPickupLinkError,
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['a 200 response', new Response('<html>', { status: 200 })],
+    ['a redirect to another host', redirect(`https://evil.example/pickup/order?token=${TOKEN}`)],
+    [
+      'a redirect to http',
+      redirect(`http://myorder.woolworths.com.au/pickup/order?token=${TOKEN}`),
+    ],
+    ['a redirect without a Location', redirect(null)],
+    [
+      'a redirect to a bad token',
+      redirect('https://myorder.woolworths.com.au/pickup/order?token=x'),
+    ],
+  ])('rejects %s without following or verifying', async (_name, response) => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(response)
+    const error = await new PickupClient(fetchMock).arrived(SHORT).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(InvalidPickupLinkError)
+    expect((error as Error).message).not.toContain('48neum1')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ['a network error', new TypeError('fetch failed')],
+    ['a timeout', new DOMException('timed out', 'TimeoutError')],
+  ])('answers %s as an upstream failure', async (_name, failure) => {
+    const fetchMock = vi.fn<typeof fetch>().mockRejectedValue(failure)
+    const error = await new PickupClient(fetchMock).arrived(SHORT).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(PickupUpstreamError)
+    expect((error as Error).message).not.toContain('48neum1')
   })
 })
