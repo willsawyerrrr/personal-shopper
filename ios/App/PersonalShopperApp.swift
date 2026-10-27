@@ -11,6 +11,7 @@ struct PersonalShopperApp: App {
                 if session.signedIn {
                     TabView {
                         Tab("Items", systemImage: "list.bullet") { ItemsView(session: session) }
+                        Tab("Pickup", systemImage: "car") { PickupView(session: session) }
                         Tab("Settings", systemImage: "gearshape") { SettingsView(session: session) }
                     }
                 } else {

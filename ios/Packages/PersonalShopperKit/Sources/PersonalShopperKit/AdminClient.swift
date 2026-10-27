@@ -164,6 +164,32 @@ public struct AdminClient: Sendable {
         _ = try await send("DELETE", path: "/woolworths/passkey")
     }
 
+    /// Tells Woolworths the customer behind `link`, the ready-order link from the
+    /// pickup SMS or email, is on their way from `coordinates`.
+    public func pickupEnRoute(link: String, coordinates: Coordinates) async throws -> PickupStatus {
+        struct Body: Encodable {
+            let link: String
+            let latitude: Double
+            let longitude: Double
+        }
+        let body = Body(link: link, latitude: coordinates.latitude, longitude: coordinates.longitude)
+        return try await pickup("/pickup/en-route", body: JSONEncoder().encode(body))
+    }
+
+    /// Tells Woolworths the customer behind `link` has parked in a bay.
+    public func pickupArrived(link: String) async throws -> PickupStatus {
+        struct Body: Encodable { let link: String }
+        return try await pickup("/pickup/arrived", body: JSONEncoder().encode(Body(link: link)))
+    }
+
+    private func pickup(_ path: String, body: Data) async throws -> PickupStatus {
+        do {
+            return try decode(PickupStatus.self, from: await send("POST", path: path, body: body))
+        } catch AdminError.woolworthsSessionExpired {
+            throw AdminError.pickupUnavailable
+        }
+    }
+
     private func send(_ method: String, path: String, body: Data? = nil, authorized: Bool = true) async throws -> Data {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             throw AdminError.invalidURL
@@ -191,6 +217,8 @@ public struct AdminClient: Sendable {
         case 401:
             if authorized { onUnauthorized() }
             throw AdminError.unauthorized
+        case 422: throw AdminError.invalidPickupLink
+        case 429: throw AdminError.rateLimited
         case 502: throw AdminError.woolworthsSessionExpired
         case 400, 404, 409:
             struct Failure: Decodable { let error: String }
