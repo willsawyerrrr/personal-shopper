@@ -37,7 +37,7 @@
    instead of the web UI's redirects: `GET /items`,
    `POST /items`, `PATCH /items/:word`, `DELETE /items/:word`,
    `PATCH /products/:stockcode/:quantity`, `DELETE /products/:stockcode/:quantity`,
-   the household routes below, and `401 {error}` when unauthenticated. The web app owns the root-level paths `/`, `/login`, `/logout`, `/account`, `/items`, `/products`, `/household` and `/sessions`; everything else lives under `/auth`, `/cart`, `/woolworths` or `/healthz`. Saving a user's items replaces
+   the household routes below, and `401 {error}` when unauthenticated. The web app owns the root-level paths `/`, `/login`, `/logout`, `/account`, `/items`, `/products`, `/household` and `/sessions`; everything else lives under `/auth`, `/cart`, `/pickup`, `/woolworths` or `/healthz`. Saving a user's items replaces
    them in one transaction, so a reader never sees a partial list. Each
    item also stores its `listing`, the product's title on woolworths.com.au,
    looked up with `WoolworthsClient.listing` (below) when the item is added or
@@ -57,13 +57,25 @@
    phrase against the token's user's items and calls that user's
    `WoolworthsClient.addToCart` directly; a rejected Woolworths session is a `502`. Contract in
    [`auth.md`](auth.md#adding-to-the-cart).
-5. **`WoolworthsClient`** (`src/woolworths/client.ts`) calls Woolworths'
+5. **Pickup arrival**: `POST /pickup/en-route` and `POST /pickup/arrived`
+   (`src/pickup.ts`) tell Woolworths a Direct to boot customer is on their way or
+   has parked in a bay. The body carries the `myorder.woolworths.com.au/pickup/order`
+   link from the ready-order SMS or email, checked strictly before any call.
+   `PickupClient` (`src/woolworths/pickup.ts`) exchanges it at
+   `prod-apix.woolworths.com.au/signed-link-provider/SignedLink/Verify` for a
+   short-lived bearer token (its `orderNo` claim names the order), not the
+   household's session, then calls `/handover/portal/v1/wow/customer/orders/<orderNo>`:
+   `featureStatus` (location consent) then `enroute`, or `Checkin/atdrivebay`.
+   A link Woolworths rejects is a `422`, other upstream failures a `502`. Links,
+   tokens and coordinates are never logged. Contract in
+   [`auth.md`](auth.md#pickup-arrival).
+6. **`WoolworthsClient`** (`src/woolworths/client.ts`) calls Woolworths'
    unofficial API directly. `POST /api/v3/ui/trolley/update` for cart changes
    is confirmed working against a live cart. `GET /apis/ui/product/detail/<stockcode>`
    is read-only and works with the same session cookies (and fails without
    them); `Product.DisplayName` is the listing text. `POST /apis/ui/Search/products`
    for search is confirmed broken or deprecated; see the risks below.
-6. **`SessionStore`** (`src/woolworths/session.ts`) holds a user's cookie jar
+7. **`SessionStore`** (`src/woolworths/session.ts`) holds a user's cookie jar
    (the `woolworths_sessions` table, via `PgSessionStorage`) those calls
    authenticate with and refreshes it through `GET /auth/heartbeat`
    (Woolworths' endpoint, not this server's). `UserWoolworths`
