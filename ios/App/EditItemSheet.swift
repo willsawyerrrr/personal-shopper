@@ -48,6 +48,28 @@ struct EditItemSheet: View {
                         Text(error).foregroundStyle(.red).font(.footnote)
                     }
                 }
+                Section {
+                    ForEach($model.alternatives) { $alternative in
+                        VStack(alignment: .leading) {
+                            TextField("Woolworths product URL or stockcode", text: $alternative.product)
+                                .textInputAutocapitalization(.never)
+                                .keyboardType(.URL)
+                                .autocorrectionDisabled()
+                            if let error = model.alternativeProductError(for: alternative.id) {
+                                Text(error).foregroundStyle(.red).font(.footnote)
+                            }
+                            Stepper(
+                                "Quantity: \(alternative.quantity)", value: $alternative.quantity,
+                                in: EditItemModel.quantityRange)
+                        }
+                    }
+                    .onDelete { model.removeAlternatives(at: $0) }
+                    Button("Add alternative") { model.addAlternative() }
+                } header: {
+                    Text("Alternatives")
+                } footer: {
+                    Text("Other stockcode or quantity options for this product; the cheapest per unit is added to the cart.")
+                }
                 if case .failed(let message) = model.phase {
                     Section { Text(message).foregroundStyle(.red) }
                 }

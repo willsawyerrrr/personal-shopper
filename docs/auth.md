@@ -108,19 +108,19 @@ Bearer tokens authorise the JSON API on `/items`; send
 household: members share items, and `POST /cart/items` adds to the household's
 Woolworths cart.
 
-| Request                                                           | Success                                                                        |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `GET /items`                                                      | `200 {"items":[{word, stockcode, quantity, listing?, name?, alternatives?}]}`  |
-| `POST /items` with `{word, url, quantity?, name?, alternatives?}` | `201` with the stored item; `400 {error}` if invalid                           |
-| `PATCH /items/:word` with any of the fields below                 | `200` with the stored item; `400`, `404`, `409` below                          |
-| `DELETE /items/:word` (or `POST /items/:word/delete`)             | `204`                                                                          |
-| `PATCH /products/:stockcode/:quantity` with fields below          | `200 {words, stockcode, quantity, listing?, name?}`; `400`, `404`, `409` below |
-| `DELETE /products/:stockcode/:quantity` (or `POST …/delete`)      | `204`; `404` for an unknown product                                            |
-| `GET /household`                                                  | `200 {"members":[{email, you}]}`                                               |
-| `POST /household/invites`                                         | `201 {code, expiresAt}` (epoch ms); `409 {error}` at the invite limit          |
-| `POST /household/join` with `{code}`                              | `204`; `400 {error}` invalid, expired or used; `409 {error}` already a member  |
-| `POST /household/leave`                                           | `204`; `409 {error}` for a sole member                                         |
-| `POST /auth/logout`                                               | `204`; revokes the presented token                                             |
+| Request                                                           | Success                                                                                       |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `GET /items`                                                      | `200 {"items":[{word, stockcode, quantity, listing?, name?, alternatives?}]}`                 |
+| `POST /items` with `{word, url, quantity?, name?, alternatives?}` | `201` with the stored item; `400 {error}` if invalid                                          |
+| `PATCH /items/:word` with any of the fields below                 | `200` with the stored item; `400`, `404`, `409` below                                         |
+| `DELETE /items/:word` (or `POST /items/:word/delete`)             | `204`                                                                                         |
+| `PATCH /products/:stockcode/:quantity` with fields below          | `200 {words, stockcode, quantity, listing?, name?, alternatives?}`; `400`, `404`, `409` below |
+| `DELETE /products/:stockcode/:quantity` (or `POST …/delete`)      | `204`; `404` for an unknown product                                                           |
+| `GET /household`                                                  | `200 {"members":[{email, you}]}`                                                              |
+| `POST /household/invites`                                         | `201 {code, expiresAt}` (epoch ms); `409 {error}` at the invite limit                         |
+| `POST /household/join` with `{code}`                              | `204`; `400 {error}` invalid, expired or used; `409 {error}` already a member                 |
+| `POST /household/leave`                                           | `204`; `409 {error}` for a sole member                                                        |
+| `POST /auth/logout`                                               | `204`; revokes the presented token                                                            |
 
 `PATCH /items/:word` changes only the fields sent, keeps every other entry and the item's position
 in the user's list, and saves atomically. `:word` is normalised like
@@ -160,8 +160,8 @@ whichever is cheaper per unit depends on current pricing. `POST /cart/items`
 looks up the current price of the item's own stockcode and each alternative's
 and adds whichever has the lowest price per unit (price divided by quantity),
 falling back to the item's own stockcode and quantity when a price can't be
-determined. There is no web form for it yet; set it through the JSON API. It
-is absent when the item has none.
+determined. There is no web form for it yet; set it through the JSON API or
+the iOS app's edit-item sheet. It is absent when the item has none.
 
 Items are stored per trigger word, in order, and `GET /items` lists them that
 way. A product is the set of words sharing a stockcode and quantity;
