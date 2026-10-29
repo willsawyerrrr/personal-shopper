@@ -63,9 +63,17 @@ struct AdminClientTests {
     }
 
     @Test func listsItems() async throws {
-        StubURLProtocol.stub(body: #"{"items":[{"word":"milk","stockcode":1,"quantity":2,"listing":"Maleny Dairies Full Cream 2L"},{"word":"eggs","stockcode":3,"quantity":1}]}"#)
+        StubURLProtocol.stub(
+            body: #"{"items":[{"id":"1","words":["milk"],"candidates":[{"stockcode":1,"quantity":2}],"listing":"Maleny Dairies Full Cream 2L"},{"id":"2","words":["eggs"],"candidates":[{"stockcode":3,"quantity":1}]}]}"#
+        )
         let items = try await client.items()
-        #expect(items == [Item(word: "milk", stockcode: 1, quantity: 2, listing: "Maleny Dairies Full Cream 2L"), Item(word: "eggs", stockcode: 3, quantity: 1)])
+        #expect(
+            items == [
+                Item(
+                    id: "1", listing: "Maleny Dairies Full Cream 2L", words: ["milk"],
+                    candidates: [ItemCandidate(stockcode: 1, quantity: 2)]),
+                Item(id: "2", words: ["eggs"], candidates: [ItemCandidate(stockcode: 3, quantity: 1)]),
+            ])
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
         #expect(request.httpMethod == "GET")
         #expect(request.url?.absoluteString == "https://example.test/items")
@@ -73,12 +81,18 @@ struct AdminClientTests {
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer ps_tok")
     }
 
-    @Test func decodesItemAlternatives() async throws {
-        StubURLProtocol.stub(body: #"{"items":[{"word":"bars","stockcode":1,"quantity":1,"alternatives":[{"stockcode":2,"quantity":4}]}]}"#)
+    @Test func decodesItemsWithSeveralWordsAndCandidates() async throws {
+        StubURLProtocol.stub(
+            body: #"{"items":[{"id":"1","words":["bars","protein bars"],"candidates":[{"stockcode":1,"quantity":1},{"stockcode":2,"quantity":4}]}]}"#
+        )
         let items = try await client.items()
-        #expect(items == [Item(word: "bars", stockcode: 1, quantity: 1, alternatives: [ItemCandidate(stockcode: 2, quantity: 4)])])
+        #expect(
+            items == [
+                Item(
+                    id: "1", words: ["bars", "protein bars"],
+                    candidates: [ItemCandidate(stockcode: 1, quantity: 1), ItemCandidate(stockcode: 2, quantity: 4)]),
+            ])
     }
-
     @Test func listsHouseholdMembers() async throws {
         StubURLProtocol.stub(body: #"{"members":[{"email":"a@example.com","you":true},{"email":"b@example.com","you":false}]}"#)
         let members = try await client.household()
@@ -130,10 +144,12 @@ struct AdminClientTests {
     }
 
     @Test func addsItem() async throws {
-        StubURLProtocol.stub(status: 201, body: #"{"word":"milk","stockcode":888137,"quantity":2,"listing":"Milk 2L"}"#)
+        StubURLProtocol.stub(
+            status: 201,
+            body: #"{"id":"1","words":["milk"],"candidates":[{"stockcode":888137,"quantity":2}],"listing":"Milk 2L"}"#)
         let url = try #require(URL(string: "https://www.woolworths.com.au/shop/productdetails/888137/milk"))
         let item = try await client.add(word: "milk", url: url, quantity: 2)
-        #expect(item.stockcode == 888137)
+        #expect(item.candidates.first?.stockcode == 888137)
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
         #expect(request.httpMethod == "POST")
         #expect(request.url?.path == "/items")
@@ -144,12 +160,12 @@ struct AdminClientTests {
         #expect(body?["quantity"] as? Int == 2)
     }
 
-    @Test func removesEveryWordOfAGroup() async throws {
+    @Test func removesAnItem() async throws {
         StubURLProtocol.stub(status: 204)
-        try await client.remove(group())
+        try await client.remove(item())
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
-        #expect(request.httpMethod == "POST")
-        #expect(request.url?.absoluteString == "https://example.test/products/123/2/delete")
+        #expect(request.httpMethod == "DELETE")
+        #expect(request.url?.absoluteString == "https://example.test/items/1")
     }
 
     @Test func mapsUnauthorized() async {
@@ -361,28 +377,11 @@ struct SettingsStoreTests {
 }
 
 extension AdminClientTests {
-    private func group(
-        words: [String] = ["milk", "full cream milk"], stockcode: Int = 123, quantity: Int = 2,
-        listing: String? = "Milk 2L"
-    ) -> ItemGroup {
-        ItemGroup(words: words, stockcode: stockcode, quantity: quantity, listing: listing)
-    }
-
-    @Test func groupsItemsByProductInStoredOrder() {
-        let items = [
-            Item(word: "milk", stockcode: 1, quantity: 1),
-            Item(word: "bread", stockcode: 2, quantity: 1, listing: "Bread 700g"),
-            Item(word: "full cream milk", stockcode: 1, quantity: 1, listing: "Milk 2L"),
-            Item(word: "two milks", stockcode: 1, quantity: 2),
-            Item(word: "loaf", stockcode: 2, quantity: 1),
-        ]
-        #expect(
-            ItemGroup.group(items) == [
-                ItemGroup(words: ["milk", "full cream milk"], stockcode: 1, quantity: 1, listing: "Milk 2L"),
-                ItemGroup(words: ["bread", "loaf"], stockcode: 2, quantity: 1, listing: "Bread 700g"),
-                ItemGroup(words: ["two milks"], stockcode: 1, quantity: 2),
-            ])
-        #expect(ItemGroup.group([]).isEmpty)
+    private func item(
+        id: String = "1", words: [String] = ["milk", "full cream milk"],
+        candidates: [ItemCandidate] = [ItemCandidate(stockcode: 123, quantity: 2)], listing: String? = "Milk 2L"
+    ) -> Item {
+        Item(id: id, listing: listing, words: words, candidates: candidates)
     }
 
     @Test(arguments: [
@@ -390,45 +389,46 @@ extension AdminClientTests {
         ("7up", "7up"), ("coca-cola", "Coca-Cola"), ("école", "École"), ("", ""),
     ])
     func displayCasesWords(word: String, expected: String) {
-        #expect(ItemGroup.displayCase(word) == expected)
+        #expect(Item.displayCase(word) == expected)
     }
 
     @Test func rowTextShowsListingThenWordsThenDetail() {
-        let group = group(words: ["milk", "full cream milk"], stockcode: 248608, listing: "Maleny Dairies Full Cream 2L")
-        #expect(group.title == "Maleny Dairies Full Cream 2L")
-        #expect(group.wordsText == "Milk, Full Cream Milk")
-        #expect(group.detail == "248608 · qty 2")
+        let one = item(
+            words: ["milk", "full cream milk"], candidates: [ItemCandidate(stockcode: 248608, quantity: 2)],
+            listing: "Maleny Dairies Full Cream 2L")
+        #expect(one.title == "Maleny Dairies Full Cream 2L")
+        #expect(one.wordsText == "Milk +1 more")
+        #expect(one.detail == "248608 · qty 2")
+    }
+
+    @Test func rowTextCollapsesExtraWordsAndCandidates() {
+        let many = item(
+            words: ["bars", "protein bars"],
+            candidates: [ItemCandidate(stockcode: 1, quantity: 1), ItemCandidate(stockcode: 2, quantity: 4)],
+            listing: nil)
+        #expect(many.wordsText == "Bars +1 more")
+        #expect(many.detail == "1 · qty 1 +1 more")
+        let single = item(words: ["milk"], candidates: [ItemCandidate(stockcode: 1, quantity: 1)], listing: nil)
+        #expect(single.wordsText == "Milk")
+        #expect(single.detail == "1 · qty 1")
     }
 
     @Test func rowTitleIsTheNameWithTheListingBeneath() {
-        let named = ItemGroup(words: ["milk"], stockcode: 1, quantity: 1, listing: "Maleny Dairies Full Cream 2L", name: "Milk")
+        let named = Item(
+            id: "1", name: "Milk", listing: "Maleny Dairies Full Cream 2L", words: ["milk"],
+            candidates: [ItemCandidate(stockcode: 1, quantity: 1)])
         #expect(named.title == "Milk")
         #expect(named.subtitle == "Maleny Dairies Full Cream 2L")
-        #expect(group(words: ["milk"]).subtitle == nil)
-        #expect(ItemGroup(words: ["loaf"], stockcode: 1, quantity: 1, name: "Bread").title == "Bread")
-        #expect(ItemGroup(words: ["loaf"], stockcode: 1, quantity: 1, name: "Bread").subtitle == nil)
-    }
-
-    @Test func groupTakesTheFirstNameAnyWordHas() {
-        let items = [
-            Item(word: "milk", stockcode: 1, quantity: 1),
-            Item(word: "full cream milk", stockcode: 1, quantity: 1, name: "Milk"),
-        ]
-        #expect(ItemGroup.group(items).first?.name == "Milk")
-    }
-
-    @Test func groupTakesTheFirstAlternativesAnyWordHas() {
-        let items = [
-            Item(word: "milk", stockcode: 1, quantity: 1),
-            Item(word: "full cream milk", stockcode: 1, quantity: 1, alternatives: [ItemCandidate(stockcode: 2, quantity: 4)]),
-        ]
-        #expect(ItemGroup.group(items).first?.alternatives == [ItemCandidate(stockcode: 2, quantity: 4)])
+        #expect(item(words: ["milk"]).subtitle == nil)
+        let unlisted = Item(id: "1", name: "Bread", words: ["loaf"], candidates: [ItemCandidate(stockcode: 1, quantity: 1)])
+        #expect(unlisted.title == "Bread")
+        #expect(unlisted.subtitle == nil)
     }
 
     @Test func rowTitleFallsBackToTheFirstWord() {
-        let group = group(words: ["ben & jerry's", "ice cream"], listing: nil)
-        #expect(group.title == "Ben & Jerry's")
-        #expect(group.wordsText == "Ben & Jerry's, Ice Cream")
+        let unlisted = item(words: ["ben & jerry's", "ice cream"], listing: nil)
+        #expect(unlisted.title == "Ben & Jerry's")
+        #expect(unlisted.wordsText == "Ben & Jerry's +1 more")
     }
 
     private func body(of request: URLRequest) throws -> [String: Any] {
@@ -436,15 +436,19 @@ extension AdminClientTests {
         return try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
-    @Test func updatesGroupWithPatch() async throws {
+    @Test func updatesItemWithPatch() async throws {
         StubURLProtocol.stub(
-            body: #"{"words":["oat milk","oats"],"stockcode":654321,"quantity":3,"listing":"Oat 1L"}"#)
-        let updated = try await client.update(
-            group(), words: ["oat milk", "oats"], product: "654321", quantity: 3)
-        #expect(updated == ItemGroup(words: ["oat milk", "oats"], stockcode: 654321, quantity: 3, listing: "Oat 1L"))
+            body: #"{"id":"1","words":["oat milk","oats"],"candidates":[{"stockcode":654321,"quantity":3}],"listing":"Oat 1L"}"#
+        )
+        let updated = try await client.update(item(), words: ["oat milk", "oats"], url: "654321", quantity: 3)
+        #expect(
+            updated
+                == Item(
+                    id: "1", listing: "Oat 1L", words: ["oat milk", "oats"],
+                    candidates: [ItemCandidate(stockcode: 654321, quantity: 3)]))
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
         #expect(request.httpMethod == "PATCH")
-        #expect(request.url?.absoluteString == "https://example.test/products/123/2")
+        #expect(request.url?.absoluteString == "https://example.test/items/1")
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer ps_tok")
         let sent = try body(of: request)
         #expect(sent["words"] as? [String] == ["oat milk", "oats"])
@@ -453,8 +457,8 @@ extension AdminClientTests {
     }
 
     @Test func updateSendsTheName() async throws {
-        StubURLProtocol.stub(body: #"{"words":["milk"],"stockcode":1,"quantity":2,"name":"Milk"}"#)
-        let updated = try await client.update(group(), name: "Milk")
+        StubURLProtocol.stub(body: #"{"id":"1","words":["milk"],"candidates":[{"stockcode":1,"quantity":2}],"name":"Milk"}"#)
+        let updated = try await client.update(item(), name: "Milk")
         #expect(updated.name == "Milk")
         let sent = try body(of: try #require(StubURLProtocol.requests.withLock { $0.first }))
         #expect(sent["name"] as? String == "Milk")
@@ -462,27 +466,29 @@ extension AdminClientTests {
     }
 
     @Test func decodesItemNames() async throws {
-        StubURLProtocol.stub(body: #"{"items":[{"word":"milk","stockcode":1,"quantity":2,"name":"Milk"}]}"#)
-        #expect(try await client.items() == [Item(word: "milk", stockcode: 1, quantity: 2, name: "Milk")])
+        StubURLProtocol.stub(body: #"{"items":[{"id":"1","words":["milk"],"candidates":[{"stockcode":1,"quantity":2}],"name":"Milk"}]}"#)
+        #expect(
+            try await client.items()
+                == [Item(id: "1", name: "Milk", words: ["milk"], candidates: [ItemCandidate(stockcode: 1, quantity: 2)])])
     }
 
     @Test func updateSendsOnlyGivenFields() async throws {
-        StubURLProtocol.stub(body: #"{"words":["milk"],"stockcode":1,"quantity":2}"#)
-        try await client.update(group(), quantity: 2)
+        StubURLProtocol.stub(body: #"{"id":"1","words":["milk"],"candidates":[{"stockcode":1,"quantity":2}]}"#)
+        try await client.update(item(), quantity: 2)
         let sent = try body(of: try #require(StubURLProtocol.requests.withLock { $0.first }))
         #expect(Set(sent.keys) == ["quantity"])
     }
 
     @Test func updateSendsAndClearsAlternatives() async throws {
-        StubURLProtocol.stub(body: #"{"words":["milk"],"stockcode":1,"quantity":2,"alternatives":[{"stockcode":9,"quantity":3}]}"#)
-        let updated = try await client.update(
-            group(), alternatives: [AlternativeInput(product: "9", quantity: 3)])
-        #expect(updated.alternatives == [ItemCandidate(stockcode: 9, quantity: 3)])
+        StubURLProtocol.stub(
+            body: #"{"id":"1","words":["milk"],"candidates":[{"stockcode":1,"quantity":2},{"stockcode":9,"quantity":3}]}"#)
+        let updated = try await client.update(item(), alternatives: [CandidateInput(product: "9", quantity: 3)])
+        #expect(updated.candidates == [ItemCandidate(stockcode: 1, quantity: 2), ItemCandidate(stockcode: 9, quantity: 3)])
         let sent = try body(of: try #require(StubURLProtocol.requests.withLock { $0.first }))
         #expect(sent["alternatives"] as? NSArray == [["url": "9", "quantity": 3]] as NSArray)
 
-        StubURLProtocol.stub(body: #"{"words":["milk"],"stockcode":1,"quantity":2}"#)
-        try await client.update(group(), alternatives: [])
+        StubURLProtocol.stub(body: #"{"id":"1","words":["milk"],"candidates":[{"stockcode":1,"quantity":2}]}"#)
+        try await client.update(item(), alternatives: [])
         let cleared = try body(of: try #require(StubURLProtocol.requests.withLock { $0.first }))
         #expect(cleared["alternatives"] as? NSArray == [] as NSArray)
     }
@@ -490,24 +496,25 @@ extension AdminClientTests {
     @Test func updateSurfacesCollisionAndValidationMessages() async {
         StubURLProtocol.stub(status: 409, body: #"{"error":"\"bread\" is already used by another item."}"#)
         await #expect(throws: AdminError.rejected("\"bread\" is already used by another item.")) {
-            try await client.update(group(), words: ["bread"])
+            try await client.update(item(), words: ["bread"])
         }
         StubURLProtocol.stub(status: 400, body: #"{"error":"The quantity must be a positive integer."}"#)
         await #expect(throws: AdminError.rejected("The quantity must be a positive integer.")) {
-            try await client.update(group(), quantity: 0)
+            try await client.update(item(), quantity: 0)
         }
         StubURLProtocol.stub(status: 404, body: #"{"error":"No such item."}"#)
         await #expect(throws: AdminError.notFound("No such item.")) {
-            try await client.update(group(), quantity: 1)
+            try await client.update(item(), quantity: 1)
         }
         StubURLProtocol.stub(status: 401)
-        await #expect(throws: AdminError.unauthorized) { try await client.update(group(), quantity: 1) }
+        await #expect(throws: AdminError.unauthorized) { try await client.update(item(), quantity: 1) }
     }
 
     @MainActor
     private func editModel(
-        _ group: ItemGroup = ItemGroup(
-            words: ["milk", "full cream milk"], stockcode: 123, quantity: 2, listing: "Milk 2L"),
+        _ item: Item = Item(
+            id: "1", listing: "Milk 2L", words: ["milk", "full cream milk"],
+            candidates: [ItemCandidate(stockcode: 123, quantity: 2)]),
         onUnauthorized: @escaping @Sendable () -> Void = {}
     ) throws -> EditItemModel {
         let configuration = URLSessionConfiguration.ephemeral
@@ -515,33 +522,36 @@ extension AdminClientTests {
         let client = try AdminClient(
             serverURL: "https://example.test", token: "t", session: URLSession(configuration: configuration),
             onUnauthorized: onUnauthorized)
-        return EditItemModel(group: group) { client }
+        return EditItemModel(item: item) { client }
     }
 
-    @MainActor @Test func editFormStartsFromTheGroup() throws {
+    @MainActor @Test func editFormStartsFromTheItem() throws {
         let model = try editModel()
         #expect(model.words == ["milk", "full cream milk"])
-        #expect(model.group.listing == "Milk 2L")
-        #expect(model.product == "123")
-        #expect(model.quantity == 2)
+        #expect(model.item.listing == "Milk 2L")
+        #expect(model.candidates.map(\.product) == ["123"])
+        #expect(model.candidates.map(\.quantity) == [2])
         #expect(model.canSubmit)
     }
 
     @MainActor @Test func editFormValidatesFields() throws {
         let model = try editModel()
-        for invalid in ["", "abc", "0", "-5", "https://example.com/shop/productdetails/1/x"] {
-            model.product = invalid
-            #expect(model.productError != nil, "\(invalid)")
+        model.candidates[0].product = ""
+        #expect(model.candidates[0].productError == nil, "a blank product is unresolved but not yet an error")
+        #expect(!model.canSubmit)
+        for invalid in ["abc", "0", "-5", "https://example.com/shop/productdetails/1/x"] {
+            model.candidates[0].product = invalid
+            #expect(model.candidates[0].productError != nil, "\(invalid)")
             #expect(!model.canSubmit)
         }
         for valid in ["456", " 456 ", "https://www.woolworths.com.au/shop/productdetails/456/milk"] {
-            model.product = valid
-            #expect(model.productError == nil, "\(valid)")
+            model.candidates[0].product = valid
+            #expect(model.candidates[0].productError == nil, "\(valid)")
             #expect(model.canSubmit)
         }
-        model.quantity = 0
+        model.candidates[0].quantity = 0
         #expect(!model.canSubmit)
-        model.quantity = 100
+        model.candidates[0].quantity = 100
         #expect(!model.canSubmit)
     }
 
@@ -576,19 +586,19 @@ extension AdminClientTests {
     }
 
     @MainActor @Test func editFormSavesTrimmedFields() async throws {
-        StubURLProtocol.stub(body: #"{"words":["oat milk","oats"],"stockcode":456,"quantity":3}"#)
+        StubURLProtocol.stub(body: #"{"id":"1","words":["oat milk","oats"],"candidates":[{"stockcode":456,"quantity":3}]}"#)
         let model = try editModel()
         model.newWord = " Oat milk "
         model.addWord()
         model.newWord = "Oats"
         model.addWord()
         model.removeWords(at: [0, 1])
-        model.product = "https://www.woolworths.com.au/shop/productdetails/456/oat-milk"
-        model.quantity = 3
+        model.candidates[0].product = "https://www.woolworths.com.au/shop/productdetails/456/oat-milk"
+        model.candidates[0].quantity = 3
         await model.submit()
         #expect(model.phase == .saved)
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
-        #expect(request.url?.path == "/products/123/2")
+        #expect(request.url?.path == "/items/1")
         let sent = try body(of: request)
         #expect(sent["words"] as? [String] == ["oat milk", "oats"])
         #expect(sent["url"] as? String == "https://www.woolworths.com.au/shop/productdetails/456/oat-milk")
@@ -597,9 +607,11 @@ extension AdminClientTests {
     }
 
     @MainActor @Test func editFormPrefillsTrimsAndValidatesTheName() async throws {
-        StubURLProtocol.stub(body: #"{"words":["milk"],"stockcode":123,"quantity":2,"name":"Milk"}"#)
+        StubURLProtocol.stub(body: #"{"id":"1","words":["milk"],"candidates":[{"stockcode":123,"quantity":2}],"name":"Milk"}"#)
         let model = try editModel(
-            ItemGroup(words: ["milk"], stockcode: 123, quantity: 2, listing: "Milk 2L", name: "Old"))
+            Item(
+                id: "1", name: "Old", listing: "Milk 2L", words: ["milk"],
+                candidates: [ItemCandidate(stockcode: 123, quantity: 2)]))
         #expect(model.name == "Old")
         model.name = String(repeating: "x", count: 81)
         #expect(model.nameError != nil)
@@ -636,47 +648,51 @@ extension AdminClientTests {
     @MainActor @Test func editFormDoesNotSubmitWhenInvalid() async throws {
         StubURLProtocol.stub()
         let model = try editModel()
-        model.quantity = 0
+        model.candidates[0].quantity = 0
         await model.submit()
         #expect(model.phase == .editing)
         #expect(StubURLProtocol.requests.withLock { $0.isEmpty })
     }
 
-    @MainActor @Test func editFormPrefillsAlternativesFromTheGroup() throws {
+    @MainActor @Test func editFormPrefillsCandidatesFromTheItem() throws {
         let model = try editModel(
-            ItemGroup(
-                words: ["milk"], stockcode: 123, quantity: 2, listing: "Milk 2L",
-                alternatives: [ItemCandidate(stockcode: 456, quantity: 1)]))
-        #expect(model.alternatives.map(\.product) == ["456"])
-        #expect(model.alternatives.map(\.quantity) == [1])
+            Item(
+                id: "1", listing: "Milk 2L", words: ["milk"],
+                candidates: [ItemCandidate(stockcode: 123, quantity: 2), ItemCandidate(stockcode: 456, quantity: 1)]))
+        #expect(model.candidates.map(\.product) == ["123", "456"])
+        #expect(model.candidates.map(\.quantity) == [2, 1])
         #expect(model.canSubmit)
     }
 
-    @MainActor @Test func editFormAddsEditsAndRemovesAlternatives() throws {
+    @MainActor @Test func editFormAddsEditsAndRemovesCandidates() throws {
         let model = try editModel()
-        #expect(model.alternatives.isEmpty)
-        model.addAlternative()
-        let id = try #require(model.alternatives.first?.id)
-        #expect(model.alternativeProductError(for: id) == nil)
+        #expect(model.candidates.count == 1)
+        model.addCandidate()
+        let id = try #require(model.candidates.last?.id)
+        #expect(model.candidates.first(where: { $0.id == id })?.productError == nil)
         #expect(!model.canSubmit)
-        model.alternatives[0].product = "not a product"
-        #expect(model.alternativeProductError(for: id) != nil)
+        model.candidates[model.candidates.count - 1].product = "not a product"
+        #expect(model.candidates.first(where: { $0.id == id })?.productError != nil)
         #expect(!model.canSubmit)
-        model.alternatives[0].product = "789"
-        model.alternatives[0].quantity = 4
-        #expect(model.alternativeProductError(for: id) == nil)
+        model.candidates[model.candidates.count - 1].product = "789"
+        model.candidates[model.candidates.count - 1].quantity = 4
+        #expect(model.candidates.first(where: { $0.id == id })?.productError == nil)
         #expect(model.canSubmit)
-        model.removeAlternatives(at: [0])
-        #expect(model.alternatives.isEmpty)
+        model.removeCandidates(at: [1])
+        #expect(model.candidates.count == 1)
         #expect(model.canSubmit)
+        model.removeCandidates(at: [0])
+        #expect(model.candidates.count == 1, "the last candidate cannot be removed")
     }
 
-    @MainActor @Test func editFormSavesAlternatives() async throws {
-        StubURLProtocol.stub(body: #"{"words":["milk","full cream milk"],"stockcode":123,"quantity":2,"alternatives":[{"stockcode":789,"quantity":4}]}"#)
+    @MainActor @Test func editFormSavesCandidates() async throws {
+        StubURLProtocol.stub(
+            body: #"{"id":"1","words":["milk","full cream milk"],"candidates":[{"stockcode":123,"quantity":2},{"stockcode":789,"quantity":4}]}"#
+        )
         let model = try editModel()
-        model.addAlternative()
-        model.alternatives[0].product = "789"
-        model.alternatives[0].quantity = 4
+        model.addCandidate()
+        model.candidates[1].product = "789"
+        model.candidates[1].quantity = 4
         await model.submit()
         #expect(model.phase == .saved)
         let sent = try body(of: try #require(StubURLProtocol.requests.withLock { $0.first }))
