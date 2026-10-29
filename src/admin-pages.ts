@@ -1,6 +1,11 @@
 import { PAGE_STYLES } from './admin-styles.ts'
 import { renderHousehold, type HouseholdView } from './admin-household.ts'
-import { renderItemRows, type ItemEdit } from './admin-items.ts'
+import {
+  alternativeRowsFromCandidates,
+  renderItemRows,
+  type AlternativeRow,
+  type ItemEdit,
+} from './admin-items.ts'
 import { escapeHtml, formatTime } from './html.ts'
 import type { ItemsConfig } from './items.ts'
 import type { SessionSummary } from './tokens.ts'
@@ -66,10 +71,22 @@ export function renderAddItemPage(
     url?: string | undefined
     quantity?: string | undefined
     name?: string | undefined
+    alternatives?: AlternativeRow[]
   } = {},
   error?: string,
 ): string {
   const field = (value: string | undefined): string => escapeHtml(value ?? '')
+  const alternatives = (values.alternatives ?? alternativeRowsFromCandidates())
+    .map(
+      (row, index) => `
+      <label>Alternative ${index + 1} URL or stockcode (optional)
+        <input name="altUrl" placeholder="https://www.woolworths.com.au/shop/productdetails/..." value="${field(row.url)}">
+      </label>
+      <label>Alternative ${index + 1} quantity
+        <input name="altQuantity" type="number" min="1" value="${field(row.quantity ?? '1')}">
+      </label>`,
+    )
+    .join('')
   return renderLayout(
     'add',
     `<section>
@@ -87,6 +104,7 @@ export function renderAddItemPage(
       <label>Name (optional)
         <input name="name" maxlength="80" value="${field(values.name)}">
       </label>
+      <p class="hint">Other stockcode/quantity options for the same product, such as a multipack — the cheapest per unit is added to the cart.</p>${alternatives}
       <button type="submit">Add item</button>
     </form>
   </section>`,

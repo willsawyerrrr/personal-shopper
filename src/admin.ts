@@ -7,6 +7,11 @@ import type { AppConfig } from './config.ts'
 import { applyEdit, parseCandidates, parseName, parseStockcode } from './item-edit.ts'
 import { applyGroupEdit, groupKey, removeGroup } from './products.ts'
 import {
+  alternativeRowsFromBody,
+  alternativesFromBody,
+  hasAlternativeFields,
+} from './admin-items.ts'
+import {
   renderAccountPage,
   renderAddItemPage,
   renderHouseholdPage,
@@ -261,7 +266,9 @@ export async function registerAdmin(
       const { word, url, quantity, name, alternatives } = request.body
       const items = await store.load(emailOf(request))
       const stockcode = parseStockcode(url ?? '')
-      const candidates = parseCandidates(alternatives ?? [])
+      const candidates = parseCandidates(
+        alternatives ?? alternativesFromBody(request.body as Record<string, unknown>),
+      )
       const error = !word?.trim()
         ? 'A trigger word is required.'
         : !stockcode
@@ -285,6 +292,7 @@ export async function registerAdmin(
                 url,
                 quantity: quantity === undefined ? undefined : String(quantity),
                 name: typeof name === 'string' ? name : undefined,
+                alternatives: alternativeRowsFromBody(request.body as Record<string, unknown>),
               },
               problem,
             ),
@@ -374,7 +382,10 @@ export async function registerAdmin(
       const [stockcode, quantity] = productOf(request)
       const email = emailOf(request)
       const items = await store.load(email)
-      const fields = request.body ?? {}
+      const fields = { ...(request.body ?? {}) }
+      if (hasAlternativeFields(fields)) {
+        fields.alternatives = alternativesFromBody(fields)
+      }
       const result = applyGroupEdit(items, stockcode, quantity, fields)
       if (!result.ok) {
         if (wantsJson(request)) {

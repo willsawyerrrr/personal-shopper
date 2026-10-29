@@ -395,6 +395,42 @@ describe('admin', () => {
     expect(items).not.toContain('bread:')
   })
 
+  it('adds an item with an alternative stockcode and quantity', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/items',
+      headers: authHeader,
+      payload: { word: 'oats', url: '888137', altUrl: '999999', altQuantity: '4' },
+    })
+    expect(response.statusCode).toBe(302)
+    expect(parse(await itemsYaml(db.sql))['oats']).toMatchObject({
+      alternatives: [{ stockcode: 999999, quantity: 4 }],
+    })
+  })
+
+  it('offers alternative fields on the add-item page', async () => {
+    const response = await app.inject({ method: 'GET', url: '/items/new', headers: authHeader })
+    expect(response.body).toContain('Alternative 1 URL or stockcode (optional)')
+    expect(response.body).toContain('name="altUrl"')
+    expect(response.body).toContain('name="altQuantity"')
+  })
+
+  it('re-renders with an error when an alternative has no stockcode, echoing it', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/items',
+      headers: authHeader,
+      payload: { word: 'bread', url: '888137', altUrl: 'not a url' },
+    })
+    expect(response.statusCode).toBe(400)
+    expect(response.body).toContain('Each alternative needs a product URL or stockcode')
+    expect(response.body).toContain(
+      'name="altUrl" placeholder="https://www.woolworths.com.au/shop/productdetails/..." value="not a url"',
+    )
+    const items = await itemsYaml(db.sql)
+    expect(items).not.toContain('bread:')
+  })
+
   it('offers an edit form per product, prefilled', async () => {
     const response = await app.inject({ method: 'GET', url: '/', headers: authHeader })
     expect(response.body).toContain('action="/products/123456/1/edit"')
@@ -515,6 +551,62 @@ describe('admin', () => {
       })
       expect(response.statusCode).toBe(401)
       expect(await itemsYaml(db.sql)).toContain('milk:')
+    })
+
+    it('prefills the alternatives fields from the product', async () => {
+      await seedItems(
+        db.sql,
+        'oats:\n  stockcode: 5\n  quantity: 1\n  alternatives:\n    - stockcode: 6\n      quantity: 2\n',
+      )
+      const { body } = await app.inject({ method: 'GET', url: '/', headers: authHeader })
+      expect(body).toContain(
+        'aria-label="Alternative 1 URL or stockcode" name="altUrl" placeholder="https://www.woolworths.com.au/shop/productdetails/..." value="6"',
+      )
+      expect(body).toContain(
+        'aria-label="Alternative 1 quantity" name="altQuantity" type="number" min="1" value="2"',
+      )
+    })
+
+    it('sets alternatives for every word of a product from the web form', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/products/2/1/edit',
+        headers: { ...authHeader, ...form },
+        payload: 'words=bread&url=2&quantity=1&altUrl=5&altQuantity=3',
+      })
+      expect(response.statusCode).toBe(302)
+      expect(parse(await itemsYaml(db.sql))['bread']).toMatchObject({
+        alternatives: [{ stockcode: 5, quantity: 3 }],
+      })
+    })
+
+    it('clears alternatives from the web form when the fields are left blank', async () => {
+      await seedItems(
+        db.sql,
+        'bread:\n  stockcode: 2\n  quantity: 1\n  alternatives:\n    - stockcode: 6\n      quantity: 2\n',
+      )
+      const response = await app.inject({
+        method: 'POST',
+        url: '/products/2/1/edit',
+        headers: { ...authHeader, ...form },
+        payload: 'words=bread&url=2&quantity=1&altUrl=&altQuantity=',
+      })
+      expect(response.statusCode).toBe(302)
+      expect(parse(await itemsYaml(db.sql))['bread']).not.toHaveProperty('alternatives')
+    })
+
+    it('re-renders a web edit error with an invalid alternative, echoing it', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/products/2/1/edit',
+        headers: { ...authHeader, ...form },
+        payload: 'words=bread&url=2&quantity=1&altUrl=not+a+url',
+      })
+      expect(response.statusCode).toBe(400)
+      expect(response.body).toContain('Each alternative needs a product URL or stockcode')
+      expect(response.body).toContain(
+        'aria-label="Alternative 1 URL or stockcode" name="altUrl" placeholder="https://www.woolworths.com.au/shop/productdetails/..." value="not a url"',
+      )
     })
 
     it('removes every word of a product', async () => {

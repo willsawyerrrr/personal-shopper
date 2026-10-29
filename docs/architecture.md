@@ -46,8 +46,8 @@
    also carry a household-chosen `name` (max 80 characters), stored on every
    word row of the product and shown as the title above the listing. An item
    can also carry `alternatives`, other stockcode/quantity options for the
-   same product (e.g. sold both individually and in a multipack); there is no
-   web form for these yet. They are set through the JSON API
+   same product (e.g. sold both individually and in a multipack), editable
+   from the web admin's add-item and product-edit forms, the JSON API
    (`PATCH /items/:word`, or `PATCH /products/:stockcode/:quantity` for every
    word of a product at once) and the iOS app's edit-item sheet. See
    [`auth.md`](auth.md#using-the-token).
