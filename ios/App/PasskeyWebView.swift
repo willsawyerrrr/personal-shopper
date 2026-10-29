@@ -1,6 +1,9 @@
 import PersonalShopperKit
 import SwiftUI
 import WebKit
+#if DEBUG
+    import os
+#endif
 
 /// A web view on the Woolworths login whose WebAuthn calls are answered by
 /// `PasskeyScript`. `onCredential` receives each passkey the page creates for Woolworths.
@@ -16,6 +19,9 @@ struct PasskeyWebView: UIViewRepresentable {
         configuration.userContentController.addUserScript(
             WKUserScript(source: PasskeyScript.source, injectionTime: .atDocumentStart, forMainFrameOnly: false))
         configuration.userContentController.add(context.coordinator, name: PasskeyScript.messageHandler)
+        #if DEBUG
+            configuration.userContentController.add(context.coordinator, name: "debugLog")
+        #endif
         let webView = WKWebView(frame: .zero, configuration: configuration)
         #if DEBUG
             webView.isInspectable = true
@@ -30,6 +36,9 @@ struct PasskeyWebView: UIViewRepresentable {
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: PasskeyScript.messageHandler)
+        #if DEBUG
+            webView.configuration.userContentController.removeScriptMessageHandler(forName: "debugLog")
+        #endif
     }
 
     final class Coordinator: NSObject, WKScriptMessageHandler {
@@ -38,6 +47,12 @@ struct PasskeyWebView: UIViewRepresentable {
         init(onCredential: @escaping (Any) -> Void) { self.onCredential = onCredential }
 
         func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+            #if DEBUG
+                if message.name == "debugLog" {
+                    os_log(.default, log: OSLog(subsystem: "dev.willsawyerrrr.personal-shopper", category: "passkey-authenticator"), "%{public}@", String(describing: message.body))
+                    return
+                }
+            #endif
             // Only the Woolworths sign-in frame may hand over a passkey.
             guard message.frameInfo.securityOrigin.host == PasskeyCredential.rpId else { return }
             onCredential(message.body)
