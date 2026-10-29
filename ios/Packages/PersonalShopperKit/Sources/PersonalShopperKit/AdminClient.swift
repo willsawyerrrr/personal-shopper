@@ -1,8 +1,8 @@
 import Foundation
 
 /// A product reference (a Woolworths product URL or a stockcode) and quantity, sent as one of
-/// an item's alternatives.
-public struct AlternativeInput: Sendable, Equatable {
+/// an item's candidate products.
+public struct CandidateInput: Sendable, Equatable {
     public let product: String
     public let quantity: Int
 
@@ -85,30 +85,40 @@ public struct AdminClient: Sendable {
         return try decode(Response.self, from: data).items
     }
 
-    /// Adds or replaces the item for `word` and returns the stored item.
+    /// Creates an item for `word`, with `url`/`quantity` as its first candidate and `alternatives`
+    /// as the rest, and returns it as stored.
     @discardableResult
-    public func add(word: String, url: URL, quantity: Int, name: String? = nil) async throws -> Item {
+    public func add(
+        word: String, url: URL, quantity: Int, name: String? = nil, alternatives: [CandidateInput]? = nil
+    ) async throws -> Item {
+        struct CandidateBody: Encodable {
+            let url: String
+            let quantity: Int
+        }
         struct Body: Encodable {
             let word: String
             let url: String
             let quantity: Int
             let name: String?
+            let alternatives: [CandidateBody]?
         }
-        let body = Body(word: word, url: url.absoluteString, quantity: quantity, name: name)
+        let body = Body(
+            word: word, url: url.absoluteString, quantity: quantity, name: name,
+            alternatives: alternatives?.map { CandidateBody(url: $0.product, quantity: $0.quantity) })
         let data = try await send("POST", path: "/items", body: JSONEncoder().encode(body))
         return try decode(Item.self, from: data)
     }
 
-    /// Changes the product `group` and returns it as stored. Only the arguments given
-    /// change: `words` replaces the group's whole set of trigger words, `product` is a
-    /// product URL or stockcode, `name` the custom display name (empty clears it),
-    /// `alternatives` replaces the group's alternatives wholesale (empty clears them).
+    /// Changes `item` and returns it as stored. Only the arguments given change: `words`
+    /// replaces the item's whole set of trigger words, `url`/`quantity` edit its first
+    /// candidate, `name` the custom display name (empty clears it), `alternatives` replaces
+    /// every candidate after the first wholesale (empty clears them).
     @discardableResult
     public func update(
-        _ group: ItemGroup, words: [String]? = nil, product: String? = nil, quantity: Int? = nil,
-        name: String? = nil, alternatives: [AlternativeInput]? = nil
-    ) async throws -> ItemGroup {
-        struct AlternativeBody: Encodable {
+        _ item: Item, words: [String]? = nil, url: String? = nil, quantity: Int? = nil,
+        name: String? = nil, alternatives: [CandidateInput]? = nil
+    ) async throws -> Item {
+        struct CandidateBody: Encodable {
             let url: String
             let quantity: Int
         }
@@ -117,21 +127,19 @@ public struct AdminClient: Sendable {
             let url: String?
             let quantity: Int?
             let name: String?
-            let alternatives: [AlternativeBody]?
+            let alternatives: [CandidateBody]?
         }
         let body = Body(
-            words: words, url: product, quantity: quantity, name: name,
-            alternatives: alternatives?.map { AlternativeBody(url: $0.product, quantity: $0.quantity) })
-        let data = try await send("PATCH", path: path(of: group), body: JSONEncoder().encode(body))
-        return try decode(ItemGroup.self, from: data)
+            words: words, url: url, quantity: quantity, name: name,
+            alternatives: alternatives?.map { CandidateBody(url: $0.product, quantity: $0.quantity) })
+        let data = try await send("PATCH", path: "/items/\(item.id)", body: JSONEncoder().encode(body))
+        return try decode(Item.self, from: data)
     }
 
-    /// Removes every trigger word of `group`.
-    public func remove(_ group: ItemGroup) async throws {
-        _ = try await send("POST", path: path(of: group) + "/delete")
+    /// Removes `item`.
+    public func remove(_ item: Item) async throws {
+        _ = try await send("DELETE", path: "/items/\(item.id)")
     }
-
-    private func path(of group: ItemGroup) -> String { "/products/\(group.stockcode)/\(group.quantity)" }
 
     /// The members of the signed-in user's household, the user included.
     public func household() async throws -> [HouseholdMember] {

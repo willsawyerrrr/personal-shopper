@@ -5,8 +5,8 @@ struct EditItemSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var model: EditItemModel
 
-    init(group: ItemGroup, store: SettingsStore) {
-        _model = State(initialValue: EditItemModel(group: group) { try store.client() })
+    init(item: Item, store: SettingsStore) {
+        _model = State(initialValue: EditItemModel(item: item) { try store.client() })
     }
 
     var body: some View {
@@ -21,7 +21,7 @@ struct EditItemSheet: View {
                 }
                 Section("Trigger phrases") {
                     ForEach(model.words, id: \.self) { word in
-                        Text(ItemGroup.displayCase(word))
+                        Text(Item.displayCase(word))
                     }
                     .onDelete { model.removeWords(at: $0) }
                     .deleteDisabled(model.words.count <= 1)
@@ -34,41 +34,31 @@ struct EditItemSheet: View {
                     }
                 }
                 Section {
-                    Stepper("Quantity: \(model.quantity)", value: $model.quantity, in: EditItemModel.quantityRange)
-                }
-                Section("Product") {
-                    if let listing = model.group.listing {
-                        Text(listing).foregroundStyle(.secondary)
-                    }
-                    TextField("Woolworths product URL or stockcode", text: $model.product)
-                        .textInputAutocapitalization(.never)
-                        .keyboardType(.URL)
-                        .autocorrectionDisabled()
-                    if let error = model.productError {
-                        Text(error).foregroundStyle(.red).font(.footnote)
-                    }
-                }
-                Section {
-                    ForEach($model.alternatives) { $alternative in
+                    ForEach($model.candidates) { $candidate in
                         VStack(alignment: .leading) {
-                            TextField("Woolworths product URL or stockcode", text: $alternative.product)
+                            TextField("Woolworths product URL or stockcode", text: $candidate.product)
                                 .textInputAutocapitalization(.never)
                                 .keyboardType(.URL)
                                 .autocorrectionDisabled()
-                            if let error = model.alternativeProductError(for: alternative.id) {
+                            if let error = candidate.productError {
                                 Text(error).foregroundStyle(.red).font(.footnote)
                             }
                             Stepper(
-                                "Quantity: \(alternative.quantity)", value: $alternative.quantity,
+                                "Quantity: \(candidate.quantity)", value: $candidate.quantity,
                                 in: EditItemModel.quantityRange)
                         }
                     }
-                    .onDelete { model.removeAlternatives(at: $0) }
-                    Button("Add alternative") { model.addAlternative() }
+                    .onDelete { model.removeCandidates(at: $0) }
+                    .deleteDisabled(model.candidates.count <= 1)
+                    Button("Add product") { model.addCandidate() }
                 } header: {
-                    Text("Alternatives")
+                    Text("Products")
                 } footer: {
-                    Text("Other stockcode or quantity options for this product; the cheapest per unit is added to the cart.")
+                    if let listing = model.item.listing {
+                        Text(listing)
+                    } else {
+                        Text("Other stockcode or quantity options for this item; the cheapest per unit is added to the cart.")
+                    }
                 }
                 if case .failed(let message) = model.phase {
                     Section { Text(message).foregroundStyle(.red) }

@@ -3,12 +3,12 @@ import SwiftUI
 
 struct ItemsView: View {
     let session: Session
-    @State private var groups: [ItemGroup] = []
+    @State private var items: [Item] = []
     @State private var error: String?
     @State private var notice: String?
     @State private var loaded = false
     @State private var adding = false
-    @State private var editing: ItemGroup?
+    @State private var editing: Item?
 
     var body: some View {
         NavigationStack {
@@ -25,22 +25,22 @@ struct ItemsView: View {
                             .foregroundStyle(.green)
                     }
                 }
-                ForEach(groups) { group in
-                    Button { editing = group } label: {
+                ForEach(items) { item in
+                    Button { editing = item } label: {
                         VStack(alignment: .leading) {
-                            Text(group.title)
+                            Text(item.title)
                                 .font(.headline)
-                            if let subtitle = group.subtitle {
+                            if let subtitle = item.subtitle {
                                 Text(subtitle)
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(2)
                             }
-                            Text(group.wordsText)
+                            Text(item.wordsText)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(2)
-                            Text(group.detail)
+                            Text(item.detail)
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
@@ -48,18 +48,18 @@ struct ItemsView: View {
                     .tint(.primary)
                     .swipeActions(edge: .leading) {
                         Button("Add to Cart", systemImage: "cart.badge.plus") {
-                            Task { await addToCart(group) }
+                            Task { await addToCart(item) }
                         }
                         .tint(.green)
                     }
                 }
                 .onDelete { offsets in
-                    let removed = offsets.map { groups[$0] }
+                    let removed = offsets.map { items[$0] }
                     Task { await remove(removed) }
                 }
             }
             .overlay {
-                if loaded, groups.isEmpty, error == nil {
+                if loaded, items.isEmpty, error == nil {
                     ContentUnavailableView("No items", systemImage: "cart", description: Text("Tap + or share a Woolworths product to this app."))
                 }
             }
@@ -79,8 +79,8 @@ struct ItemsView: View {
             .sheet(isPresented: $adding, onDismiss: { Task { await load() } }) {
                 AddItemSheet(store: session.store)
             }
-            .sheet(item: $editing, onDismiss: { Task { await load() } }) { group in
-                EditItemSheet(group: group, store: session.store)
+            .sheet(item: $editing, onDismiss: { Task { await load() } }) { item in
+                EditItemSheet(item: item, store: session.store)
             }
         }
     }
@@ -91,19 +91,19 @@ struct ItemsView: View {
             session.refresh()
         }
         guard session.signedIn else {
-            groups = []
+            items = []
             return
         }
         do {
-            groups = ItemGroup.group(try await session.store.client().items())
+            items = try await session.store.client().items()
             error = nil
         } catch {
             self.error = error.localizedDescription
         }
     }
 
-    private func addToCart(_ group: ItemGroup) async {
-        guard let word = group.words.first else { return }
+    private func addToCart(_ item: Item) async {
+        guard let word = item.words.first else { return }
         do {
             notice = try await session.store.client().addToCartDialog(item: word)
             error = nil
@@ -114,10 +114,10 @@ struct ItemsView: View {
         session.refresh()
     }
 
-    private func remove(_ removed: [ItemGroup]) async {
+    private func remove(_ removed: [Item]) async {
         do {
             let client = try session.store.client()
-            for group in removed { try await client.remove(group) }
+            for item in removed { try await client.remove(item) }
             error = nil
         } catch {
             self.error = error.localizedDescription
