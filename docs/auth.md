@@ -108,91 +108,77 @@ Bearer tokens authorise the JSON API on `/items`; send
 household: members share items, and `POST /cart/items` adds to the household's
 Woolworths cart.
 
-| Request                                                           | Success                                                                                       |
-| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `GET /items`                                                      | `200 {"items":[{word, stockcode, quantity, listing?, name?, alternatives?}]}`                 |
-| `POST /items` with `{word, url, quantity?, name?, alternatives?}` | `201` with the stored item; `400 {error}` if invalid                                          |
-| `PATCH /items/:word` with any of the fields below                 | `200` with the stored item; `400`, `404`, `409` below                                         |
-| `DELETE /items/:word` (or `POST /items/:word/delete`)             | `204`                                                                                         |
-| `PATCH /products/:stockcode/:quantity` with fields below          | `200 {words, stockcode, quantity, listing?, name?, alternatives?}`; `400`, `404`, `409` below |
-| `DELETE /products/:stockcode/:quantity` (or `POST …/delete`)      | `204`; `404` for an unknown product                                                           |
-| `GET /household`                                                  | `200 {"members":[{email, you}]}`                                                              |
-| `POST /household/invites`                                         | `201 {code, expiresAt}` (epoch ms); `409 {error}` at the invite limit                         |
-| `POST /household/join` with `{code}`                              | `204`; `400 {error}` invalid, expired or used; `409 {error}` already a member                 |
-| `POST /household/leave`                                           | `204`; `409 {error}` for a sole member                                                        |
-| `POST /auth/logout`                                               | `204`; revokes the presented token                                                            |
+| Request                                                           | Success                                                                       |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `GET /items`                                                      | `200 {"items":[{id, words, candidates, listing?, name?}]}`                    |
+| `POST /items` with `{word, url, quantity?, name?, alternatives?}` | `201` with the stored item; `400 {error}` if invalid                          |
+| `PATCH /items/:id` with any of the fields below                   | `200` with the stored item; `400`, `404`, `409` below                         |
+| `DELETE /items/:id` (or `POST /items/:id/delete`)                 | `204`; `404` for an unknown item                                              |
+| `GET /household`                                                  | `200 {"members":[{email, you}]}`                                              |
+| `POST /household/invites`                                         | `201 {code, expiresAt}` (epoch ms); `409 {error}` at the invite limit         |
+| `POST /household/join` with `{code}`                              | `204`; `400 {error}` invalid, expired or used; `409 {error}` already a member |
+| `POST /household/leave`                                           | `204`; `409 {error}` for a sole member                                        |
+| `POST /auth/logout`                                               | `204`; revokes the presented token                                            |
 
-`PATCH /items/:word` changes only the fields sent, keeps every other entry and the item's position
-in the user's list, and saves atomically. `:word` is normalised like
-`word` on `POST`.
+An item is the household's own concept of a product (e.g. "kitchen garbage
+bags"), identified by `id`: `words` are the trigger phrases that resolve to
+it (each word belongs to exactly one item) and `candidates` are its
+stockcode/quantity options, an unordered set with no primary or alternative
+distinction — `POST /cart/items` (below) adds whichever is cheapest per unit.
+`GET /items` lists items in stored order.
 
-| Field          | Meaning                                                                                                                                                     |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `word`         | New trigger phrase, trimmed and lower-cased                                                                                                                 |
-| `url`          | Product URL or stockcode, parsed like `POST`; takes precedence over `stockcode`                                                                             |
-| `stockcode`    | Positive integer                                                                                                                                            |
-| `quantity`     | Positive integer                                                                                                                                            |
-| `name`         | Display name, trimmed, at most 80 characters; blank clears it (`400` if longer)                                                                             |
-| `alternatives` | Array of `{url or stockcode, quantity?}`; replaces the item's alternatives wholesale, `[]` clears them; `400` if an entry has neither `url` nor `stockcode` |
+`POST /items` creates an item with one trigger word: `word` (trimmed,
+lower-cased; `400` if already used by another item), `url` or a bare
+stockcode (parsed the same way, `400` if neither is found) and `quantity`
+(default 1) become its first candidate, and `alternatives` (array of
+`{url or stockcode, quantity?}`) its further candidates. `name` sets its
+display name (trimmed, at most 80 characters, `400` if longer).
+
+`PATCH /items/:id` changes only the fields sent, keeps every other item in
+place and in order, and saves atomically.
+
+| Field          | Meaning                                                                                                                                                             |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `words`        | Array (or comma-separated string) that replaces the item's whole trigger-word set; at least one is required, trimmed and lower-cased                                |
+| `url`          | Product URL or stockcode for the item's first candidate, parsed like `POST`; takes precedence over `stockcode`                                                      |
+| `stockcode`    | Positive integer, for the item's first candidate                                                                                                                    |
+| `quantity`     | Positive integer, for the item's first candidate (unchanged when absent)                                                                                            |
+| `name`         | Display name, trimmed, at most 80 characters; blank clears it (`400` if longer)                                                                                     |
+| `alternatives` | Array of `{url or stockcode, quantity?}`; replaces every candidate after the first wholesale, `[]` clears them; `400` if an entry has neither `url` nor `stockcode` |
 
 `listing` is the product's title as shown on woolworths.com.au (for example
-`Maleny Dairies Full Cream 2L`), shown as the product's title. It is
-read-only: the server looks it up when an item is added and when its
-stockcode changes, and clients cannot set it. It is absent when the lookup
-failed or has not run yet; a failed lookup never fails the request. Items
-stored without one are filled in by a background pass at startup and after
-any `GET /items` or `GET /`, so a later list contains it.
+`Maleny Dairies Full Cream 2L`), looked up for the item's first candidate. It
+is read-only: the server looks it up when an item is added and when that
+candidate's stockcode changes, and clients cannot set it. It is absent when
+the lookup failed or has not run yet; a failed lookup never fails the
+request. Items stored without one are filled in by a background pass at
+startup and after any `GET /items` or `GET /`, so a later list contains it.
 
 | Status | Body                                                            |
 | ------ | --------------------------------------------------------------- |
 | `400`  | `{"error":"<message>"}`: a field is invalid; nothing is written |
-| `404`  | `{"error":"<message>"}`: no item for `:word`                    |
-| `409`  | `{"error":"<message>"}`: `word` is already used by another item |
+| `404`  | `{"error":"<message>"}`: no item for `:id`                      |
+| `409`  | `{"error":"<message>"}`: a word is already used by another item |
 
-`name` is the household's own name for a product. It belongs to the product: a
-write sets it on every word sharing the stockcode and quantity, `POST /items`
-gives a word added to a named product that product's name, and it is absent
-when unset.
+Clients list one row per item, titled with its `name` (else its `listing`,
+else its first word) and the `listing` beneath a `name`, with its words
+beneath it display-cased (`Full Cream Milk`, `Coca-Cola`; display only, the
+stored words stay lower-case). Two items may end up with the same stockcode
+and quantity (e.g. after an edit) without merging — they keep separate
+identities.
 
-`alternatives` holds other stockcode/quantity options for the same product —
-for example a product sold both individually and in a multipack, where
-whichever is cheaper per unit depends on current pricing. `POST /cart/items`
-looks up the current price of the item's own stockcode and each alternative's
-and adds whichever has the lowest price per unit (price divided by quantity),
-falling back to the item's own stockcode and quantity when a price can't be
-determined. It is editable from the web admin's add-item and product-edit
-forms, the JSON API, or the iOS app's edit-item sheet, and absent when the
-item has none.
-
-Items are stored per trigger word, in order, and `GET /items` lists them that
-way. A product is the set of words sharing a stockcode and quantity;
-clients list one row per product, titled with its `name` (else its `listing`,
-else the first word) and the `listing` beneath a `name`, with the words beneath it display-cased (`Full Cream Milk`, `Coca-Cola`;
-display only, the stored words stay lower-case). `POST /items` with a
-stockcode and quantity an existing product has adds the word to that product.
-
-`PATCH /products/:stockcode/:quantity` (browser form:
-`POST /products/:stockcode/:quantity/edit`) edits the whole product at once and
-saves atomically. It takes the fields of `PATCH /items/:word` except `word`,
-plus `words`, an array (or comma-separated string) that replaces the product's
-whole word set: absent words are removed, new ones are added after the
-product's last word. Changing the stockcode or quantity to another product's
-merges the two. The statuses are those above, with `404` for an unknown product
-and `409` when a word belongs to a different product. Deleting a product
-removes all its words.
-
-Browser form edits answer the same statuses by re-rendering `/` with the
-message, and redirect to `/` on success. They rely on the session
-cookie's `SameSite=Lax`, like the other form posts.
+Browser form edits (`POST /items/:id/edit`, `POST /items/:id/delete`) answer
+the same statuses by re-rendering `/` with the message, and redirect to `/`
+on success. They rely on the session cookie's `SameSite=Lax`, like the other
+form posts.
 
 ### Adding to the cart
 
-`POST /cart/items` adds the product mapped to a spoken phrase to the
-Woolworths cart. When the item has alternatives, the cheapest per unit is
-added instead of the item's own stockcode and quantity (see `alternatives`
-above). It accepts a bearer token only (the web session cookie is
-rejected) and is rate limited per client IP (`IP_RATE_LIMIT_PER_MINUTE`) and per
-user (`USER_RATE_LIMIT_PER_MINUTE`).
+`POST /cart/items` adds the item mapped to a spoken phrase to the Woolworths
+cart. When the item has more than one candidate, the cheapest per unit is
+added (see `candidates` above). It accepts a bearer token only (the web
+session cookie is rejected) and is rate limited per client IP
+(`IP_RATE_LIMIT_PER_MINUTE`) and per user (`USER_RATE_LIMIT_PER_MINUTE`).
 
 ```
 POST {PUBLIC_BASE_URL}/cart/items

@@ -57,9 +57,10 @@ describe('createListingBackfill', () => {
     await createListingBackfill(items, EMAIL, lookup, log)()
     expect(lookup.listing).toHaveBeenCalledTimes(2)
     const written = await items.load(EMAIL)
-    expect(written.milk?.listing).toBe('Milk 2L')
-    expect(written.bread?.listing).toBe('Bread')
-    expect(written.eggs?.listing).toBeUndefined()
+    const listingFor = (word: string) => written.find((item) => item.words.includes(word))?.listing
+    expect(listingFor('milk')).toBe('Milk 2L')
+    expect(listingFor('bread')).toBe('Bread')
+    expect(listingFor('eggs')).toBeUndefined()
     expect(log.warn).toHaveBeenCalledOnce()
   })
 
@@ -72,7 +73,7 @@ describe('createListingBackfill', () => {
       }),
     }
     await createListingBackfill(items, EMAIL, lookup, log)()
-    expect((await items.load(EMAIL)).milk?.listing).toBeUndefined()
+    expect((await items.load(EMAIL))[0]?.listing).toBeUndefined()
   })
 
   it('runs once for overlapping triggers', async () => {
@@ -86,7 +87,7 @@ describe('createListingBackfill', () => {
   it('does nothing without a lookup', async () => {
     await seedItems(db.sql, 'milk:\n  stockcode: 1\n  quantity: 1\n')
     await createListingBackfill(items, EMAIL, undefined, log)()
-    expect((await items.load(EMAIL)).milk?.listing).toBeUndefined()
+    expect((await items.load(EMAIL))[0]?.listing).toBeUndefined()
   })
 
   it('only touches the given user', async () => {
@@ -94,7 +95,7 @@ describe('createListingBackfill', () => {
     await seedItems(db.sql, 'milk:\n  stockcode: 1\n  quantity: 1\n', 'you@example.com')
     const lookup = { listing: vi.fn().mockResolvedValue('Milk 2L') }
     await createListingBackfill(items, EMAIL, lookup, log)()
-    expect((await items.load('you@example.com')).milk?.listing).toBeUndefined()
+    expect((await items.load('you@example.com'))[0]?.listing).toBeUndefined()
   })
 
   it('logs a failure to read the items', async () => {

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import formbody from '@fastify/formbody'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { PAGE_STYLES } from './admin-styles.ts'
@@ -5,7 +6,6 @@ import { UserRateLimiter } from './rate-limit.ts'
 import { authenticate, logAuthFailure, requestPath, sessionCookie } from './auth.ts'
 import type { AppConfig } from './config.ts'
 import { applyEdit, parseCandidates, parseName, parseStockcode } from './item-edit.ts'
-import { applyGroupEdit, groupKey, removeGroup } from './products.ts'
 import {
   alternativeRowsFromBody,
   alternativesFromBody,
@@ -18,7 +18,7 @@ import {
   renderItemsPage,
 } from './admin-pages.ts'
 import { InviteLimitError, type HouseholdStore } from './households.ts'
-import { normalizeWord, type ItemMapping, type ItemStore } from './items.ts'
+import { normalizeWord, type Item, type ItemStore } from './items.ts'
 import { createListingBackfill, lookupListing } from './listings.ts'
 import { PASSKEY_RATE_LIMIT, removePasskey, type PasskeyOptions } from './passkey.ts'
 import type { SessionSummary, TokenStore } from './tokens.ts'
@@ -249,9 +249,7 @@ export async function registerAdmin(
     admin.get('/items', async (request) => {
       const items = await store.load(emailOf(request))
       void backfillOf(request)
-      return {
-        items: Object.entries(items).map(([word, mapping]) => ({ word, ...mapping })),
-      }
+      return { items }
     })
 
     admin.post<{
@@ -269,16 +267,19 @@ export async function registerAdmin(
       const candidates = parseCandidates(
         alternatives ?? alternativesFromBody(request.body as Record<string, unknown>),
       )
-      const error = !word?.trim()
+      const normalizedWord = word?.trim() ? normalizeWord(word) : ''
+      const error = !normalizedWord
         ? 'A trigger word is required.'
         : !stockcode
           ? 'Could not find a stockcode in that URL — paste a link like /shop/productdetails/123456/product-name, or the stockcode itself.'
           : !candidates.ok
             ? candidates.error
-            : undefined
+            : items.some((item) => item.words.includes(normalizedWord))
+              ? `"${normalizedWord}" is already used by another item.`
+              : undefined
       const named = parseName(name)
       const problem = error ?? (named.ok ? undefined : named.error)
-      if (problem || !word || !stockcode || !named.ok || !candidates.ok) {
+      if (problem || !stockcode || !named.ok || !candidates.ok) {
         if (wantsJson(request)) {
           return reply.code(400).send({ error: problem })
         }
@@ -300,93 +301,48 @@ export async function registerAdmin(
       }
       const listing = await lookupListing(lookupFor?.(emailOf(request)), stockcode, request.log)
       const mappedQuantity = Math.max(1, Number(quantity) || 1)
-      const groupName =
-        named.name ??
-        Object.values(items).find(
-          (item) => item.stockcode === stockcode && item.quantity === mappedQuantity && item.name,
-        )?.name
-      const mapping: ItemMapping = {
-        stockcode,
-        quantity: mappedQuantity,
+      const item: Item = {
+        id: randomUUID(),
+        words: [normalizedWord],
+        candidates: [{ stockcode, quantity: mappedQuantity }, ...candidates.candidates],
         ...(listing ? { listing } : {}),
-        ...(groupName ? { name: groupName } : {}),
-        ...(candidates.candidates.length ? { alternatives: candidates.candidates } : {}),
+        ...(named.name ? { name: named.name } : {}),
       }
-      if (named.name) {
-        for (const [key, item] of Object.entries(items)) {
-          if (item.stockcode === stockcode && item.quantity === mappedQuantity) {
-            items[key] = { ...item, name: named.name }
-          }
-        }
-      }
-      items[normalizeWord(word)] = mapping
+      items.push(item)
       await store.save(emailOf(request), items)
       if (wantsJson(request)) {
-        return reply.code(201).send({ word: normalizeWord(word), ...mapping })
+        return reply.code(201).send(item)
       }
       return reply.redirect('/')
     })
 
     const removeItem = async (
-      request: FastifyRequest<{ Params: { word: string } }>,
+      request: FastifyRequest<{ Params: { id: string } }>,
       reply: FastifyReply,
     ) => {
       const items = await store.load(emailOf(request))
-      delete items[normalizeWord(request.params.word)]
-      await store.save(emailOf(request), items)
+      const remaining = items.filter((item) => item.id !== request.params.id)
+      const removed = remaining.length !== items.length
+      if (removed) {
+        await store.save(emailOf(request), remaining)
+      }
       if (wantsJson(request)) {
-        return reply.code(204).send()
+        return removed ? reply.code(204).send() : reply.code(404).send({ error: 'No such item.' })
       }
       return reply.redirect('/')
     }
-    const editItem = async (
-      request: FastifyRequest<{ Params: { word: string }; Body: Record<string, unknown> | null }>,
-      reply: FastifyReply,
-    ) => {
-      const items = await store.load(emailOf(request))
-      const result = applyEdit(items, normalizeWord(request.params.word), request.body ?? {})
-      if (!result.ok) {
-        return reply.code(result.status).send({ error: result.error })
-      }
-      const edited = result.items[result.word]
-      if (edited && edited.stockcode !== items[normalizeWord(request.params.word)]?.stockcode) {
-        const listing = await lookupListing(
-          lookupFor?.(emailOf(request)),
-          edited.stockcode,
-          request.log,
-        )
-        if (listing) {
-          edited.listing = listing
-        }
-      }
-      await store.save(emailOf(request), result.items)
-      return reply.send({ word: result.word, ...result.items[result.word] })
-    }
-    admin.patch<{ Params: { word: string }; Body: Record<string, unknown> | null }>(
-      '/items/:word',
-      editItem,
-    )
-    admin.post<{ Params: { word: string } }>('/items/:word/delete', removeItem)
-    admin.delete<{ Params: { word: string } }>('/items/:word', removeItem)
 
-    // A product is the group of items sharing a stockcode and quantity.
-    type ProductRoute = { Params: { stockcode: string; quantity: string } }
-    const productOf = (request: FastifyRequest<ProductRoute>): [number, number] => [
-      Number(request.params.stockcode),
-      Number(request.params.quantity),
-    ]
-    const editProduct = async (
-      request: FastifyRequest<ProductRoute & { Body: Record<string, unknown> | null }>,
+    const editItem = async (
+      request: FastifyRequest<{ Params: { id: string }; Body: Record<string, unknown> | null }>,
       reply: FastifyReply,
     ) => {
-      const [stockcode, quantity] = productOf(request)
       const email = emailOf(request)
       const items = await store.load(email)
       const fields = { ...(request.body ?? {}) }
       if (hasAlternativeFields(fields)) {
         fields.alternatives = alternativesFromBody(fields)
       }
-      const result = applyGroupEdit(items, stockcode, quantity, fields)
+      const result = applyEdit(items, request.params.id, fields)
       if (!result.ok) {
         if (wantsJson(request)) {
           return reply.code(result.status).send({ error: result.error })
@@ -394,56 +350,39 @@ export async function registerAdmin(
         return reply
           .code(result.status)
           .type('text/html')
-          .send(
-            renderItemsPage(
-              items,
-              { key: groupKey({ stockcode, quantity }), values: fields },
-              result.error,
-            ),
-          )
+          .send(renderItemsPage(items, { key: request.params.id, values: fields }, result.error))
       }
       if (result.stockcodeChanged) {
-        const listing = await lookupListing(lookupFor?.(email), result.group.stockcode, request.log)
+        const listing = await lookupListing(
+          lookupFor?.(email),
+          result.item.candidates[0]?.stockcode as number,
+          request.log,
+        )
         if (listing) {
-          for (const word of result.group.words) {
-            ;(result.items[word] as ItemMapping).listing = listing
-          }
-          result.group.listing = listing
+          result.item.listing = listing
         }
       }
       await store.save(email, result.items)
       if (wantsJson(request)) {
-        return reply.send(result.group)
+        return reply.send(result.item)
       }
       return reply.redirect('/')
     }
-    const removeProduct = async (request: FastifyRequest<ProductRoute>, reply: FastifyReply) => {
-      const [stockcode, quantity] = productOf(request)
-      const remaining = removeGroup(await store.load(emailOf(request)), stockcode, quantity)
-      if (remaining) {
-        await store.save(emailOf(request), remaining)
-      }
-      if (wantsJson(request)) {
-        return remaining ? reply.code(204).send() : reply.code(404).send({ error: 'No such item.' })
-      }
-      return reply.redirect('/')
-    }
-    const productParams = {
+
+    const itemParams = {
       schema: {
         params: {
           type: 'object',
-          properties: {
-            stockcode: { type: 'string', pattern: '^[1-9][0-9]{0,15}$' },
-            quantity: { type: 'string', pattern: '^[1-9][0-9]{0,15}$' },
-          },
+          properties: { id: { type: 'string', format: 'uuid' } },
         },
       },
     }
-    type ProductEdit = ProductRoute & { Body: Record<string, unknown> | null }
-    admin.patch<ProductEdit>('/products/:stockcode/:quantity', productParams, editProduct)
-    admin.post<ProductEdit>('/products/:stockcode/:quantity/edit', productParams, editProduct)
-    admin.post<ProductRoute>('/products/:stockcode/:quantity/delete', productParams, removeProduct)
-    admin.delete<ProductRoute>('/products/:stockcode/:quantity', productParams, removeProduct)
+    type ItemRoute = { Params: { id: string } }
+    type ItemEditRoute = ItemRoute & { Body: Record<string, unknown> | null }
+    admin.patch<ItemEditRoute>('/items/:id', itemParams, editItem)
+    admin.post<ItemEditRoute>('/items/:id/edit', itemParams, editItem)
+    admin.post<ItemRoute>('/items/:id/delete', itemParams, removeItem)
+    admin.delete<ItemRoute>('/items/:id', itemParams, removeItem)
   })
 }
 

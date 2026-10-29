@@ -24,8 +24,12 @@ describe('households migration', () => {
     await db.migrate()
 
     const items = new ItemStore(sql)
-    expect(await items.load(A)).toEqual({ milk: { stockcode: 1, quantity: 1 } })
-    expect(await items.load(B)).toEqual({ milk: { stockcode: 2, quantity: 3 } })
+    expect(await items.load(A)).toMatchObject([
+      { words: ['milk'], candidates: [{ stockcode: 1, quantity: 1 }] },
+    ])
+    expect(await items.load(B)).toMatchObject([
+      { words: ['milk'], candidates: [{ stockcode: 2, quantity: 3 }] },
+    ])
     expect(await new PgSessionStorage(sql, A).load()).toBeDefined()
     expect(await new PgSessionStorage(sql, B).load()).toBeUndefined()
     expect(await new CredentialStore(sql, Buffer.alloc(32)).has(B)).toBe(true)
@@ -55,7 +59,13 @@ describe('HouseholdStore', () => {
   })
 
   it('shares items, the session and the credential between members', async () => {
-    await items.save(A, { milk: { stockcode: 1, quantity: 1 } })
+    await items.save(A, [
+      {
+        id: '11111111-1111-1111-1111-111111111111',
+        words: ['milk'],
+        candidates: [{ stockcode: 1, quantity: 1 }],
+      },
+    ])
     await new PgSessionStorage(db.sql, A).save({
       cookies: [{ name: 'x', value: 'y' }],
       capturedAt: '2026-01-01T00:00:00.000Z',
@@ -66,9 +76,15 @@ describe('HouseholdStore', () => {
     await households.join(B, code)
 
     expect(await households.members(A)).toEqual([A, B])
-    expect(await items.load(B)).toEqual({ milk: { stockcode: 1, quantity: 1 } })
-    await items.save(B, { bread: { stockcode: 2, quantity: 1 } })
-    expect(Object.keys(await items.load(A))).toEqual(['bread'])
+    expect((await items.load(B)).map((item) => item.words)).toEqual([['milk']])
+    await items.save(B, [
+      {
+        id: '22222222-2222-2222-2222-222222222222',
+        words: ['bread'],
+        candidates: [{ stockcode: 2, quantity: 1 }],
+      },
+    ])
+    expect((await items.load(A)).map((item) => item.words[0])).toEqual(['bread'])
     expect((await new PgSessionStorage(db.sql, B).load())?.cookies).toEqual([
       { name: 'x', value: 'y' },
     ])
@@ -83,20 +99,32 @@ describe('HouseholdStore', () => {
   })
 
   it('discards the data of a household its only member leaves for another', async () => {
-    await items.save(B, { eggs: { stockcode: 9, quantity: 1 } })
+    await items.save(B, [
+      {
+        id: '33333333-3333-3333-3333-333333333333',
+        words: ['eggs'],
+        candidates: [{ stockcode: 9, quantity: 1 }],
+      },
+    ])
     const { code } = await households.invite(A)
     expect(await households.join(B, ` ${code} `)).toBe('joined')
     expect(await db.sql`select 1 from households`).toHaveLength(1)
-    expect(await items.load(B)).toEqual({})
+    expect(await items.load(B)).toEqual([])
   })
 
   it('keeps the data of a household that still has members when one joins elsewhere', async () => {
     const c = 'c@example.com'
     await ensureUser(db.sql, c)
-    await items.save(A, { milk: { stockcode: 1, quantity: 1 } })
+    await items.save(A, [
+      {
+        id: '11111111-1111-1111-1111-111111111111',
+        words: ['milk'],
+        candidates: [{ stockcode: 1, quantity: 1 }],
+      },
+    ])
     await households.join(B, (await households.invite(A)).code)
     await households.join(A, (await households.invite(c)).code)
-    expect(await items.load(B)).toEqual({ milk: { stockcode: 1, quantity: 1 } })
+    expect((await items.load(B)).map((item) => item.words)).toEqual([['milk']])
     expect(await households.members(A)).toEqual([A, c])
   })
 
@@ -129,19 +157,31 @@ describe('HouseholdStore', () => {
   })
 
   it('gives a leaving member a fresh empty household and keeps the rest', async () => {
-    await items.save(A, { milk: { stockcode: 1, quantity: 1 } })
+    await items.save(A, [
+      {
+        id: '11111111-1111-1111-1111-111111111111',
+        words: ['milk'],
+        candidates: [{ stockcode: 1, quantity: 1 }],
+      },
+    ])
     await households.join(B, (await households.invite(A)).code)
     expect(await households.leave(B)).toBe('left')
     expect(await households.members(A)).toEqual([A])
     expect(await households.members(B)).toEqual([B])
-    expect(await items.load(B)).toEqual({})
-    expect(await items.load(A)).toEqual({ milk: { stockcode: 1, quantity: 1 } })
+    expect(await items.load(B)).toEqual([])
+    expect((await items.load(A)).map((item) => item.words)).toEqual([['milk']])
   })
 
   it('leaves a sole member where they are', async () => {
-    await items.save(A, { milk: { stockcode: 1, quantity: 1 } })
+    await items.save(A, [
+      {
+        id: '11111111-1111-1111-1111-111111111111',
+        words: ['milk'],
+        candidates: [{ stockcode: 1, quantity: 1 }],
+      },
+    ])
     expect(await households.leave(A)).toBe('sole_member')
-    expect(await items.load(A)).toEqual({ milk: { stockcode: 1, quantity: 1 } })
+    expect((await items.load(A)).map((item) => item.words)).toEqual([['milk']])
   })
 
   it('picks one email per household', async () => {

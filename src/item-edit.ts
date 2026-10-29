@@ -1,7 +1,7 @@
-import { normalizeWord, type ItemCandidate, type ItemMapping, type ItemsConfig } from './items.ts'
+import { normalizeWord, type Item, type ItemCandidate, type ItemsConfig } from './items.ts'
 
 export type EditResult =
-  | { ok: true; items: ItemsConfig; word: string }
+  | { ok: true; items: ItemsConfig; item: Item; stockcodeChanged: boolean }
   | { ok: false; status: 400 | 404 | 409; error: string }
 
 const blank = (value: unknown) => value === undefined || value === null || value === ''
@@ -32,106 +32,21 @@ function positiveInteger(value: unknown): number | undefined {
     : undefined
 }
 
-// Applies the editable fields in `fields` to the item for `word`, leaving every other entry in
-// place and in order. Blank `url`, `stockcode` and `quantity` mean "unchanged". `url` takes
-// precedence over `stockcode`. A changed stockcode drops the stored listing, which the caller
-// looks up again. A present `name` sets (or, when blank, clears) the display name on every word
-// sharing the item's stockcode and quantity. A present `alternatives` replaces the item's
-// alternatives wholesale; an empty array clears them.
-export function applyEdit(
-  items: ItemsConfig,
-  word: string,
-  fields: Record<string, unknown>,
-): EditResult {
-  const existing = items[word]
-  if (!existing) {
-    return { ok: false, status: 404, error: `No item for "${word}".` }
+/** Splits comma-separated or array input into distinct normalised words. */
+export function parseWords(input: unknown): string[] | undefined {
+  const parts = typeof input === 'string' ? input.split(',') : input
+  if (!Array.isArray(parts) || parts.some((part) => typeof part !== 'string')) {
+    return undefined
   }
-  const invalid = (error: string): EditResult => ({ ok: false, status: 400, error })
-  const mapping: ItemMapping = { ...existing }
-
-  let newWord = word
-  if (fields.word !== undefined) {
-    newWord = typeof fields.word === 'string' ? normalizeWord(fields.word) : ''
-    if (!newWord) {
-      return invalid('A trigger word is required.')
-    }
-    if (newWord !== word && items[newWord]) {
-      return { ok: false, status: 409, error: `"${newWord}" is already used by another item.` }
-    }
-  }
-
-  if (!blank(fields.url)) {
-    const stockcode = typeof fields.url === 'string' ? parseStockcode(fields.url) : undefined
-    if (!stockcode) {
-      return invalid(
-        'Could not find a stockcode in that URL — paste a link like /shop/productdetails/123456/product-name, or the stockcode itself.',
-      )
-    }
-    if (stockcode !== mapping.stockcode) {
-      delete mapping.listing
-    }
-    mapping.stockcode = stockcode
-  } else if (!blank(fields.stockcode)) {
-    const stockcode = positiveInteger(fields.stockcode)
-    if (!stockcode) {
-      return invalid('The stockcode must be a positive integer.')
-    }
-    if (stockcode !== mapping.stockcode) {
-      delete mapping.listing
-    }
-    mapping.stockcode = stockcode
-  }
-
-  if (!blank(fields.quantity)) {
-    const quantity = positiveInteger(fields.quantity)
-    if (!quantity) {
-      return invalid('The quantity must be a positive integer.')
-    }
-    mapping.quantity = quantity
-  }
-
-  if (fields.alternatives !== undefined) {
-    const candidates = parseCandidates(fields.alternatives)
-    if (!candidates.ok) {
-      return invalid(candidates.error)
-    }
-    if (candidates.candidates.length) {
-      mapping.alternatives = candidates.candidates
-    } else {
-      delete mapping.alternatives
-    }
-  }
-
-  const named = fields.name === undefined ? undefined : parseName(fields.name)
-  if (named && !named.ok) {
-    return invalid(named.error)
-  }
-  const edited = Object.fromEntries(
-    Object.entries(items).map(([key, value]) => {
-      if (key === word) {
-        return [newWord, named ? withName(mapping, named.name) : mapping]
-      }
-      const sibling =
-        named && value.stockcode === existing.stockcode && value.quantity === existing.quantity
-      return [key, sibling ? withName(value, named.name) : value]
-    }),
-  )
-  return { ok: true, items: edited, word: newWord }
-}
-
-/** `mapping` with `name` set, or removed when undefined. */
-export function withName(mapping: ItemMapping, name: string | undefined): ItemMapping {
-  const { name: _previous, ...rest } = mapping
-  return name ? { ...rest, name } : rest
+  return [...new Set(parts.map((part: string) => normalizeWord(part)).filter(Boolean))]
 }
 
 export type CandidatesResult =
   { ok: true; candidates: ItemCandidate[] } | { ok: false; error: string }
 
 /**
- * Validates an `alternatives` array: each entry needs a product `url` or `stockcode`, like
- * `POST /items`; `quantity` defaults to 1.
+ * Validates a `candidates`-shaped array: each entry needs a product `url` or
+ * `stockcode`, like `POST /items`; `quantity` defaults to 1.
  */
 export function parseCandidates(value: unknown): CandidatesResult {
   if (!Array.isArray(value)) {
@@ -164,4 +79,103 @@ export function parseStockcode(input: string): number | undefined {
     return Number(fromPath[1])
   }
   return /^\d+$/.test(trimmed) ? Number(trimmed) : undefined
+}
+
+// Applies the editable fields in `fields` to the item with `id`, leaving every other item in
+// place and in order. `words` (an array or comma-separated string) replaces the item's whole
+// word set — at least one word is required, and none may already belong to another item. Blank
+// `url`/`stockcode` and `quantity` mean "unchanged" for the item's first candidate. `url` takes
+// precedence over `stockcode`. A changed first-candidate stockcode drops the stored listing,
+// which the caller looks up again. A present `alternatives` replaces every candidate after the
+// first wholesale (an empty array clears them). A present `name` sets (or, when blank, clears)
+// the item's display name.
+export function applyEdit(
+  items: ItemsConfig,
+  id: string,
+  fields: Record<string, unknown>,
+): EditResult {
+  const index = items.findIndex((item) => item.id === id)
+  if (index === -1) {
+    return { ok: false, status: 404, error: 'No such item.' }
+  }
+  const existing = items[index] as Item
+  const invalid = (error: string): EditResult => ({ ok: false, status: 400, error })
+
+  let words = existing.words
+  if (fields.words !== undefined) {
+    const parsed = parseWords(fields.words)
+    if (!parsed?.length) {
+      return invalid('At least one trigger word is required.')
+    }
+    words = parsed
+    const taken = words.find((word) =>
+      items.some((other) => other.id !== id && other.words.includes(word)),
+    )
+    if (taken) {
+      return { ok: false, status: 409, error: `"${taken}" is already used by another item.` }
+    }
+  }
+
+  const first = existing.candidates[0]
+  let primary = first
+  let stockcodeChanged = false
+  if (!blank(fields.url) || !blank(fields.stockcode)) {
+    const stockcode = !blank(fields.url)
+      ? typeof fields.url === 'string'
+        ? parseStockcode(fields.url)
+        : undefined
+      : positiveInteger(fields.stockcode)
+    if (!stockcode) {
+      return invalid(
+        'Could not find a stockcode in that URL — paste a link like /shop/productdetails/123456/product-name, or the stockcode itself.',
+      )
+    }
+    const quantity = blank(fields.quantity)
+      ? (first?.quantity ?? 1)
+      : positiveInteger(fields.quantity)
+    if (!quantity) {
+      return invalid('The quantity must be a positive integer.')
+    }
+    stockcodeChanged = stockcode !== first?.stockcode
+    primary = { stockcode, quantity }
+  } else if (!blank(fields.quantity)) {
+    const quantity = positiveInteger(fields.quantity)
+    if (!quantity) {
+      return invalid('The quantity must be a positive integer.')
+    }
+    primary = first ? { ...first, quantity } : undefined
+  }
+
+  let rest = existing.candidates.slice(1)
+  if (fields.alternatives !== undefined) {
+    const parsed = parseCandidates(fields.alternatives)
+    if (!parsed.ok) {
+      return invalid(parsed.error)
+    }
+    rest = parsed.candidates
+  }
+  const candidates = primary ? [primary, ...rest] : rest
+  if (candidates.length === 0) {
+    return invalid('At least one product is required.')
+  }
+
+  const named = fields.name === undefined ? undefined : parseName(fields.name)
+  if (named && !named.ok) {
+    return invalid(named.error)
+  }
+
+  const updated: Item = { ...existing, words, candidates }
+  if (named) {
+    if (named.name) {
+      updated.name = named.name
+    } else {
+      delete updated.name
+    }
+  }
+  if (stockcodeChanged) {
+    delete updated.listing
+  }
+  const edited = [...items]
+  edited[index] = updated
+  return { ok: true, items: edited, item: updated, stockcodeChanged }
 }

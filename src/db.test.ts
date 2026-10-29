@@ -20,6 +20,8 @@ describe('migrations', () => {
     expect(tables.map((table) => table.relname).sort()).toEqual([
       'household_invites',
       'households',
+      'item_candidates',
+      'item_words',
       'items',
       'passkey_credentials',
       'tokens',
