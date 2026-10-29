@@ -86,7 +86,7 @@ export const PAGE_STYLES = `
     border: 1px solid var(--color-border);
   }
   table button:hover { background: var(--color-bg); }
-  .items { --cols: minmax(0, 1fr) minmax(0, 9rem) 4.5rem 8.5rem; }
+  .items { --cols: minmax(0, 1fr) minmax(0, 11rem) 8.5rem; }
   .item-head, form.item {
     display: grid;
     grid-template-columns: var(--cols);
@@ -127,6 +127,9 @@ export const PAGE_STYLES = `
   form.item input:not(.edit-toggle) { margin: 0; padding: 0.3rem 0.4rem; border-radius: 6px; }
   form.item .phrase strong.view { font-weight: 700; }
   form.item .words { padding: 0 0.4rem; margin-top: 0.1rem; color: var(--color-text-muted); font-size: 0.8rem; overflow-wrap: anywhere; }
+  form.item .candidates { list-style: none; margin: 0.1rem 0 0; padding: 0 0.4rem; font-size: 0.85rem; }
+  form.item .candidates li + li { margin-top: 0.15rem; }
+  form.item .muted { color: var(--color-text-muted); }
   form.item .actions { display: flex; flex-wrap: wrap; gap: 0.4rem; padding-top: 0.1rem; }
   form.item button, form.item .button-label, form.item .button-link {
     display: inline-block;
@@ -176,7 +179,6 @@ export const PAGE_STYLES = `
     form.item .view-name { display: inline; margin-right: 0.4rem; color: var(--color-text-muted); font-size: 0.8rem; }
     form.item .words { padding: 0; }
     form.item .edit-toggle:checked ~ .cell { margin-bottom: 0.4rem; }
-    form.item .qty input { width: 6rem; }
     form.item .actions { padding-top: 0.3rem; }
     table.sessions thead { display: none; }
     table.sessions, table.sessions tbody, table.sessions tr, table.sessions td { display: block; width: 100%; }

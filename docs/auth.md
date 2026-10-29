@@ -108,17 +108,17 @@ Bearer tokens authorise the JSON API on `/items`; send
 household: members share items, and `POST /cart/items` adds to the household's
 Woolworths cart.
 
-| Request                                                           | Success                                                                       |
-| ----------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `GET /items`                                                      | `200 {"items":[{id, words, candidates, listing?, name?}]}`                    |
-| `POST /items` with `{word, url, quantity?, name?, alternatives?}` | `201` with the stored item; `400 {error}` if invalid                          |
-| `PATCH /items/:id` with any of the fields below                   | `200` with the stored item; `400`, `404`, `409` below                         |
-| `DELETE /items/:id` (or `POST /items/:id/delete`)                 | `204`; `404` for an unknown item                                              |
-| `GET /household`                                                  | `200 {"members":[{email, you}]}`                                              |
-| `POST /household/invites`                                         | `201 {code, expiresAt}` (epoch ms); `409 {error}` at the invite limit         |
-| `POST /household/join` with `{code}`                              | `204`; `400 {error}` invalid, expired or used; `409 {error}` already a member |
-| `POST /household/leave`                                           | `204`; `409 {error}` for a sole member                                        |
-| `POST /auth/logout`                                               | `204`; revokes the presented token                                            |
+| Request                                                                    | Success                                                                       |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `GET /items`                                                               | `200 {"items":[{id, words, candidates, listing?, name?}]}`                    |
+| `POST /items` with `{word or words, url, quantity?, name?, alternatives?}` | `201` with the stored item; `400 {error}` if invalid                          |
+| `PATCH /items/:id` with any of the fields below                            | `200` with the stored item; `400`, `404`, `409` below                         |
+| `DELETE /items/:id` (or `POST /items/:id/delete`)                          | `204`; `404` for an unknown item                                              |
+| `GET /household`                                                           | `200 {"members":[{email, you}]}`                                              |
+| `POST /household/invites`                                                  | `201 {code, expiresAt}` (epoch ms); `409 {error}` at the invite limit         |
+| `POST /household/join` with `{code}`                                       | `204`; `400 {error}` invalid, expired or used; `409 {error}` already a member |
+| `POST /household/leave`                                                    | `204`; `409 {error}` for a sole member                                        |
+| `POST /auth/logout`                                                        | `204`; revokes the presented token                                            |
 
 An item is the household's own concept of a product (e.g. "kitchen garbage
 bags"), identified by `id`: `words` are the trigger phrases that resolve to
@@ -127,12 +127,14 @@ stockcode/quantity options, an unordered set with no primary or alternative
 distinction — `POST /cart/items` (below) adds whichever is cheapest per unit.
 `GET /items` lists items in stored order.
 
-`POST /items` creates an item with one trigger word: `word` (trimmed,
-lower-cased; `400` if already used by another item), `url` or a bare
-stockcode (parsed the same way, `400` if neither is found) and `quantity`
-(default 1) become its first candidate, and `alternatives` (array of
-`{url or stockcode, quantity?}`) its further candidates. `name` sets its
-display name (trimmed, at most 80 characters, `400` if longer).
+`POST /items` creates an item with its trigger words: `word` (a single
+phrase) or `words` (an array, or comma-separated string, for more than one;
+each trimmed, lower-cased, `400` if any is already used by another item, or
+if neither field yields at least one word), `url` or a bare stockcode (parsed
+the same way, `400` if neither is found) and `quantity` (default 1) become
+its first candidate, and `alternatives` (array of `{url or stockcode,
+quantity?}`) its further candidates. `name` sets its display name (trimmed,
+at most 80 characters, `400` if longer).
 
 `PATCH /items/:id` changes only the fields sent, keeps every other item in
 place and in order, and saves atomically.
