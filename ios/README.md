@@ -162,9 +162,26 @@ uploads one only when it comes from a frame on `auth.woolworths.com.au`, as
 The private key leaves the page only to the signed-in server, and is never
 stored on the device.
 
+`create` and `get` are installed as non-configurable, getter-only properties
+on `navigator.credentials`, not plain assignments: Woolworths' login page
+reassigns them back to the native implementation shortly after this script
+runs (anti-tampering), and the native implementation always rejects with
+`NotAllowedError` since the app has no Associated Domains entitlement for
+`auth.woolworths.com.au`. A getter-only, non-configurable property can't be
+reassigned or redefined, so the software authenticator stays in place.
+
 The script is tested in Node (`src/ios-passkey-authenticator.test.ts`)
 against the server's `selectCredential`, with signatures verified against the
-COSE public key. It has not been exercised against the live Woolworths login.
+COSE public key, and has been exercised against the live Woolworths login.
+
+In `DEBUG` builds only, the web view also registers a `debugLog` message
+handler: the script forwards page errors, unhandled rejections, console
+errors/warnings and every WebAuthn call's options to it, logged via `os_log`
+under subsystem `dev.willsawyerrrr.personal-shopper`, category
+`passkey-authenticator` (`log stream --predicate 'subsystem ==
+"dev.willsawyerrrr.personal-shopper" AND category ==
+"passkey-authenticator"'`). It does nothing in release builds, where the
+handler isn't registered.
 
 ## Shortcuts and Siri
 

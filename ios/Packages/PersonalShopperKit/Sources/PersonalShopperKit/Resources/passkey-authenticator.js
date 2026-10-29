@@ -9,6 +9,29 @@
   const credentials = new Map()
   let signCount = 0
 
+  // Debugging aid: forwards page errors and WebAuthn call shapes to the
+  // native console. Silently does nothing when the handler isn't registered
+  // (release builds).
+  const debugLog = (message) => {
+    try {
+      window.webkit?.messageHandlers?.debugLog?.postMessage(String(message))
+    } catch {}
+  }
+  window.addEventListener?.('error', (event) =>
+    debugLog(`window error: ${event.message} @ ${event.filename}:${event.lineno}`),
+  )
+  window.addEventListener?.('unhandledrejection', (event) =>
+    debugLog(`unhandled rejection: ${event.reason}`),
+  )
+  for (const level of ['error', 'warn']) {
+    const original = console[level]?.bind(console)
+    console[level] = (...args) => {
+      debugLog(`console.${level}: ${args.map(String).join(' ')}`)
+      original?.(...args)
+    }
+  }
+  debugLog(`script loaded on ${location.href}`)
+
   const bytes = (source) =>
     source instanceof ArrayBuffer
       ? new Uint8Array(source)
@@ -120,6 +143,7 @@
   }
 
   const create = async (publicKey) => {
+    debugLog(`credentials.create publicKey: ${JSON.stringify(publicKey)}`)
     const params = publicKey.pubKeyCredParams ?? []
     if (params.length > 0 && !params.some((param) => param.alg === -7)) {
       throw fail('NotSupportedError', 'Only ES256 is supported')
@@ -179,6 +203,7 @@
   }
 
   const get = async (publicKey) => {
+    debugLog(`credentials.get publicKey: ${JSON.stringify(publicKey)}`)
     const rpId = publicKey.rpId ?? location.hostname
     const allowed = (publicKey.allowCredentials ?? []).map((entry) => base64url(entry.id))
     const entry = [...credentials].find(
@@ -226,15 +251,37 @@
   const container = navigator.credentials
   const originalCreate = container.create?.bind(container)
   const originalGet = container.get?.bind(container)
-  const intercept = (original, handler) =>
+  const intercept = (name, original, handler) =>
     function (options) {
       const publicKey = publicKeyOf(options)
-      return publicKey ? handler(publicKey) : original?.(options)
+      if (!publicKey) {
+        debugLog(
+          `navigator.credentials.${name} called without publicKey: ${JSON.stringify(options)}`,
+        )
+        return original?.(options)
+      }
+      return handler(publicKey).catch((error) => {
+        debugLog(
+          `navigator.credentials.${name} threw: ${error?.name ?? ''} ${error?.message ?? error}`,
+        )
+        throw error
+      })
     }
-  define(container, {
-    create: intercept(originalCreate, create),
-    get: intercept(originalGet, get),
-  })
+  // The page's own WebAuthn tamper-detection reassigns `create`/`get` back to
+  // the native implementation shortly after this script runs. A getter-only,
+  // non-configurable property can't be reassigned or redefined, so it stays ours.
+  const ourCreate = intercept('create', originalCreate, create)
+  const ourGet = intercept('get', originalGet, get)
+  for (const [name, fn] of [
+    ['create', ourCreate],
+    ['get', ourGet],
+  ]) {
+    try {
+      Object.defineProperty(container, name, { get: () => fn, configurable: false })
+    } catch (error) {
+      debugLog(`locking navigator.credentials.${name} failed: ${error}`)
+    }
+  }
 
   const descriptors = (list) => list?.map((entry) => ({ ...entry, id: unbase64url(entry.id) }))
   define(PKC, {
