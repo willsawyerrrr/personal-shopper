@@ -160,8 +160,9 @@ whichever is cheaper per unit depends on current pricing. `POST /cart/items`
 looks up the current price of the item's own stockcode and each alternative's
 and adds whichever has the lowest price per unit (price divided by quantity),
 falling back to the item's own stockcode and quantity when a price can't be
-determined. There is no web form for it yet; set it through the JSON API or
-the iOS app's edit-item sheet. It is absent when the item has none.
+determined. It is editable from the web admin's add-item and product-edit
+forms, the JSON API, or the iOS app's edit-item sheet, and absent when the
+item has none.
 
 Items are stored per trigger word, in order, and `GET /items` lists them that
 way. A product is the set of words sharing a stockcode and quantity;

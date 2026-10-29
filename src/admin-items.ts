@@ -1,5 +1,5 @@
 import { escapeHtml } from './html.ts'
-import type { ItemsConfig } from './items.ts'
+import type { ItemCandidate, ItemsConfig } from './items.ts'
 import {
   displayCase,
   groupItems,
@@ -12,6 +12,63 @@ import {
 export interface ItemEdit {
   key: string
   values: Record<string, unknown>
+}
+
+/** Alternative rows a web form shows: one `altUrl`/`altQuantity` pair per slot. */
+export const MAX_ALTERNATIVES = 3
+
+export interface AlternativeRow {
+  url?: string
+  quantity?: string
+}
+
+const toStrings = (value: unknown): string[] =>
+  value === undefined ? [] : Array.isArray(value) ? value.map(String) : [String(value)]
+
+/** The alternative rows a submitted form holds, padded to `MAX_ALTERNATIVES`. */
+export function alternativeRowsFromBody(body: Record<string, unknown>): AlternativeRow[] {
+  const urls = toStrings(body.altUrl)
+  const quantities = toStrings(body.altQuantity)
+  return Array.from({ length: MAX_ALTERNATIVES }, (_, index) => ({
+    ...(urls[index] !== undefined ? { url: urls[index] } : {}),
+    ...(quantities[index] !== undefined ? { quantity: quantities[index] } : {}),
+  }))
+}
+
+/** `candidates` turned into the rows a web form pre-fills, padded to `MAX_ALTERNATIVES`. */
+export function alternativeRowsFromCandidates(candidates: ItemCandidate[] = []): AlternativeRow[] {
+  return Array.from({ length: MAX_ALTERNATIVES }, (_, index) => {
+    const candidate = candidates[index]
+    return candidate
+      ? { url: String(candidate.stockcode), quantity: String(candidate.quantity) }
+      : {}
+  })
+}
+
+/** Whether `body` carries the alternative-row fields a web form always submits. */
+export const hasAlternativeFields = (body: Record<string, unknown>): boolean =>
+  body.altUrl !== undefined || body.altQuantity !== undefined
+
+/** The non-blank rows in `body`, shaped for `parseCandidates`. */
+export function alternativesFromBody(body: Record<string, unknown>): unknown[] {
+  return alternativeRowsFromBody(body)
+    .filter((row) => row.url?.trim())
+    .map((row) => ({ url: row.url, quantity: row.quantity }))
+}
+
+/** The `altUrl`/`altQuantity` label-and-input pairs for a product edit form. */
+function renderAlternativeFields(rows: AlternativeRow[]): string {
+  return rows
+    .map(
+      (row, index) => `
+            <label class="edit"><span class="field-name">Alternative ${index + 1} URL or stockcode</span>
+              <input aria-label="Alternative ${index + 1} URL or stockcode" name="altUrl" placeholder="https://www.woolworths.com.au/shop/productdetails/..." value="${escapeHtml(row.url ?? '')}">
+            </label>
+            <label class="edit"><span class="field-name">Alternative ${index + 1} quantity</span>
+              <input aria-label="Alternative ${index + 1} quantity" name="altQuantity" type="number" min="1" value="${escapeHtml(row.quantity ?? '1')}">
+            </label>`,
+    )
+    .join('')
 }
 
 /** One editable form per product; `edit` re-opens the product with `key` showing `values`. */
@@ -29,6 +86,9 @@ export function renderItemRows(items: ItemsConfig, edit?: ItemEdit): string {
       const subtitle = groupSubtitle(group)
       const words = group.words.map(displayCase)
       const id = `edit-${index}`
+      const alternativeRows = editing
+        ? alternativeRowsFromBody(edit.values)
+        : alternativeRowsFromCandidates(group.alternatives)
       return `
         <form class="item" method="post" action="${path}/edit">
           <input type="checkbox" class="edit-toggle" id="${id}" aria-label="Edit ${escapeHtml(title)}"${editing ? ' checked' : ''}>
@@ -42,6 +102,7 @@ export function renderItemRows(items: ItemsConfig, edit?: ItemEdit): string {
             <label class="edit"><span class="field-name">Trigger words, separated by commas</span>
               <input aria-label="Trigger words, separated by commas" name="words" required value="${field('words', words.join(', '))}">
             </label>
+            ${renderAlternativeFields(alternativeRows)}
           </div>
           <div class="cell product">
             <span class="view"><span class="view-name">Stockcode</span>${group.stockcode}</span>
