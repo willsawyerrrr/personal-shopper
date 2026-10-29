@@ -5,7 +5,7 @@ import { PAGE_STYLES } from './admin-styles.ts'
 import { UserRateLimiter } from './rate-limit.ts'
 import { authenticate, logAuthFailure, requestPath, sessionCookie } from './auth.ts'
 import type { AppConfig } from './config.ts'
-import { applyEdit, parseCandidates, parseName, parseStockcode } from './item-edit.ts'
+import { applyEdit, parseCandidates, parseName, parseStockcode, parseWords } from './item-edit.ts'
 import {
   alternativeRowsFromBody,
   alternativesFromBody,
@@ -255,27 +255,39 @@ export async function registerAdmin(
     admin.post<{
       Body: {
         word?: string
+        words?: unknown
         url?: string
         quantity?: string | number
         name?: unknown
         alternatives?: unknown
       }
     }>('/items', async (request, reply) => {
-      const { word, url, quantity, name, alternatives } = request.body
+      const { word, words: wordsField, url, quantity, name, alternatives } = request.body
       const items = await store.load(emailOf(request))
       const stockcode = parseStockcode(url ?? '')
       const candidates = parseCandidates(
         alternatives ?? alternativesFromBody(request.body as Record<string, unknown>),
       )
-      const normalizedWord = word?.trim() ? normalizeWord(word) : ''
-      const error = !normalizedWord
-        ? 'A trigger word is required.'
+      // `words` (comma-separated or an array) lets a caller give an item more than one
+      // trigger phrase up front; `word` stays as the single-word shorthand existing
+      // clients (the iOS app, the extension) already send.
+      const parsedWords =
+        wordsField !== undefined
+          ? (parseWords(wordsField) ?? [])
+          : word?.trim()
+            ? [normalizeWord(word)]
+            : []
+      const taken = parsedWords.find((candidateWord) =>
+        items.some((item) => item.words.includes(candidateWord)),
+      )
+      const error = !parsedWords.length
+        ? 'At least one trigger word is required.'
         : !stockcode
           ? 'Could not find a stockcode in that URL — paste a link like /shop/productdetails/123456/product-name, or the stockcode itself.'
           : !candidates.ok
             ? candidates.error
-            : items.some((item) => item.words.includes(normalizedWord))
-              ? `"${normalizedWord}" is already used by another item.`
+            : taken
+              ? `"${taken}" is already used by another item.`
               : undefined
       const named = parseName(name)
       const problem = error ?? (named.ok ? undefined : named.error)
@@ -283,13 +295,19 @@ export async function registerAdmin(
         if (wantsJson(request)) {
           return reply.code(400).send({ error: problem })
         }
+        const wordsValue =
+          typeof wordsField === 'string'
+            ? wordsField
+            : Array.isArray(wordsField)
+              ? wordsField.join(', ')
+              : word
         return reply
           .code(400)
           .type('text/html')
           .send(
             renderAddItemPage(
               {
-                word,
+                words: wordsValue,
                 url,
                 quantity: quantity === undefined ? undefined : String(quantity),
                 name: typeof name === 'string' ? name : undefined,
@@ -303,7 +321,7 @@ export async function registerAdmin(
       const mappedQuantity = Math.max(1, Number(quantity) || 1)
       const item: Item = {
         id: randomUUID(),
-        words: [normalizedWord],
+        words: parsedWords,
         candidates: [{ stockcode, quantity: mappedQuantity }, ...candidates.candidates],
         ...(listing ? { listing } : {}),
         ...(named.name ? { name: named.name } : {}),

@@ -14,8 +14,13 @@ export interface ItemEdit {
   values: Record<string, unknown>
 }
 
-/** Alternative rows a web form shows: one `altUrl`/`altQuantity` pair per slot. */
-export const MAX_ALTERNATIVES = 3
+/**
+ * Candidate rows a web form shows beyond the first (`altUrl`/`altQuantity`
+ * pairs). The model allows any number of candidates per item; a plain HTML
+ * form needs a fixed number of input rows, so this is generous (ten products
+ * total) rather than exact.
+ */
+export const MAX_ALTERNATIVES = 9
 
 export interface AlternativeRow {
   url?: string
@@ -56,19 +61,46 @@ export function alternativesFromBody(body: Record<string, unknown>): unknown[] {
     .map((row) => ({ url: row.url, quantity: row.quantity }))
 }
 
-/** The `altUrl`/`altQuantity` label-and-input pairs for an item edit form. */
-function renderAlternativeFields(rows: AlternativeRow[]): string {
-  return rows
-    .map(
-      (row, index) => `
-            <label class="edit"><span class="field-name">Alternative ${index + 1} URL or stockcode</span>
-              <input aria-label="Alternative ${index + 1} URL or stockcode" name="altUrl" placeholder="https://www.woolworths.com.au/shop/productdetails/..." value="${escapeHtml(row.url ?? '')}">
+/**
+ * The item's products as a flat, numbered list of label-and-input pairs — no
+ * primary/alternative distinction. Product 1 is the `url`/`quantity` fields
+ * (the item's first candidate); the rest are `altUrl`/`altQuantity` rows.
+ */
+function renderProductFields(
+  primaryUrl: string,
+  primaryQuantity: string,
+  rows: AlternativeRow[],
+): string {
+  const first = `
+            <label class="edit"><span class="field-name">Product 1 URL or stockcode</span>
+              <input aria-label="Product 1 URL or stockcode" name="url" required value="${primaryUrl}">
             </label>
-            <label class="edit"><span class="field-name">Alternative ${index + 1} quantity</span>
-              <input aria-label="Alternative ${index + 1} quantity" name="altQuantity" type="number" min="1" value="${escapeHtml(row.quantity ?? '1')}">
-            </label>`,
-    )
+            <label class="edit"><span class="field-name">Product 1 quantity</span>
+              <input aria-label="Product 1 quantity" name="quantity" type="number" min="1" value="${primaryQuantity}">
+            </label>`
+  const rest = rows
+    .map((row, index) => {
+      const n = index + 2
+      return `
+            <label class="edit"><span class="field-name">Product ${n} URL or stockcode</span>
+              <input aria-label="Product ${n} URL or stockcode" name="altUrl" placeholder="https://www.woolworths.com.au/shop/productdetails/..." value="${escapeHtml(row.url ?? '')}">
+            </label>
+            <label class="edit"><span class="field-name">Product ${n} quantity</span>
+              <input aria-label="Product ${n} quantity" name="altQuantity" type="number" min="1" value="${escapeHtml(row.quantity ?? '1')}">
+            </label>`
+    })
     .join('')
+  return first + rest
+}
+
+/** The view-mode list of an item's candidate products: stockcode and quantity, one per product. */
+function renderCandidateList(candidates: ItemCandidate[]): string {
+  return `<ul class="view candidates">${candidates
+    .map(
+      (candidate) =>
+        `<li>${candidate.stockcode} <span class="muted">× ${candidate.quantity}</span></li>`,
+    )
+    .join('')}</ul>`
 }
 
 /** One editable form per item; `edit` re-opens the item with `key` showing `values`. */
@@ -102,19 +134,10 @@ export function renderItemRows(items: ItemsConfig, edit?: ItemEdit): string {
             <label class="edit"><span class="field-name">Trigger words, separated by commas</span>
               <input aria-label="Trigger words, separated by commas" name="words" required value="${field('words', words.join(', '))}">
             </label>
-            ${renderAlternativeFields(alternativeRows)}
           </div>
-          <div class="cell product">
-            <span class="view"><span class="view-name">Stockcode</span>${primary?.stockcode ?? ''}</span>
-            <label class="edit"><span class="field-name">Woolworths product URL or stockcode</span>
-              <input aria-label="Woolworths product URL or stockcode" name="url" required value="${field('url', primary?.stockcode ?? '')}">
-            </label>
-          </div>
-          <div class="cell qty">
-            <span class="view"><span class="view-name">Quantity</span>${primary?.quantity ?? ''}</span>
-            <label class="edit"><span class="field-name">Quantity</span>
-              <input aria-label="Quantity" name="quantity" type="number" min="1" value="${field('quantity', primary?.quantity ?? 1)}">
-            </label>
+          <div class="cell products">
+            ${renderCandidateList(item.candidates)}
+            ${renderProductFields(field('url', primary?.stockcode ?? ''), field('quantity', primary?.quantity ?? 1), alternativeRows)}
           </div>
           <div class="cell actions">
             <label class="view button-label" for="${id}">Edit</label>

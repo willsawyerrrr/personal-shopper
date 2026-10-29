@@ -29,10 +29,11 @@
    item's stockcode/quantity options, an unordered set with no primary or
    alternative distinction — see `pickCheapest` below). An item is the
    household's own concept of a product (e.g. "kitchen garbage bags"), listed
-   one row per item, its trigger words display-cased, one per line, under its
-   title (its name, else its listing, else its first word), sorted by that
-   title (case-insensitive, numbers in natural order; storage order is
-   untouched). It is behind Google sign-in
+   one row per item: its trigger words display-cased, one per line, under its
+   title (its name, else its listing, else its first word), and every
+   candidate's stockcode and quantity listed against the row, not just the
+   first — sorted by title (case-insensitive, numbers in natural order;
+   storage order is untouched). It is behind Google sign-in
    (`/login` is a "Sign in with Google" button; routes in
    `src/login.ts`). Since
    Woolworths' search is broken (see risks below), there's no in-app product

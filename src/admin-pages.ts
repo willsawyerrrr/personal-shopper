@@ -57,7 +57,7 @@ export function renderItemsPage(items: ItemsConfig, edit?: ItemEdit, error?: str
     'items',
     `<section>
     <div class="items">
-      <div class="item-head" aria-hidden="true"><span>Product</span><span>Stockcode</span><span>Qty</span><span></span></div>
+      <div class="item-head" aria-hidden="true"><span>Item</span><span>Products</span><span></span></div>
       ${rows || '<p class="hint">No items configured yet.</p>'}
     </div>
   </section>`,
@@ -67,7 +67,7 @@ export function renderItemsPage(items: ItemsConfig, edit?: ItemEdit, error?: str
 
 export function renderAddItemPage(
   values: {
-    word?: string | undefined
+    words?: string | undefined
     url?: string | undefined
     quantity?: string | undefined
     name?: string | undefined
@@ -79,10 +79,10 @@ export function renderAddItemPage(
   const alternatives = (values.alternatives ?? alternativeRowsFromCandidates())
     .map(
       (row, index) => `
-      <label>Alternative ${index + 1} URL or stockcode (optional)
+      <label>Product ${index + 2} URL or stockcode (optional)
         <input name="altUrl" placeholder="https://www.woolworths.com.au/shop/productdetails/..." value="${field(row.url)}">
       </label>
-      <label>Alternative ${index + 1} quantity
+      <label>Product ${index + 2} quantity
         <input name="altQuantity" type="number" min="1" value="${field(row.quantity ?? '1')}">
       </label>`,
     )
@@ -92,8 +92,8 @@ export function renderAddItemPage(
     `<section>
     <p class="hint">Find the product on woolworths.com.au and paste its URL below.</p>
     <form class="add" method="post" action="/items">
-      <label>Trigger word (what you'll say to Siri)
-        <input name="word" required placeholder="milk" value="${field(values.word)}">
+      <label>Trigger words, separated by commas (what you'll say to Siri)
+        <input name="words" required placeholder="milk, full cream milk" value="${field(values.words)}">
       </label>
       <label>Woolworths product URL or stockcode
         <input name="url" required placeholder="https://www.woolworths.com.au/shop/productdetails/888137/..." value="${field(values.url)}">

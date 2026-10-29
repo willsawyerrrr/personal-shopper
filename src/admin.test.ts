@@ -171,7 +171,7 @@ describe('admin', () => {
       {
         url: '/items/new',
         label: 'Add item',
-        has: ['name="word"'],
+        has: ['name="words"'],
         lacks: ['class="items"', 'Signed-in sessions', 'Invite code'],
       },
       {
@@ -415,9 +415,38 @@ describe('admin', () => {
     ])
   })
 
+  it('adds an item with several trigger words at once', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/items',
+      headers: authHeader,
+      payload: { words: 'big garbage bags, large garbage bags', url: '1' },
+    })
+    expect(response.statusCode).toBe(302)
+    const items = await loadItems(db.sql)
+    expect(items.find((item) => item.words.includes('big garbage bags'))?.words).toEqual([
+      'big garbage bags',
+      'large garbage bags',
+    ])
+  })
+
+  it('lists every candidate product in the read-only view, not just the first', async () => {
+    const add = await app.inject({
+      method: 'POST',
+      url: '/items',
+      headers: authHeader,
+      payload: { word: 'bars', url: '1', altUrl: '2', altQuantity: '4' },
+    })
+    expect(add.statusCode).toBe(302)
+    const { body } = await app.inject({ method: 'GET', url: '/', headers: authHeader })
+    expect(body).toContain(
+      '<ul class="view candidates"><li>1 <span class="muted">× 1</span></li><li>2 <span class="muted">× 4</span></li></ul>',
+    )
+  })
+
   it('offers alternative fields on the add-item page', async () => {
     const response = await app.inject({ method: 'GET', url: '/items/new', headers: authHeader })
-    expect(response.body).toContain('Alternative 1 URL or stockcode (optional)')
+    expect(response.body).toContain('Product 2 URL or stockcode (optional)')
     expect(response.body).toContain('name="altUrl"')
     expect(response.body).toContain('name="altQuantity"')
   })
@@ -580,10 +609,10 @@ describe('admin', () => {
       )
       const { body } = await app.inject({ method: 'GET', url: '/', headers: authHeader })
       expect(body).toContain(
-        'aria-label="Alternative 1 URL or stockcode" name="altUrl" placeholder="https://www.woolworths.com.au/shop/productdetails/..." value="6"',
+        'aria-label="Product 2 URL or stockcode" name="altUrl" placeholder="https://www.woolworths.com.au/shop/productdetails/..." value="6"',
       )
       expect(body).toContain(
-        'aria-label="Alternative 1 quantity" name="altQuantity" type="number" min="1" value="2"',
+        'aria-label="Product 2 quantity" name="altQuantity" type="number" min="1" value="2"',
       )
     })
 
@@ -633,7 +662,7 @@ describe('admin', () => {
       expect(response.statusCode).toBe(400)
       expect(response.body).toContain('Each alternative needs a product URL or stockcode')
       expect(response.body).toContain(
-        'aria-label="Alternative 1 URL or stockcode" name="altUrl" placeholder="https://www.woolworths.com.au/shop/productdetails/..." value="not a url"',
+        'aria-label="Product 2 URL or stockcode" name="altUrl" placeholder="https://www.woolworths.com.au/shop/productdetails/..." value="not a url"',
       )
     })
 
@@ -900,7 +929,7 @@ describe('admin', () => {
         payload: { url: '654321' },
       })
       expect(response.statusCode).toBe(400)
-      expect(response.json()).toEqual({ error: 'A trigger word is required.' })
+      expect(response.json()).toEqual({ error: 'At least one trigger word is required.' })
     })
 
     describe('PATCH /items/:id', () => {
