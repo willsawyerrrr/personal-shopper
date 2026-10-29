@@ -10,15 +10,21 @@ public struct ItemGroup: Decodable, Sendable, Equatable, Identifiable {
     public let listing: String?
     /// The household's own name for the product; absent when it has none.
     public let name: String?
+    /// Other stockcode/quantity options for the same product; the cheapest per unit is added.
+    public let alternatives: [ItemCandidate]?
 
     public var id: String { "\(stockcode)/\(quantity)" }
 
-    public init(words: [String], stockcode: Int, quantity: Int, listing: String? = nil, name: String? = nil) {
+    public init(
+        words: [String], stockcode: Int, quantity: Int, listing: String? = nil, name: String? = nil,
+        alternatives: [ItemCandidate]? = nil
+    ) {
         self.words = words
         self.stockcode = stockcode
         self.quantity = quantity
         self.listing = listing
         self.name = name
+        self.alternatives = alternatives
     }
 
     /// Groups `items` by stockcode and quantity, ordered by each group's first word's position.
@@ -30,12 +36,13 @@ public struct ItemGroup: Decodable, Sendable, Equatable, Identifiable {
             if let group = groups[key] {
                 groups[key] = ItemGroup(
                     words: group.words + [item.word], stockcode: item.stockcode, quantity: item.quantity,
-                    listing: group.listing ?? item.listing, name: group.name ?? item.name)
+                    listing: group.listing ?? item.listing, name: group.name ?? item.name,
+                    alternatives: group.alternatives ?? item.alternatives)
             } else {
                 order.append(key)
                 groups[key] = ItemGroup(
                     words: [item.word], stockcode: item.stockcode, quantity: item.quantity, listing: item.listing,
-                    name: item.name)
+                    name: item.name, alternatives: item.alternatives)
             }
         }
         return order.compactMap { groups[$0] }

@@ -1,5 +1,5 @@
-import { normalizeWord, type ItemMapping, type ItemsConfig } from './items.ts'
-import { parseName, parseStockcode } from './item-edit.ts'
+import { normalizeWord, type ItemCandidate, type ItemMapping, type ItemsConfig } from './items.ts'
+import { parseCandidates, parseName, parseStockcode } from './item-edit.ts'
 
 /** The trigger words that share one product and quantity. */
 export interface ProductGroup {
@@ -11,6 +11,8 @@ export interface ProductGroup {
   listing?: string
   /** The first custom name any of the words has. */
   name?: string
+  /** The first set of alternatives any of the words has. */
+  alternatives?: ItemCandidate[]
 }
 
 /** Identifies a group in URLs. */
@@ -20,7 +22,9 @@ export const groupKey = (group: Pick<ProductGroup, 'stockcode' | 'quantity'>): s
 /** Groups items by stockcode and quantity, ordered by each group's first word's stored position. */
 export function groupItems(items: ItemsConfig): ProductGroup[] {
   const groups = new Map<string, ProductGroup>()
-  for (const [word, { stockcode, quantity, listing, name }] of Object.entries(items)) {
+  for (const [word, { stockcode, quantity, listing, name, alternatives }] of Object.entries(
+    items,
+  )) {
     const key = groupKey({ stockcode, quantity })
     const group = groups.get(key)
     if (group) {
@@ -31,6 +35,9 @@ export function groupItems(items: ItemsConfig): ProductGroup[] {
       if (name && !group.name) {
         group.name = name
       }
+      if (alternatives?.length && !group.alternatives) {
+        group.alternatives = alternatives
+      }
     } else {
       groups.set(key, {
         words: [word],
@@ -38,6 +45,7 @@ export function groupItems(items: ItemsConfig): ProductGroup[] {
         quantity,
         ...(listing ? { listing } : {}),
         ...(name ? { name } : {}),
+        ...(alternatives?.length ? { alternatives } : {}),
       })
     }
   }
@@ -106,7 +114,8 @@ const membersOf = (items: ItemsConfig, stockcode: number, quantity: number): str
  * `stockcode` and `quantity` mean "unchanged"; `url` takes precedence over `stockcode`. A changed
  * stockcode drops the stored listing, which the caller looks up again. A present `name` replaces
  * the group's display name (blank clears it); otherwise the group keeps the name it has. Every
- * word of the group carries the name.
+ * word of the group carries the name. A present `alternatives` replaces the group's alternatives
+ * wholesale (an empty array clears them); otherwise the group keeps the alternatives it has.
  */
 export function applyGroupEdit(
   items: ItemsConfig,
@@ -165,6 +174,15 @@ export function applyGroupEdit(
   }
   const name = named ? named.name : groupItemsName(items, members)
 
+  let alternatives = groupItemsAlternatives(items, members)
+  if (fields.alternatives !== undefined) {
+    const candidates = parseCandidates(fields.alternatives)
+    if (!candidates.ok) {
+      return invalid(candidates.error)
+    }
+    alternatives = candidates.candidates.length ? candidates.candidates : undefined
+  }
+
   const stockcodeChanged = newStockcode !== stockcode
   const listing = stockcodeChanged ? undefined : groupItemsListing(items, members)
   const namedMapping: ItemMapping = {
@@ -172,6 +190,7 @@ export function applyGroupEdit(
     quantity: newQuantity,
     ...(listing ? { listing } : {}),
     ...(name ? { name } : {}),
+    ...(alternatives?.length ? { alternatives } : {}),
   }
   const last = members[members.length - 1]
   const entries: [string, ItemMapping][] = []
@@ -201,6 +220,12 @@ const groupItemsName = (items: ItemsConfig, members: string[]): string | undefin
 
 const groupItemsListing = (items: ItemsConfig, members: string[]): string | undefined =>
   members.map((word) => items[word]?.listing).find(Boolean)
+
+const groupItemsAlternatives = (
+  items: ItemsConfig,
+  members: string[],
+): ItemCandidate[] | undefined =>
+  members.map((word) => items[word]?.alternatives).find((candidates) => candidates?.length)
 
 /** Removes every word of the group with `stockcode` and `quantity`; undefined when there is none. */
 export function removeGroup(

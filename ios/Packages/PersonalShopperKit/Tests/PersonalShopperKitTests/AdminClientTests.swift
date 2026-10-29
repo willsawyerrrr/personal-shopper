@@ -73,6 +73,12 @@ struct AdminClientTests {
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer ps_tok")
     }
 
+    @Test func decodesItemAlternatives() async throws {
+        StubURLProtocol.stub(body: #"{"items":[{"word":"bars","stockcode":1,"quantity":1,"alternatives":[{"stockcode":2,"quantity":4}]}]}"#)
+        let items = try await client.items()
+        #expect(items == [Item(word: "bars", stockcode: 1, quantity: 1, alternatives: [ItemCandidate(stockcode: 2, quantity: 4)])])
+    }
+
     @Test func listsHouseholdMembers() async throws {
         StubURLProtocol.stub(body: #"{"members":[{"email":"a@example.com","you":true},{"email":"b@example.com","you":false}]}"#)
         let members = try await client.household()
@@ -411,6 +417,14 @@ extension AdminClientTests {
         #expect(ItemGroup.group(items).first?.name == "Milk")
     }
 
+    @Test func groupTakesTheFirstAlternativesAnyWordHas() {
+        let items = [
+            Item(word: "milk", stockcode: 1, quantity: 1),
+            Item(word: "full cream milk", stockcode: 1, quantity: 1, alternatives: [ItemCandidate(stockcode: 2, quantity: 4)]),
+        ]
+        #expect(ItemGroup.group(items).first?.alternatives == [ItemCandidate(stockcode: 2, quantity: 4)])
+    }
+
     @Test func rowTitleFallsBackToTheFirstWord() {
         let group = group(words: ["ben & jerry's", "ice cream"], listing: nil)
         #expect(group.title == "Ben & Jerry's")
@@ -457,6 +471,20 @@ extension AdminClientTests {
         try await client.update(group(), quantity: 2)
         let sent = try body(of: try #require(StubURLProtocol.requests.withLock { $0.first }))
         #expect(Set(sent.keys) == ["quantity"])
+    }
+
+    @Test func updateSendsAndClearsAlternatives() async throws {
+        StubURLProtocol.stub(body: #"{"words":["milk"],"stockcode":1,"quantity":2,"alternatives":[{"stockcode":9,"quantity":3}]}"#)
+        let updated = try await client.update(
+            group(), alternatives: [AlternativeInput(product: "9", quantity: 3)])
+        #expect(updated.alternatives == [ItemCandidate(stockcode: 9, quantity: 3)])
+        let sent = try body(of: try #require(StubURLProtocol.requests.withLock { $0.first }))
+        #expect(sent["alternatives"] as? NSArray == [["url": "9", "quantity": 3]] as NSArray)
+
+        StubURLProtocol.stub(body: #"{"words":["milk"],"stockcode":1,"quantity":2}"#)
+        try await client.update(group(), alternatives: [])
+        let cleared = try body(of: try #require(StubURLProtocol.requests.withLock { $0.first }))
+        #expect(cleared["alternatives"] as? NSArray == [] as NSArray)
     }
 
     @Test func updateSurfacesCollisionAndValidationMessages() async {
@@ -612,6 +640,47 @@ extension AdminClientTests {
         await model.submit()
         #expect(model.phase == .editing)
         #expect(StubURLProtocol.requests.withLock { $0.isEmpty })
+    }
+
+    @MainActor @Test func editFormPrefillsAlternativesFromTheGroup() throws {
+        let model = try editModel(
+            ItemGroup(
+                words: ["milk"], stockcode: 123, quantity: 2, listing: "Milk 2L",
+                alternatives: [ItemCandidate(stockcode: 456, quantity: 1)]))
+        #expect(model.alternatives.map(\.product) == ["456"])
+        #expect(model.alternatives.map(\.quantity) == [1])
+        #expect(model.canSubmit)
+    }
+
+    @MainActor @Test func editFormAddsEditsAndRemovesAlternatives() throws {
+        let model = try editModel()
+        #expect(model.alternatives.isEmpty)
+        model.addAlternative()
+        let id = try #require(model.alternatives.first?.id)
+        #expect(model.alternativeProductError(for: id) == nil)
+        #expect(!model.canSubmit)
+        model.alternatives[0].product = "not a product"
+        #expect(model.alternativeProductError(for: id) != nil)
+        #expect(!model.canSubmit)
+        model.alternatives[0].product = "789"
+        model.alternatives[0].quantity = 4
+        #expect(model.alternativeProductError(for: id) == nil)
+        #expect(model.canSubmit)
+        model.removeAlternatives(at: [0])
+        #expect(model.alternatives.isEmpty)
+        #expect(model.canSubmit)
+    }
+
+    @MainActor @Test func editFormSavesAlternatives() async throws {
+        StubURLProtocol.stub(body: #"{"words":["milk","full cream milk"],"stockcode":123,"quantity":2,"alternatives":[{"stockcode":789,"quantity":4}]}"#)
+        let model = try editModel()
+        model.addAlternative()
+        model.alternatives[0].product = "789"
+        model.alternatives[0].quantity = 4
+        await model.submit()
+        #expect(model.phase == .saved)
+        let sent = try body(of: try #require(StubURLProtocol.requests.withLock { $0.first }))
+        #expect(sent["alternatives"] as? NSArray == [["url": "789", "quantity": 4]] as NSArray)
     }
 
     private static let credential = PasskeyCredential(

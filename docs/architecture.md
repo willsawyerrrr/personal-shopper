@@ -47,8 +47,10 @@
    word row of the product and shown as the title above the listing. An item
    can also carry `alternatives`, other stockcode/quantity options for the
    same product (e.g. sold both individually and in a multipack); there is no
-   web form for these yet, so they're set through the JSON API
-   (`PATCH /items/:word`). See [`auth.md`](auth.md#using-the-token).
+   web form for these yet. They are set through the JSON API
+   (`PATCH /items/:word`, or `PATCH /products/:stockcode/:quantity` for every
+   word of a product at once) and the iOS app's edit-item sheet. See
+   [`auth.md`](auth.md#using-the-token).
 3. **The `extension/` Chrome extension** and **the `ios/` app** are clients of
    that JSON API: from the Woolworths product page (extension) or share sheet
    (iOS) they add a product from its URL. See

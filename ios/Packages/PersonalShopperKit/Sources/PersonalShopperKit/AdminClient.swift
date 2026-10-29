@@ -1,5 +1,17 @@
 import Foundation
 
+/// A product reference (a Woolworths product URL or a stockcode) and quantity, sent as one of
+/// an item's alternatives.
+public struct AlternativeInput: Sendable, Equatable {
+    public let product: String
+    public let quantity: Int
+
+    public init(product: String, quantity: Int) {
+        self.product = product
+        self.quantity = quantity
+    }
+}
+
 /// Client for the server's JSON API, authenticated with a bearer token.
 public struct AdminClient: Sendable {
     private let baseURL: URL
@@ -89,19 +101,27 @@ public struct AdminClient: Sendable {
 
     /// Changes the product `group` and returns it as stored. Only the arguments given
     /// change: `words` replaces the group's whole set of trigger words, `product` is a
-    /// product URL or stockcode, `name` the custom display name (empty clears it).
+    /// product URL or stockcode, `name` the custom display name (empty clears it),
+    /// `alternatives` replaces the group's alternatives wholesale (empty clears them).
     @discardableResult
     public func update(
         _ group: ItemGroup, words: [String]? = nil, product: String? = nil, quantity: Int? = nil,
-        name: String? = nil
+        name: String? = nil, alternatives: [AlternativeInput]? = nil
     ) async throws -> ItemGroup {
+        struct AlternativeBody: Encodable {
+            let url: String
+            let quantity: Int
+        }
         struct Body: Encodable {
             let words: [String]?
             let url: String?
             let quantity: Int?
             let name: String?
+            let alternatives: [AlternativeBody]?
         }
-        let body = Body(words: words, url: product, quantity: quantity, name: name)
+        let body = Body(
+            words: words, url: product, quantity: quantity, name: name,
+            alternatives: alternatives?.map { AlternativeBody(url: $0.product, quantity: $0.quantity) })
         let data = try await send("PATCH", path: path(of: group), body: JSONEncoder().encode(body))
         return try decode(ItemGroup.self, from: data)
     }

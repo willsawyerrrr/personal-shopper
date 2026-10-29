@@ -64,6 +64,17 @@ describe('groupItems names', () => {
   })
 })
 
+describe('groupItems alternatives', () => {
+  it('takes the alternatives from the first word that has them', () => {
+    const grouped = groupItems({
+      a: { stockcode: 1, quantity: 1 },
+      b: { stockcode: 1, quantity: 1, alternatives: [{ stockcode: 2, quantity: 4 }] },
+      c: { stockcode: 1, quantity: 1, alternatives: [{ stockcode: 3, quantity: 6 }] },
+    })
+    expect(grouped[0]?.alternatives).toEqual([{ stockcode: 2, quantity: 4 }])
+  })
+})
+
 describe('groupTitle', () => {
   it('is the name, else the listing, else the first word display-cased', () => {
     const [milk, bread] = groupItems(items)
@@ -150,6 +161,23 @@ describe('applyGroupEdit', () => {
   it('rejects an empty word set and unknown products', () => {
     expect(edit({ words: [] })).toMatchObject({ ok: false, status: 400 })
     expect(applyGroupEdit(items, 7, 1, {})).toMatchObject({ ok: false, status: 404 })
+  })
+
+  it('sets, keeps and clears alternatives across every word', () => {
+    const added = edit({ alternatives: [{ stockcode: 9, quantity: 3 }], words: ['milk', 'skim'] })
+    expect(added.ok && added.items.milk?.alternatives).toEqual([{ stockcode: 9, quantity: 3 }])
+    expect(added.ok && added.items.skim?.alternatives).toEqual([{ stockcode: 9, quantity: 3 }])
+    expect(added.ok && added.group.alternatives).toEqual([{ stockcode: 9, quantity: 3 }])
+    const kept = applyGroupEdit(added.ok ? added.items : {}, 1, 1, { words: ['milk', 'oat'] })
+    expect(kept.ok && kept.items.oat?.alternatives).toEqual([{ stockcode: 9, quantity: 3 }])
+    const cleared = applyGroupEdit(added.ok ? added.items : {}, 1, 1, { alternatives: [] })
+    expect(cleared.ok && cleared.items.milk).not.toHaveProperty('alternatives')
+    expect(cleared.ok && cleared.group.alternatives).toBeUndefined()
+  })
+
+  it('rejects an invalid alternative', () => {
+    expect(edit({ alternatives: [{ quantity: 4 }] })).toMatchObject({ ok: false, status: 400 })
+    expect(edit({ alternatives: 'nope' })).toMatchObject({ ok: false, status: 400 })
   })
 })
 
