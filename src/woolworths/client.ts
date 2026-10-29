@@ -18,9 +18,14 @@ export interface ProductLookup {
   listing(stockcode: number): Promise<string | undefined>
 }
 
+export interface PriceLookup {
+  /** The product's current price in dollars, or `undefined` when unavailable or unparsable. */
+  price(stockcode: number): Promise<number | undefined>
+}
+
 const LOOKUP_TIMEOUT_MS = 10_000
 
-export class WoolworthsClient implements CartClient, ProductLookup {
+export class WoolworthsClient implements CartClient, ProductLookup, PriceLookup {
   constructor(private readonly sessions: SessionStore) {}
 
   async search(term: string): Promise<SearchResultProduct[]> {
@@ -41,6 +46,14 @@ export class WoolworthsClient implements CartClient, ProductLookup {
   async listing(stockcode: number): Promise<string | undefined> {
     const response = await this.request(`/apis/ui/product/detail/${stockcode}`)
     return parseListing(response)
+  }
+
+  // Same endpoint as `listing`; `Product.Price` is the current price in dollars, a plain
+  // number (verified 2026-10). A candidate whose price can't be parsed is left `undefined`
+  // rather than failing the request; see `pickCheapest` in `src/cart.ts`.
+  async price(stockcode: number): Promise<number | undefined> {
+    const response = await this.request(`/apis/ui/product/detail/${stockcode}`)
+    return parsePrice(response)
   }
 
   async addToCart(stockcode: number, quantity: number): Promise<void> {
@@ -93,6 +106,16 @@ function parseListing(response: unknown): string | undefined {
   const product = (response as { Product?: Record<string, unknown> | null } | null)?.Product
   const title = product?.DisplayName ?? product?.Name
   return typeof title === 'string' && title.trim() ? title.trim() : undefined
+}
+
+function parsePrice(response: unknown): number | undefined {
+  const product = (response as { Product?: Record<string, unknown> | null } | null)?.Product
+  if (!product || product.IsAvailable === false) {
+    return undefined
+  }
+  const price = product.Price as Record<string, unknown> | number | undefined
+  const value = typeof price === 'object' ? price?.Value : price
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined
 }
 
 // `POST /apis/ui/Search/products` returns a generic 400 against a real

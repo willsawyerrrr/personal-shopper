@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ItemsConfig } from './items.ts'
-import { applyEdit, parseName } from './item-edit.ts'
+import { applyEdit, parseCandidates, parseName } from './item-edit.ts'
 
 describe('parseName', () => {
   it('trims, and treats blank or missing as no name', () => {
@@ -19,6 +19,65 @@ describe('parseName', () => {
 
   it('rejects non-text', () => {
     expect(parseName(5)).toMatchObject({ ok: false })
+  })
+})
+
+describe('parseCandidates', () => {
+  it('reads a stockcode and quantity, defaulting quantity to 1', () => {
+    expect(parseCandidates([{ stockcode: 123456, quantity: 4 }])).toEqual({
+      ok: true,
+      candidates: [{ stockcode: 123456, quantity: 4 }],
+    })
+    expect(parseCandidates([{ stockcode: 123456 }])).toEqual({
+      ok: true,
+      candidates: [{ stockcode: 123456, quantity: 1 }],
+    })
+  })
+
+  it('parses a stockcode from a product URL, taking precedence over stockcode', () => {
+    expect(
+      parseCandidates([{ url: '/shop/productdetails/123456/bars', stockcode: 1, quantity: 4 }]),
+    ).toEqual({ ok: true, candidates: [{ stockcode: 123456, quantity: 4 }] })
+  })
+
+  it('treats an empty array as no alternatives', () => {
+    expect(parseCandidates([])).toEqual({ ok: true, candidates: [] })
+  })
+
+  it('rejects a non-array', () => {
+    expect(parseCandidates('nope')).toEqual({ ok: false, error: expect.any(String) })
+  })
+
+  it('rejects an entry with no URL or stockcode', () => {
+    expect(parseCandidates([{ quantity: 4 }])).toEqual({ ok: false, error: expect.any(String) })
+  })
+})
+
+describe('applyEdit alternatives', () => {
+  const items: ItemsConfig = {
+    bars: { stockcode: 1, quantity: 1, alternatives: [{ stockcode: 2, quantity: 4 }] },
+  }
+
+  it('replaces the alternatives wholesale', () => {
+    const result = applyEdit(items, 'bars', { alternatives: [{ stockcode: 3, quantity: 6 }] })
+    expect(result.ok && result.items.bars?.alternatives).toEqual([{ stockcode: 3, quantity: 6 }])
+  })
+
+  it('clears them with an empty array', () => {
+    const result = applyEdit(items, 'bars', { alternatives: [] })
+    expect(result.ok && result.items.bars).not.toHaveProperty('alternatives')
+  })
+
+  it('keeps them when alternatives is absent', () => {
+    const result = applyEdit(items, 'bars', { quantity: 2 })
+    expect(result.ok && result.items.bars?.alternatives).toEqual([{ stockcode: 2, quantity: 4 }])
+  })
+
+  it('rejects an invalid entry', () => {
+    expect(applyEdit(items, 'bars', { alternatives: [{ quantity: 4 }] })).toMatchObject({
+      ok: false,
+      status: 400,
+    })
   })
 })
 

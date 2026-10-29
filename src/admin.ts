@@ -4,7 +4,7 @@ import { PAGE_STYLES } from './admin-styles.ts'
 import { UserRateLimiter } from './rate-limit.ts'
 import { authenticate, logAuthFailure, requestPath, sessionCookie } from './auth.ts'
 import type { AppConfig } from './config.ts'
-import { applyEdit, parseName, parseStockcode } from './item-edit.ts'
+import { applyEdit, parseCandidates, parseName, parseStockcode } from './item-edit.ts'
 import { applyGroupEdit, groupKey, removeGroup } from './products.ts'
 import {
   renderAccountPage,
@@ -250,19 +250,28 @@ export async function registerAdmin(
     })
 
     admin.post<{
-      Body: { word?: string; url?: string; quantity?: string | number; name?: unknown }
+      Body: {
+        word?: string
+        url?: string
+        quantity?: string | number
+        name?: unknown
+        alternatives?: unknown
+      }
     }>('/items', async (request, reply) => {
-      const { word, url, quantity, name } = request.body
+      const { word, url, quantity, name, alternatives } = request.body
       const items = await store.load(emailOf(request))
       const stockcode = parseStockcode(url ?? '')
+      const candidates = parseCandidates(alternatives ?? [])
       const error = !word?.trim()
         ? 'A trigger word is required.'
         : !stockcode
           ? 'Could not find a stockcode in that URL — paste a link like /shop/productdetails/123456/product-name, or the stockcode itself.'
-          : undefined
+          : !candidates.ok
+            ? candidates.error
+            : undefined
       const named = parseName(name)
       const problem = error ?? (named.ok ? undefined : named.error)
-      if (problem || !word || !stockcode || !named.ok) {
+      if (problem || !word || !stockcode || !named.ok || !candidates.ok) {
         if (wantsJson(request)) {
           return reply.code(400).send({ error: problem })
         }
@@ -293,6 +302,7 @@ export async function registerAdmin(
         quantity: mappedQuantity,
         ...(listing ? { listing } : {}),
         ...(groupName ? { name: groupName } : {}),
+        ...(candidates.candidates.length ? { alternatives: candidates.candidates } : {}),
       }
       if (named.name) {
         for (const [key, item] of Object.entries(items)) {
