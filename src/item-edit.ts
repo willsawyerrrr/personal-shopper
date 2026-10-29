@@ -1,4 +1,4 @@
-import { normalizeWord, type ItemMapping, type ItemsConfig } from './items.ts'
+import { normalizeWord, type ItemCandidate, type ItemMapping, type ItemsConfig } from './items.ts'
 
 export type EditResult =
   | { ok: true; items: ItemsConfig; word: string }
@@ -36,7 +36,8 @@ function positiveInteger(value: unknown): number | undefined {
 // place and in order. Blank `url`, `stockcode` and `quantity` mean "unchanged". `url` takes
 // precedence over `stockcode`. A changed stockcode drops the stored listing, which the caller
 // looks up again. A present `name` sets (or, when blank, clears) the display name on every word
-// sharing the item's stockcode and quantity.
+// sharing the item's stockcode and quantity. A present `alternatives` replaces the item's
+// alternatives wholesale; an empty array clears them.
 export function applyEdit(
   items: ItemsConfig,
   word: string,
@@ -90,6 +91,18 @@ export function applyEdit(
     mapping.quantity = quantity
   }
 
+  if (fields.alternatives !== undefined) {
+    const candidates = parseCandidates(fields.alternatives)
+    if (!candidates.ok) {
+      return invalid(candidates.error)
+    }
+    if (candidates.candidates.length) {
+      mapping.alternatives = candidates.candidates
+    } else {
+      delete mapping.alternatives
+    }
+  }
+
   const named = fields.name === undefined ? undefined : parseName(fields.name)
   if (named && !named.ok) {
     return invalid(named.error)
@@ -111,6 +124,37 @@ export function applyEdit(
 export function withName(mapping: ItemMapping, name: string | undefined): ItemMapping {
   const { name: _previous, ...rest } = mapping
   return name ? { ...rest, name } : rest
+}
+
+export type CandidatesResult =
+  { ok: true; candidates: ItemCandidate[] } | { ok: false; error: string }
+
+/**
+ * Validates an `alternatives` array: each entry needs a product `url` or `stockcode`, like
+ * `POST /items`; `quantity` defaults to 1.
+ */
+export function parseCandidates(value: unknown): CandidatesResult {
+  if (!Array.isArray(value)) {
+    return { ok: false, error: 'alternatives must be an array.' }
+  }
+  const candidates: ItemCandidate[] = []
+  for (const entry of value) {
+    const {
+      url,
+      stockcode: rawStockcode,
+      quantity: rawQuantity,
+    } = (entry ?? {}) as Record<string, unknown>
+    const stockcode = typeof url === 'string' ? parseStockcode(url) : positiveInteger(rawStockcode)
+    if (!stockcode) {
+      return {
+        ok: false,
+        error:
+          'Each alternative needs a product URL or stockcode, like /shop/productdetails/123456/product-name.',
+      }
+    }
+    candidates.push({ stockcode, quantity: positiveInteger(rawQuantity) ?? 1 })
+  }
+  return { ok: true, candidates }
 }
 
 export function parseStockcode(input: string): number | undefined {

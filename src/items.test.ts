@@ -31,9 +31,17 @@ describe('parseItemsYaml', () => {
     expect(parseItemsYaml('')).toEqual({})
   })
 
-  it('ignores fields other than stockcode, quantity and listing', () => {
+  it('ignores fields other than stockcode, quantity, listing and alternatives', () => {
     expect(parseItemsYaml('milk:\n  stockcode: 1\n  quantity: 2\n  name: Milk\n')).toEqual({
       milk: { stockcode: 1, quantity: 2 },
+    })
+  })
+
+  it('parses alternatives', () => {
+    const yaml =
+      'bars:\n  stockcode: 1\n  quantity: 1\n  alternatives:\n    - stockcode: 2\n      quantity: 4\n'
+    expect(parseItemsYaml(yaml)).toEqual({
+      bars: { stockcode: 1, quantity: 1, alternatives: [{ stockcode: 2, quantity: 4 }] },
     })
   })
 })
@@ -64,6 +72,15 @@ describe('ItemStore', () => {
     const loaded = await store.load('me@example.com')
     expect(loaded).toEqual(items)
     expect(Object.keys(loaded)).toEqual(['milk', 'bread'])
+  })
+
+  it('round-trips alternatives', async () => {
+    const items: ItemsConfig = {
+      bars: { stockcode: 1, quantity: 1, alternatives: [{ stockcode: 2, quantity: 4 }] },
+      bread: { stockcode: 3, quantity: 1 },
+    }
+    await store.save('me@example.com', items)
+    expect(await store.load('me@example.com')).toEqual(items)
   })
 
   it('round-trips display names', async () => {

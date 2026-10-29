@@ -44,7 +44,11 @@
    its stockcode changes, and backfilled in the background for items without
    one. A failed lookup is logged and never fails the request. A product can
    also carry a household-chosen `name` (max 80 characters), stored on every
-   word row of the product and shown as the title above the listing.
+   word row of the product and shown as the title above the listing. An item
+   can also carry `alternatives`, other stockcode/quantity options for the
+   same product (e.g. sold both individually and in a multipack); there is no
+   web form for these yet, so they're set through the JSON API
+   (`PATCH /items/:word`). See [`auth.md`](auth.md#using-the-token).
 3. **The `extension/` Chrome extension** and **the `ios/` app** are clients of
    that JSON API: from the Woolworths product page (extension) or share sheet
    (iOS) they add a product from its URL. See
@@ -79,8 +83,15 @@
    unofficial API directly. `POST /api/v3/ui/trolley/update` for cart changes
    is confirmed working against a live cart. `GET /apis/ui/product/detail/<stockcode>`
    is read-only and works with the same session cookies (and fails without
-   them); `Product.DisplayName` is the listing text. `POST /apis/ui/Search/products`
-   for search is confirmed broken or deprecated; see the risks below.
+   them); `Product.DisplayName` is the listing text and `Product.Price` (a plain
+   number) the current price, `undefined` when unavailable or unparsable.
+   `POST /apis/ui/Search/products` for search is confirmed broken or
+   deprecated; see the risks below. When an item has alternatives,
+   `POST /cart/items` (`src/cart.ts`) looks up the price of the item's own
+   stockcode and each alternative's and adds whichever has the lowest price
+   per unit, falling back to the item's own stockcode and quantity when a
+   price lookup fails or none is cheaper — a candidate's price lookup failing
+   never fails the cart-add.
 7. **`SessionStore`** (`src/woolworths/session.ts`) holds a user's cookie jar
    (the `woolworths_sessions` table, via `PgSessionStorage`) those calls
    authenticate with and refreshes it through `GET /auth/heartbeat`
@@ -129,15 +140,15 @@ migrates. Every table has row level security enabled and no policies, so the
 `anon` and `authenticated` roles can read and write nothing; the server uses
 the privileged role.
 
-| Table                 | Holds                                                                          |
-| --------------------- | ------------------------------------------------------------------------------ |
-| `households`          | A group of users sharing one Woolworths account; the key of the shared data.   |
-| `users`               | One row per email (lower-cased, unique), in one household.                     |
-| `tokens`              | Hashed bearer tokens and web sessions, per user, with client and expiry.       |
-| `items`               | A household's trigger phrase, stockcode, quantity, listing and name, in order. |
-| `woolworths_sessions` | A household's Woolworths cookie jar.                                           |
-| `passkey_credentials` | A household's passkey credential, AES-256-GCM encrypted (IV, tag, ciphertext). |
-| `household_invites`   | Hashed single-use invite codes, with household, creator and expiry.            |
+| Table                 | Holds                                                                                        |
+| --------------------- | -------------------------------------------------------------------------------------------- |
+| `households`          | A group of users sharing one Woolworths account; the key of the shared data.                 |
+| `users`               | One row per email (lower-cased, unique), in one household.                                   |
+| `tokens`              | Hashed bearer tokens and web sessions, per user, with client and expiry.                     |
+| `items`               | A household's trigger phrase, stockcode, quantity, listing, name and alternatives, in order. |
+| `woolworths_sessions` | A household's Woolworths cookie jar.                                                         |
+| `passkey_credentials` | A household's passkey credential, AES-256-GCM encrypted (IV, tag, ciphertext).               |
+| `household_invites`   | Hashed single-use invite codes, with household, creator and expiry.                          |
 
 `CredentialStore` (`src/users/credentials.ts`: `get`, `put`, `has`, `delete` per household)
 encrypts with `CREDENTIALS_ENCRYPTION_KEY` before the credential reaches the

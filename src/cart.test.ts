@@ -5,12 +5,42 @@ import { Writable } from 'node:stream'
 import type { FastifyInstance } from 'fastify'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildApp } from './app.ts'
+import { pickCheapest } from './cart.ts'
 import { DEFAULT_LIMITS } from './config.ts'
 import { seedItems, signInClient, signInWeb, testConfig } from './testing/app.ts'
 import { createTestDb } from './testing/db.ts'
 import { FakeGoogle } from './testing/google.ts'
-import type { CartClient } from './woolworths/client.ts'
+import type { CartClient, PriceLookup } from './woolworths/client.ts'
 import { SESSION_EXPIRED_MESSAGE, SessionRejectedError } from './woolworths/session.ts'
+
+describe('pickCheapest', () => {
+  it('picks the lower price per unit', () => {
+    expect(
+      pickCheapest([
+        { stockcode: 1, quantity: 1, price: 2 },
+        { stockcode: 2, quantity: 4, price: 7 },
+      ]),
+    ).toEqual({ stockcode: 2, quantity: 4, price: 7 })
+  })
+
+  it('falls back to the first candidate when no price is known', () => {
+    expect(
+      pickCheapest([
+        { stockcode: 1, quantity: 1 },
+        { stockcode: 2, quantity: 4 },
+      ]),
+    ).toEqual({ stockcode: 1, quantity: 1 })
+  })
+
+  it('ignores a candidate with an unknown price even when it would otherwise win', () => {
+    expect(
+      pickCheapest([
+        { stockcode: 1, quantity: 1, price: 2 },
+        { stockcode: 2, quantity: 4 },
+      ]),
+    ).toEqual({ stockcode: 1, quantity: 1, price: 2 })
+  })
+})
 
 describe('POST /cart/items', () => {
   let dir: string
@@ -19,7 +49,7 @@ describe('POST /cart/items', () => {
   let app: FastifyInstance
   let output: string
   let addToCart: ReturnType<typeof vi.fn<CartClient['addToCart']>>
-  let cartFor: ReturnType<typeof vi.fn<(email: string) => CartClient>>
+  let cartFor: ReturnType<typeof vi.fn<(email: string) => CartClient & Partial<PriceLookup>>>
   let bearer: { authorization: string }
 
   const post = (payload: unknown, headers: Record<string, string> = bearer) =>
@@ -65,6 +95,44 @@ describe('POST /cart/items', () => {
     expect(response.statusCode).toBe(200)
     expect(response.json()).toEqual({ item: '  Milk ', stockcode: 123456, quantity: 2 })
     expect(addToCart).toHaveBeenCalledWith(123456, 2)
+  })
+
+  it('does not look up a price for an item with no alternatives', async () => {
+    const price = vi.fn()
+    cartFor.mockReturnValue({ addToCart, price })
+    await post({ item: 'milk' })
+    expect(price).not.toHaveBeenCalled()
+  })
+
+  describe('with alternatives', () => {
+    beforeEach(async () => {
+      await seedItems(
+        db.sql,
+        'bars:\n  stockcode: 1\n  quantity: 1\n  alternatives:\n    - stockcode: 2\n      quantity: 4\n',
+      )
+    })
+
+    it('adds the cheapest-per-unit candidate', async () => {
+      const price = vi.fn((stockcode: number) => Promise.resolve(stockcode === 1 ? 3 : 10))
+      cartFor.mockReturnValue({ addToCart, price })
+      const response = await post({ item: 'bars' })
+      expect(response.json()).toEqual({ item: 'bars', stockcode: 2, quantity: 4 })
+      expect(addToCart).toHaveBeenCalledWith(2, 4)
+    })
+
+    it('falls back to the primary candidate when a price lookup fails', async () => {
+      const price = vi.fn().mockRejectedValue(new Error('boom'))
+      cartFor.mockReturnValue({ addToCart, price })
+      const response = await post({ item: 'bars' })
+      expect(response.json()).toEqual({ item: 'bars', stockcode: 1, quantity: 1 })
+      expect(addToCart).toHaveBeenCalledWith(1, 1)
+    })
+
+    it('falls back to the primary candidate when the cart client has no price lookup', async () => {
+      const response = await post({ item: 'bars' })
+      expect(response.json()).toEqual({ item: 'bars', stockcode: 1, quantity: 1 })
+      expect(addToCart).toHaveBeenCalledWith(1, 1)
+    })
   })
 
   it("uses the signed-in user's own items and Woolworths account", async () => {

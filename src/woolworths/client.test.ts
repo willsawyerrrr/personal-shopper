@@ -135,4 +135,40 @@ describe('WoolworthsClient', () => {
       await expect(new WoolworthsClient(fakeSessionStore()).listing(1)).rejects.toThrow('403')
     })
   })
+
+  describe('price', () => {
+    const respond = (body: unknown, status = 200) => {
+      global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status }))
+    }
+
+    it('reads a numeric Price', async () => {
+      respond({ Product: { Price: 4.5, IsAvailable: true } })
+      await expect(new WoolworthsClient(fakeSessionStore()).price(1)).resolves.toBe(4.5)
+    })
+
+    it('reads a Price.Value', async () => {
+      respond({ Product: { Price: { Value: 4.5 }, IsAvailable: true } })
+      await expect(new WoolworthsClient(fakeSessionStore()).price(1)).resolves.toBe(4.5)
+    })
+
+    it('returns undefined when the product is unavailable', async () => {
+      respond({ Product: { Price: 4.5, IsAvailable: false } })
+      await expect(new WoolworthsClient(fakeSessionStore()).price(1)).resolves.toBeUndefined()
+    })
+
+    it('returns undefined when there is no parsable price', async () => {
+      respond({ Product: { IsAvailable: true } })
+      await expect(new WoolworthsClient(fakeSessionStore()).price(1)).resolves.toBeUndefined()
+    })
+
+    it('returns undefined when there is no product', async () => {
+      respond({ Product: null })
+      await expect(new WoolworthsClient(fakeSessionStore()).price(1)).resolves.toBeUndefined()
+    })
+
+    it('throws when Woolworths rejects the request', async () => {
+      respond({}, 403)
+      await expect(new WoolworthsClient(fakeSessionStore()).price(1)).rejects.toThrow('403')
+    })
+  })
 })
