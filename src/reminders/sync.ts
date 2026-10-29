@@ -16,13 +16,14 @@ export async function syncReminders(
 ): Promise<void> {
   const pending = await reminders.listPending()
   for (const reminder of pending) {
-    const mapping = resolveItem(items, reminder.title)
-    if (!mapping) {
+    const item = resolveItem(items, reminder.title)
+    const candidate = item?.candidates[0]
+    if (!candidate) {
       logger.warn(`no mapping configured for queued reminder "${reminder.title}", leaving queued`)
       continue
     }
     try {
-      await cart.addToCart(mapping.stockcode, mapping.quantity)
+      await cart.addToCart(candidate.stockcode, candidate.quantity)
       await reminders.remove(reminder)
       logger.info(`synced queued reminder "${reminder.title}" to the cart`)
     } catch (error) {

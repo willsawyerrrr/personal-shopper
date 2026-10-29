@@ -1,9 +1,8 @@
 import { createHash, randomBytes } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
-import { stringify } from 'yaml'
 import { DEFAULT_LIMITS, type AppConfig } from '../config.ts'
 import type { Sql } from '../db.ts'
-import { ItemStore, parseItemsYaml } from '../items.ts'
+import { ItemStore, parseItemsYaml, type ItemsConfig } from '../items.ts'
 import { CLIENT_ID, CLIENT_SECRET, type FakeGoogle, type IdTokenOverrides } from './google.ts'
 
 export const IOS_REDIRECT = 'dev.willsawyerrrr.personal-shopper://auth'
@@ -11,14 +10,23 @@ export const EXTENSION_REDIRECT = 'https://abcdefghijklmnop.chromiumapp.org/'
 
 const OWNER = 'me@example.com'
 
-/** Stores `yaml` as `email`'s (default: the owner's) items. */
+/** Stores the legacy word-keyed `yaml` as `email`'s (default: the owner's) items. */
 export async function seedItems(sql: Sql, yaml: string, email: string = OWNER): Promise<void> {
   await new ItemStore(sql).save(email, parseItemsYaml(yaml))
 }
 
-/** `email`'s (default: the owner's) items as the YAML `items.yml` would hold. */
-export async function itemsYaml(sql: Sql, email: string = OWNER): Promise<string> {
-  return stringify(await new ItemStore(sql).load(email))
+/** `email`'s (default: the owner's) items. */
+export async function loadItems(sql: Sql, email: string = OWNER): Promise<ItemsConfig> {
+  return new ItemStore(sql).load(email)
+}
+
+/** The id of `email`'s (default: the owner's) item with the trigger word `word`. */
+export async function itemIdFor(sql: Sql, word: string, email: string = OWNER): Promise<string> {
+  const item = (await loadItems(sql, email)).find((candidate) => candidate.words.includes(word))
+  if (!item) {
+    throw new Error(`no item for "${word}"`)
+  }
+  return item.id
 }
 
 export function testConfig(dir: string, overrides: Partial<AppConfig> = {}): AppConfig {

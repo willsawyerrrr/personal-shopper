@@ -1,13 +1,13 @@
 import { escapeHtml } from './html.ts'
-import type { ItemCandidate, ItemsConfig } from './items.ts'
 import {
   displayCase,
-  groupItems,
-  groupKey,
-  groupSubtitle,
-  groupTitle,
-  sortGroups,
-} from './products.ts'
+  itemSubtitle,
+  itemTitle,
+  sortItems,
+  type Item,
+  type ItemCandidate,
+  type ItemsConfig,
+} from './items.ts'
 
 export interface ItemEdit {
   key: string
@@ -56,7 +56,7 @@ export function alternativesFromBody(body: Record<string, unknown>): unknown[] {
     .map((row) => ({ url: row.url, quantity: row.quantity }))
 }
 
-/** The `altUrl`/`altQuantity` label-and-input pairs for a product edit form. */
+/** The `altUrl`/`altQuantity` label-and-input pairs for an item edit form. */
 function renderAlternativeFields(rows: AlternativeRow[]): string {
   return rows
     .map(
@@ -71,24 +71,24 @@ function renderAlternativeFields(rows: AlternativeRow[]): string {
     .join('')
 }
 
-/** One editable form per product; `edit` re-opens the product with `key` showing `values`. */
+/** One editable form per item; `edit` re-opens the item with `key` showing `values`. */
 export function renderItemRows(items: ItemsConfig, edit?: ItemEdit): string {
-  return sortGroups(groupItems(items))
-    .map((group, index) => {
-      const key = groupKey(group)
-      const path = `/products/${key}`
-      const editing = edit?.key === key
+  return sortItems(items)
+    .map((item: Item, index) => {
+      const path = `/items/${item.id}`
+      const editing = edit?.key === item.id
       const field = (name: string, fallback: string | number): string => {
         const value = editing ? edit.values[name] : undefined
         return escapeHtml(typeof value === 'string' ? value : String(fallback))
       }
-      const title = groupTitle(group)
-      const subtitle = groupSubtitle(group)
-      const words = group.words.map(displayCase)
+      const title = itemTitle(item)
+      const subtitle = itemSubtitle(item)
+      const words = item.words.map(displayCase)
       const id = `edit-${index}`
+      const [primary, ...rest] = item.candidates
       const alternativeRows = editing
         ? alternativeRowsFromBody(edit.values)
-        : alternativeRowsFromCandidates(group.alternatives)
+        : alternativeRowsFromCandidates(rest)
       return `
         <form class="item" method="post" action="${path}/edit">
           <input type="checkbox" class="edit-toggle" id="${id}" aria-label="Edit ${escapeHtml(title)}"${editing ? ' checked' : ''}>
@@ -97,7 +97,7 @@ export function renderItemRows(items: ItemsConfig, edit?: ItemEdit): string {
             ${subtitle ? `<div class="view words">${escapeHtml(subtitle)}</div>` : ''}
             <div class="view words">${words.map((word) => `<div>${escapeHtml(word)}</div>`).join('')}</div>
             <label class="edit"><span class="field-name">Name</span>
-              <input aria-label="Name" name="name" maxlength="80" placeholder="${escapeHtml(group.listing ?? '')}" value="${field('name', group.name ?? '')}">
+              <input aria-label="Name" name="name" maxlength="80" placeholder="${escapeHtml(item.listing ?? '')}" value="${field('name', item.name ?? '')}">
             </label>
             <label class="edit"><span class="field-name">Trigger words, separated by commas</span>
               <input aria-label="Trigger words, separated by commas" name="words" required value="${field('words', words.join(', '))}">
@@ -105,15 +105,15 @@ export function renderItemRows(items: ItemsConfig, edit?: ItemEdit): string {
             ${renderAlternativeFields(alternativeRows)}
           </div>
           <div class="cell product">
-            <span class="view"><span class="view-name">Stockcode</span>${group.stockcode}</span>
+            <span class="view"><span class="view-name">Stockcode</span>${primary?.stockcode ?? ''}</span>
             <label class="edit"><span class="field-name">Woolworths product URL or stockcode</span>
-              <input aria-label="Woolworths product URL or stockcode" name="url" required value="${field('url', group.stockcode)}">
+              <input aria-label="Woolworths product URL or stockcode" name="url" required value="${field('url', primary?.stockcode ?? '')}">
             </label>
           </div>
           <div class="cell qty">
-            <span class="view"><span class="view-name">Quantity</span>${group.quantity}</span>
+            <span class="view"><span class="view-name">Quantity</span>${primary?.quantity ?? ''}</span>
             <label class="edit"><span class="field-name">Quantity</span>
-              <input aria-label="Quantity" name="quantity" type="number" min="1" value="${field('quantity', group.quantity)}">
+              <input aria-label="Quantity" name="quantity" type="number" min="1" value="${field('quantity', primary?.quantity ?? 1)}">
             </label>
           </div>
           <div class="cell actions">

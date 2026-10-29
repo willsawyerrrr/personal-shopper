@@ -70,7 +70,7 @@ export async function importLegacyFiles(
   const items = await readIfPresent(files.items)
   if (items !== undefined && owner) {
     const store = new ItemStore(sql)
-    if (Object.keys(await store.load(owner)).length === 0) {
+    if ((await store.load(owner)).length === 0) {
       await store.save(owner, parseItemsYaml(items))
       await markImported(files.items)
       imported.push('items')

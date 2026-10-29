@@ -3,14 +3,19 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
-import { parse } from 'yaml'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildApp } from './app.ts'
 import { DEFAULT_LIMITS } from './config.ts'
 import { TokenStore } from './tokens.ts'
-import type { ItemsConfig } from './items.ts'
 import type { AppConfig } from './config.ts'
-import { itemsYaml, seedItems, signInClient, signInWeb, testConfig } from './testing/app.ts'
+import {
+  itemIdFor,
+  loadItems,
+  seedItems,
+  signInClient,
+  signInWeb,
+  testConfig,
+} from './testing/app.ts'
 import { createTestDb } from './testing/db.ts'
 import { FakeGoogle } from './testing/google.ts'
 import { CredentialStore } from './users/credentials.ts'
@@ -262,9 +267,9 @@ describe('admin', () => {
   })
 
   it('answers unauthenticated browser writes with 401', async () => {
-    const response = await app.inject({ method: 'POST', url: '/items/milk/delete' })
+    const response = await app.inject({ method: 'POST', url: '/items/not-authenticated/delete' })
     expect(response.statusCode).toBe(401)
-    expect(await itemsYaml(db.sql)).toContain('milk:')
+    expect((await loadItems(db.sql))[0]?.words).toEqual(['milk'])
   })
 
   it('signs out by revoking the session and clearing the cookie', async () => {
@@ -360,10 +365,9 @@ describe('admin', () => {
       },
     })
     expect(response.statusCode).toBe(302)
-    const items = await itemsYaml(db.sql)
-    expect(items).toContain('bread:')
-    expect(items).toContain('888137')
-    expect(items).toContain('quantity: 2')
+    const items = await loadItems(db.sql)
+    const bread = items.find((item) => item.words.includes('bread'))
+    expect(bread?.candidates).toEqual([{ stockcode: 888137, quantity: 2 }])
   })
 
   it('adds an item from a bare stockcode', async () => {
@@ -374,9 +378,10 @@ describe('admin', () => {
       payload: { word: 'eggs', url: '654321' },
     })
     expect(response.statusCode).toBe(302)
-    const items = await itemsYaml(db.sql)
-    expect(items).toContain('eggs:')
-    expect(items).toContain('654321')
+    const items = await loadItems(db.sql)
+    expect(items.find((item) => item.words.includes('eggs'))?.candidates).toEqual([
+      { stockcode: 654321, quantity: 1 },
+    ])
   })
 
   it('re-renders with an error when the URL has no stockcode', async () => {
@@ -391,8 +396,8 @@ describe('admin', () => {
     expect(response.body).toContain('aria-current="page">Add item</a>')
     expect(response.body).toContain('value="bread"')
     expect(response.body).toContain('value="not a url"')
-    const items = await itemsYaml(db.sql)
-    expect(items).not.toContain('bread:')
+    const items = await loadItems(db.sql)
+    expect(items.some((item) => item.words.includes('bread'))).toBe(false)
   })
 
   it('adds an item with an alternative stockcode and quantity', async () => {
@@ -403,9 +408,11 @@ describe('admin', () => {
       payload: { word: 'oats', url: '888137', altUrl: '999999', altQuantity: '4' },
     })
     expect(response.statusCode).toBe(302)
-    expect(parse(await itemsYaml(db.sql))['oats']).toMatchObject({
-      alternatives: [{ stockcode: 999999, quantity: 4 }],
-    })
+    const items = await loadItems(db.sql)
+    expect(items.find((item) => item.words.includes('oats'))?.candidates).toEqual([
+      { stockcode: 888137, quantity: 1 },
+      { stockcode: 999999, quantity: 4 },
+    ])
   })
 
   it('offers alternative fields on the add-item page', async () => {
@@ -427,13 +434,25 @@ describe('admin', () => {
     expect(response.body).toContain(
       'name="altUrl" placeholder="https://www.woolworths.com.au/shop/productdetails/..." value="not a url"',
     )
-    const items = await itemsYaml(db.sql)
-    expect(items).not.toContain('bread:')
+    const items = await loadItems(db.sql)
+    expect(items.some((item) => item.words.includes('bread'))).toBe(false)
   })
 
-  it('offers an edit form per product, prefilled', async () => {
+  it('rejects adding an item with a trigger word already in use', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/items',
+      headers: authHeader,
+      payload: { word: 'Milk', url: '1' },
+    })
+    expect(response.statusCode).toBe(400)
+    expect(response.body).toContain('already used by another item')
+  })
+
+  it('offers an edit form per item, prefilled', async () => {
     const response = await app.inject({ method: 'GET', url: '/', headers: authHeader })
-    expect(response.body).toContain('action="/products/123456/1/edit"')
+    const id = await itemIdFor(db.sql, 'milk')
+    expect(response.body).toContain(`action="/items/${id}/edit"`)
     expect(response.body).toContain(
       'aria-label="Trigger words, separated by commas" name="words" required value="Milk"',
     )
@@ -442,7 +461,7 @@ describe('admin', () => {
     expect(response.body).toContain('name="quantity" type="number" min="1" value="1"')
   })
 
-  it('renders products read-only until Edit is pressed', async () => {
+  it('renders items read-only until Edit is pressed', async () => {
     const response = await app.inject({ method: 'GET', url: '/', headers: authHeader })
     expect(response.body).toContain('<strong class="view">Milk</strong>')
     expect(response.body).toContain('<label class="view button-label" for="edit-0">Edit</label>')
@@ -450,7 +469,7 @@ describe('admin', () => {
     expect(response.body).toContain('<button type="reset" class="edit secondary">Cancel</button>')
   })
 
-  describe('grouped by product', () => {
+  describe('an item with several words', () => {
     beforeEach(async () => {
       await seedItems(
         db.sql,
@@ -468,7 +487,7 @@ describe('admin', () => {
 
     const form = { 'content-type': 'application/x-www-form-urlencoded' }
 
-    it('lists one row per product with its words display-cased, sorted by title', async () => {
+    it('lists one row per item with its words display-cased, sorted by title', async () => {
       const { body } = await app.inject({ method: 'GET', url: '/', headers: authHeader })
       expect(body.match(/<form class="item"/g)).toHaveLength(4)
       expect(body).toContain('<strong class="view">Full Cream Milk 2L</strong>')
@@ -502,35 +521,34 @@ describe('admin', () => {
       expect(body).toMatch(/id="edit-3" aria-label="Edit Milk 10L"/)
     })
 
-    it('titles a product without a listing by its first word', async () => {
+    it('titles an item without a listing by its first word', async () => {
       const { body } = await app.inject({ method: 'GET', url: '/', headers: authHeader })
       expect(body).toContain('<strong class="view">Ben &amp; Jerry\'s</strong>')
     })
 
     it('edits the whole word set from the web form', async () => {
+      const id = await itemIdFor(db.sql, 'milk')
       const response = await app.inject({
         method: 'POST',
-        url: '/products/1/1/edit',
+        url: `/items/${id}/edit`,
         headers: { ...authHeader, ...form },
         payload: 'words=Milk%2C+Skim+Milk&url=1&quantity=3',
       })
       expect(response.statusCode).toBe(302)
       expect(response.headers.location).toBe('/')
-      expect(parse(await itemsYaml(db.sql))).toEqual({
-        milk: { stockcode: 1, quantity: 3, listing: 'Full Cream Milk 2L' },
-        'skim milk': { stockcode: 1, quantity: 3, listing: 'Full Cream Milk 2L' },
-        bread: { stockcode: 2, quantity: 1 },
-        "ben & jerry's": { stockcode: 3, quantity: 2 },
-        'coca-cola': { stockcode: 3, quantity: 2 },
-        '7up': { stockcode: 3, quantity: 2 },
-        lemonade: { stockcode: 3, quantity: 1 },
+      const items = await loadItems(db.sql)
+      expect(items.find((item) => item.id === id)).toMatchObject({
+        words: ['milk', 'skim milk'],
+        candidates: [{ stockcode: 1, quantity: 3 }],
+        listing: 'Full Cream Milk 2L',
       })
     })
 
-    it("re-renders with the error when a web edit takes another product's word", async () => {
+    it("re-renders with the error when a web edit takes another item's word", async () => {
+      const id = await itemIdFor(db.sql, 'milk')
       const response = await app.inject({
         method: 'POST',
-        url: '/products/1/1/edit',
+        url: `/items/${id}/edit`,
         headers: { ...authHeader, ...form },
         payload: 'words=milk%2C+bread&url=1&quantity=1',
       })
@@ -539,21 +557,23 @@ describe('admin', () => {
       expect(response.body).toMatch(/aria-label="Edit Full Cream Milk 2L" checked>/)
       expect(response.body).toContain('name="words" required value="milk, bread"')
       expect(response.body).toContain('<a class="edit button-link" href="/">Cancel</a>')
-      expect(await itemsYaml(db.sql)).toContain('full cream milk:')
+      expect((await loadItems(db.sql)).find((item) => item.id === id)?.words).toContain(
+        'full cream milk',
+      )
     })
 
     it('answers unauthenticated web edits with 401', async () => {
       const response = await app.inject({
         method: 'POST',
-        url: '/products/1/1/edit',
+        url: '/items/not-authenticated/edit',
         headers: form,
         payload: 'words=oat&url=1',
       })
       expect(response.statusCode).toBe(401)
-      expect(await itemsYaml(db.sql)).toContain('milk:')
+      expect((await loadItems(db.sql)).flatMap((item) => item.words)).toContain('milk')
     })
 
-    it('prefills the alternatives fields from the product', async () => {
+    it('prefills the alternatives fields from the item', async () => {
       await seedItems(
         db.sql,
         'oats:\n  stockcode: 5\n  quantity: 1\n  alternatives:\n    - stockcode: 6\n      quantity: 2\n',
@@ -567,17 +587,20 @@ describe('admin', () => {
       )
     })
 
-    it('sets alternatives for every word of a product from the web form', async () => {
+    it('sets alternatives for an item from the web form', async () => {
+      const id = await itemIdFor(db.sql, 'bread')
       const response = await app.inject({
         method: 'POST',
-        url: '/products/2/1/edit',
+        url: `/items/${id}/edit`,
         headers: { ...authHeader, ...form },
         payload: 'words=bread&url=2&quantity=1&altUrl=5&altQuantity=3',
       })
       expect(response.statusCode).toBe(302)
-      expect(parse(await itemsYaml(db.sql))['bread']).toMatchObject({
-        alternatives: [{ stockcode: 5, quantity: 3 }],
-      })
+      const items = await loadItems(db.sql)
+      expect(items.find((item) => item.id === id)?.candidates).toEqual([
+        { stockcode: 2, quantity: 1 },
+        { stockcode: 5, quantity: 3 },
+      ])
     })
 
     it('clears alternatives from the web form when the fields are left blank', async () => {
@@ -585,20 +608,25 @@ describe('admin', () => {
         db.sql,
         'bread:\n  stockcode: 2\n  quantity: 1\n  alternatives:\n    - stockcode: 6\n      quantity: 2\n',
       )
+      const id = await itemIdFor(db.sql, 'bread')
       const response = await app.inject({
         method: 'POST',
-        url: '/products/2/1/edit',
+        url: `/items/${id}/edit`,
         headers: { ...authHeader, ...form },
         payload: 'words=bread&url=2&quantity=1&altUrl=&altQuantity=',
       })
       expect(response.statusCode).toBe(302)
-      expect(parse(await itemsYaml(db.sql))['bread']).not.toHaveProperty('alternatives')
+      const items = await loadItems(db.sql)
+      expect(items.find((item) => item.id === id)?.candidates).toEqual([
+        { stockcode: 2, quantity: 1 },
+      ])
     })
 
     it('re-renders a web edit error with an invalid alternative, echoing it', async () => {
+      const id = await itemIdFor(db.sql, 'bread')
       const response = await app.inject({
         method: 'POST',
-        url: '/products/2/1/edit',
+        url: `/items/${id}/edit`,
         headers: { ...authHeader, ...form },
         payload: 'words=bread&url=2&quantity=1&altUrl=not+a+url',
       })
@@ -609,17 +637,18 @@ describe('admin', () => {
       )
     })
 
-    it('removes every word of a product', async () => {
+    it('removes every word of an item', async () => {
+      const id = await itemIdFor(db.sql, 'coca-cola')
       const response = await app.inject({
         method: 'POST',
-        url: '/products/3/2/delete',
+        url: `/items/${id}/delete`,
         headers: authHeader,
       })
       expect(response.statusCode).toBe(302)
-      expect(Object.keys(parse(await itemsYaml(db.sql)))).toEqual([
+      const remaining = await loadItems(db.sql)
+      expect(remaining.map((item) => item.words[0])).toEqual([
         'full cream milk',
         'bread',
-        'milk',
         'lemonade',
       ])
     })
@@ -636,60 +665,58 @@ describe('admin', () => {
 
       it('lists items in stored order', async () => {
         const response = await app.inject({ method: 'GET', url: '/items', headers: json })
-        expect(response.json().items.map((item: { word: string }) => item.word)).toEqual([
-          'full cream milk',
-          'bread',
-          'milk',
-          "ben & jerry's",
-          'coca-cola',
-          '7up',
-          'lemonade',
+        expect(response.json().items.map((item: { words: string[] }) => item.words)).toEqual([
+          ['full cream milk', 'milk'],
+          ['bread'],
+          ["ben & jerry's", 'coca-cola', '7up'],
+          ['lemonade'],
         ])
       })
 
-      it("replaces a product's words, quantity and stockcode", async () => {
+      it("replaces an item's words, quantity and stockcode", async () => {
+        const id = await itemIdFor(db.sql, 'coca-cola')
         const response = await app.inject({
           method: 'PATCH',
-          url: '/products/3/2',
+          url: `/items/${id}`,
           headers: json,
           payload: { words: ['coca-cola', 'Fanta'], quantity: 4, stockcode: 9 },
         })
         expect(response.statusCode).toBe(200)
-        expect(response.json()).toEqual({
+        expect(response.json()).toMatchObject({
           words: ['coca-cola', 'fanta'],
-          stockcode: 9,
-          quantity: 4,
+          candidates: [{ stockcode: 9, quantity: 4 }],
         })
-        expect(Object.keys(parse(await itemsYaml(db.sql)))).toEqual([
+        const items = await loadItems(db.sql)
+        expect(items.map((item) => item.words[0])).toEqual([
           'full cream milk',
           'bread',
-          'milk',
           'coca-cola',
-          'fanta',
           'lemonade',
         ])
       })
 
-      it('names a product on every word, shows the listing beneath, and clears it', async () => {
+      it('names an item, shows the listing beneath, and clears it', async () => {
+        const id = await itemIdFor(db.sql, 'milk')
         const named = await app.inject({
           method: 'PATCH',
-          url: '/products/1/1',
+          url: `/items/${id}`,
           headers: json,
           payload: { name: '  Milk  ' },
         })
         expect(named.statusCode).toBe(200)
         expect(named.json()).toMatchObject({ name: 'Milk', listing: 'Full Cream Milk 2L' })
-        expect(parse(await itemsYaml(db.sql))['milk']).toMatchObject({ name: 'Milk' })
         const { body } = await app.inject({ method: 'GET', url: '/', headers: authHeader })
         expect(body).toContain('<strong class="view">Milk</strong>')
         expect(body).toContain('<div class="view words">Full Cream Milk 2L</div>')
         const listed = await app.inject({ method: 'GET', url: '/items', headers: json })
-        expect(
-          listed.json().items.filter((item: { name?: string }) => item.name === 'Milk'),
-        ).toHaveLength(2)
+        const item = listed
+          .json<{ items: { id: string; name?: string; words: string[] }[] }>()
+          .items.find((candidate) => candidate.id === id)
+        expect(item?.name).toBe('Milk')
+        expect(item?.words).toHaveLength(2)
         const cleared = await app.inject({
           method: 'PATCH',
-          url: '/products/1/1',
+          url: `/items/${id}`,
           headers: json,
           payload: { name: '' },
         })
@@ -697,9 +724,10 @@ describe('admin', () => {
       })
 
       it('rejects a name over 80 characters', async () => {
+        const id = await itemIdFor(db.sql, 'milk')
         const response = await app.inject({
           method: 'PATCH',
-          url: '/products/1/1',
+          url: `/items/${id}`,
           headers: json,
           payload: { name: 'x'.repeat(81) },
         })
@@ -707,24 +735,29 @@ describe('admin', () => {
       })
 
       it('edits the name from the web form', async () => {
+        const id = await itemIdFor(db.sql, 'milk')
         const response = await app.inject({
           method: 'POST',
-          url: '/products/1/1/edit',
+          url: `/items/${id}/edit`,
           headers: { ...authHeader, ...form },
           payload: 'words=Milk%2C+Full+Cream+Milk&url=1&quantity=1&name=Moo',
         })
         expect(response.statusCode).toBe(302)
-        expect(parse(await itemsYaml(db.sql))['full cream milk']).toMatchObject({ name: 'Moo' })
+        const items = await loadItems(db.sql)
+        expect(items.find((item) => item.id === id)?.name).toBe('Moo')
       })
 
-      it('joins another product when its stockcode and quantity match', async () => {
+      it('keeps a distinct identity from another item with the same stockcode and quantity', async () => {
+        const id = await itemIdFor(db.sql, 'lemonade')
         const response = await app.inject({
           method: 'PATCH',
-          url: '/products/3/1',
+          url: `/items/${id}`,
           headers: json,
-          payload: { stockcode: 2 },
+          payload: { quantity: 2 },
         })
-        expect(response.json().words).toEqual(['bread', 'lemonade'])
+        expect(response.json()).toMatchObject({ words: ['lemonade'] })
+        const items = await loadItems(db.sql)
+        expect(items.filter((item) => item.candidates[0]?.stockcode === 3)).toHaveLength(2)
       })
 
       it.each([
@@ -735,43 +768,47 @@ describe('admin', () => {
         [{ quantity: 0 }, 400],
         [{ url: 'nope' }, 400],
       ])('rejects %j with %i and writes nothing', async (payload, status) => {
-        const before = await itemsYaml(db.sql)
+        const id = await itemIdFor(db.sql, 'milk')
+        const before = await loadItems(db.sql)
         const response = await app.inject({
           method: 'PATCH',
-          url: '/products/1/1',
+          url: `/items/${id}`,
           headers: json,
           payload,
         })
         expect(response.statusCode).toBe(status)
         expect(response.json().error).toEqual(expect.any(String))
-        expect(await itemsYaml(db.sql)).toBe(before)
+        expect(await loadItems(db.sql)).toEqual(before)
       })
 
-      it('answers an unknown or malformed product with 404 or 400', async () => {
+      it('answers an unknown or malformed item with 404 or 400', async () => {
         const patch = (url: string) =>
           app.inject({ method: 'PATCH', url, headers: json, payload: { quantity: 2 } })
-        expect((await patch('/products/99/1')).statusCode).toBe(404)
-        expect((await patch('/products/abc/1')).statusCode).toBe(400)
+        expect((await patch('/items/11111111-1111-1111-1111-111111111111')).statusCode).toBe(404)
+        expect((await patch('/items/not-a-uuid')).statusCode).toBe(400)
       })
 
-      it('removes a product with DELETE and 204, then 404', async () => {
-        const remove = () => app.inject({ method: 'DELETE', url: '/products/3/2', headers: json })
+      it('removes an item with DELETE and 204, then 404', async () => {
+        const id = await itemIdFor(db.sql, 'coca-cola')
+        const remove = () => app.inject({ method: 'DELETE', url: `/items/${id}`, headers: json })
         expect((await remove()).statusCode).toBe(204)
-        expect(await itemsYaml(db.sql)).not.toContain('coca-cola')
+        expect((await loadItems(db.sql)).some((item) => item.words.includes('coca-cola'))).toBe(
+          false,
+        )
         expect((await remove()).statusCode).toBe(404)
       })
     })
   })
 
   it('removes an item', async () => {
+    const id = await itemIdFor(db.sql, 'milk')
     const response = await app.inject({
       method: 'POST',
-      url: '/items/milk/delete',
+      url: `/items/${id}/delete`,
       headers: authHeader,
     })
     expect(response.statusCode).toBe(302)
-    const items = await itemsYaml(db.sql)
-    expect(items).not.toContain('milk:')
+    expect(await loadItems(db.sql)).toEqual([])
   })
 
   describe('JSON API', () => {
@@ -787,7 +824,9 @@ describe('admin', () => {
     it('lists items as JSON', async () => {
       const response = await app.inject({ method: 'GET', url: '/items', headers: json })
       expect(response.statusCode).toBe(200)
-      expect(response.json()).toEqual({ items: [{ word: 'milk', stockcode: 123456, quantity: 1 }] })
+      expect(response.json().items).toMatchObject([
+        { words: ['milk'], candidates: [{ stockcode: 123456, quantity: 1 }] },
+      ])
     })
 
     it('answers unauthenticated JSON requests with 401 instead of a redirect', async () => {
@@ -812,26 +851,23 @@ describe('admin', () => {
         },
       })
       expect(response.statusCode).toBe(201)
-      expect(response.json()).toEqual({
-        word: 'bread',
-        stockcode: 888137,
-        quantity: 2,
+      expect(response.json()).toMatchObject({
+        words: ['bread'],
+        candidates: [{ stockcode: 888137, quantity: 2 }],
       })
-      expect(await itemsYaml(db.sql)).toContain('bread:')
+      const items = await loadItems(db.sql)
+      expect(items.some((item) => item.words.includes('bread'))).toBe(true)
     })
 
-    it('adds an item with a name, and shares it with the rest of the product', async () => {
+    it('adding an item with a matching stockcode and quantity does not merge it into the existing one', async () => {
       const add = (payload: Record<string, unknown>) =>
         app.inject({ method: 'POST', url: '/items', headers: json, payload })
-      const first = await add({ word: 'loaf', url: '888137', name: ' Bread ' })
-      expect(first.json()).toMatchObject({ word: 'loaf', name: 'Bread' })
+      const first = await add({ word: 'loaf', url: '888137', name: 'Bread' })
       const second = await add({ word: 'toast', url: '888137' })
-      expect(second.json()).toMatchObject({ word: 'toast', name: 'Bread' })
-      const renamed = await add({ word: 'sandwiches', url: '888137', name: 'Sarnies' })
-      expect(renamed.json().name).toBe('Sarnies')
-      const stored = parse(await itemsYaml(db.sql))
-      expect(stored['loaf'].name).toBe('Sarnies')
-      expect(stored['toast'].name).toBe('Sarnies')
+      expect(first.json().id).not.toBe(second.json().id)
+      expect(second.json()).not.toHaveProperty('name')
+      const items = await loadItems(db.sql)
+      expect(items.filter((item) => item.candidates[0]?.stockcode === 888137)).toHaveLength(2)
     })
 
     it('rejects a name over 80 characters when adding', async () => {
@@ -867,9 +903,9 @@ describe('admin', () => {
       expect(response.json()).toEqual({ error: 'A trigger word is required.' })
     })
 
-    describe('PATCH /items/:word', () => {
-      const patch = async (word: string, payload: Record<string, unknown>) =>
-        await app.inject({ method: 'PATCH', url: `/items/${word}`, headers: json, payload })
+    describe('PATCH /items/:id', () => {
+      const patch = async (id: string, payload: Record<string, unknown>) =>
+        await app.inject({ method: 'PATCH', url: `/items/${id}`, headers: json, payload })
 
       beforeEach(async () => {
         await seedItems(
@@ -879,66 +915,69 @@ describe('admin', () => {
       })
 
       it('changes quantity and stockcode, keeping other entries and order', async () => {
-        const response = await patch('bread', { quantity: 4, stockcode: 99 })
+        const id = await itemIdFor(db.sql, 'bread')
+        const response = await patch(id, { quantity: 4, stockcode: 99 })
         expect(response.statusCode).toBe(200)
-        expect(response.json()).toEqual({ word: 'bread', stockcode: 99, quantity: 4 })
-        expect(parse(await itemsYaml(db.sql))).toEqual({
-          milk: { stockcode: 1, quantity: 1, listing: 'Milk 2L' },
-          bread: { stockcode: 99, quantity: 4 },
-          eggs: { stockcode: 3, quantity: 1 },
+        expect(response.json()).toMatchObject({
+          words: ['bread'],
+          candidates: [{ stockcode: 99, quantity: 4 }],
         })
-        expect(Object.keys(parse(await itemsYaml(db.sql)))).toEqual(['milk', 'bread', 'eggs'])
+        const items = await loadItems(db.sql)
+        expect(items.map((item) => item.words[0])).toEqual(['milk', 'bread', 'eggs'])
       })
 
-      it('sets the name from PATCH /items/:word', async () => {
-        const response = await patch('milk', { name: 'Moo' })
-        expect(response.json()).toEqual({
-          word: 'milk',
-          stockcode: 1,
-          quantity: 1,
+      it('sets the name', async () => {
+        const id = await itemIdFor(db.sql, 'milk')
+        const response = await patch(id, { name: 'Moo' })
+        expect(response.json()).toMatchObject({
+          words: ['milk'],
+          candidates: [{ stockcode: 1, quantity: 1 }],
           listing: 'Milk 2L',
           name: 'Moo',
         })
-        expect(parse(await itemsYaml(db.sql))['milk'].name).toBe('Moo')
-        expect((await patch('milk', { name: 'x'.repeat(81) })).statusCode).toBe(400)
+        expect((await patch(id, { name: 'x'.repeat(81) })).statusCode).toBe(400)
       })
 
       it('renames the phrase in place, normalised', async () => {
-        const response = await patch('bread', { word: '  Sourdough ' })
+        const id = await itemIdFor(db.sql, 'bread')
+        const response = await patch(id, { words: '  Sourdough ' })
         expect(response.statusCode).toBe(200)
-        expect(response.json().word).toBe('sourdough')
-        expect(Object.keys(parse(await itemsYaml(db.sql)))).toEqual(['milk', 'sourdough', 'eggs'])
+        expect(response.json().words).toEqual(['sourdough'])
+        const items = await loadItems(db.sql)
+        expect(items.map((item) => item.words[0])).toEqual(['milk', 'sourdough', 'eggs'])
       })
 
       it('accepts a rename that only changes case', async () => {
-        const response = await patch('bread', { word: 'BREAD', quantity: 2 })
+        const id = await itemIdFor(db.sql, 'bread')
+        const response = await patch(id, { words: 'BREAD', quantity: 2 })
         expect(response.statusCode).toBe(200)
-        expect(response.json()).toEqual({ word: 'bread', stockcode: 2, quantity: 2 })
+        expect(response.json()).toMatchObject({
+          words: ['bread'],
+          candidates: [{ stockcode: 2, quantity: 2 }],
+        })
       })
 
       it('parses a url to a stockcode', async () => {
-        const response = await patch('bread', {
+        const id = await itemIdFor(db.sql, 'bread')
+        const response = await patch(id, {
           url: 'https://www.woolworths.com.au/shop/productdetails/888137/bread',
         })
-        expect(response.json().stockcode).toBe(888137)
-      })
-
-      it('looks the item up by normalised word', async () => {
-        const response = await patch('MILK', { quantity: 2 })
-        expect(response.statusCode).toBe(200)
+        expect(response.json().candidates[0]).toMatchObject({ stockcode: 888137 })
       })
 
       it('rejects a rename onto another item with 409', async () => {
-        const response = await patch('bread', { word: 'Milk' })
+        const id = await itemIdFor(db.sql, 'bread')
+        const response = await patch(id, { words: ['Milk'] })
         expect(response.statusCode).toBe(409)
         expect(response.json().error).toContain('already used')
-        expect(parse(await itemsYaml(db.sql)).bread).toBeDefined()
+        const items = await loadItems(db.sql)
+        expect(items.some((item) => item.words.includes('bread'))).toBe(true)
       })
 
-      it('answers an unknown word with 404', async () => {
-        const response = await patch('cheese', { quantity: 2 })
+      it('answers an unknown item with 404', async () => {
+        const response = await patch('11111111-1111-1111-1111-111111111111', { quantity: 2 })
         expect(response.statusCode).toBe(404)
-        expect(response.json().error).toContain('cheese')
+        expect(response.json().error).toEqual(expect.any(String))
       })
 
       it.each([
@@ -949,20 +988,22 @@ describe('admin', () => {
         { stockcode: 0 },
         { stockcode: 'abc' },
         { url: 'nope' },
-        { word: '   ' },
-        { word: 5 },
+        { words: [] },
+        { words: [5] },
       ])('rejects %j with 400 and writes nothing', async (payload) => {
-        const before = await itemsYaml(db.sql)
-        const response = await patch('bread', payload)
+        const id = await itemIdFor(db.sql, 'bread')
+        const before = await loadItems(db.sql)
+        const response = await patch(id, payload)
         expect(response.statusCode).toBe(400)
         expect(response.json().error).toEqual(expect.any(String))
-        expect(await itemsYaml(db.sql)).toBe(before)
+        expect(await loadItems(db.sql)).toEqual(before)
       })
 
       it('answers unauthenticated requests with 401', async () => {
+        const id = await itemIdFor(db.sql, 'bread')
         const response = await app.inject({
           method: 'PATCH',
-          url: '/items/bread',
+          url: `/items/${id}`,
           headers: { accept: 'application/json' },
           payload: { quantity: 2 },
         })
@@ -971,23 +1012,25 @@ describe('admin', () => {
     })
 
     it('removes an item with DELETE and 204', async () => {
+      const id = await itemIdFor(db.sql, 'milk')
       const response = await app.inject({
         method: 'DELETE',
-        url: '/items/milk',
+        url: `/items/${id}`,
         headers: json,
       })
       expect(response.statusCode).toBe(204)
-      expect(await itemsYaml(db.sql)).not.toContain('milk:')
+      expect(await loadItems(db.sql)).toEqual([])
     })
 
     it('removes an item with 204', async () => {
+      const id = await itemIdFor(db.sql, 'milk')
       const response = await app.inject({
         method: 'POST',
-        url: '/items/milk/delete',
+        url: `/items/${id}/delete`,
         headers: json,
       })
       expect(response.statusCode).toBe(204)
-      expect(await itemsYaml(db.sql)).not.toContain('milk:')
+      expect(await loadItems(db.sql)).toEqual([])
     })
   })
 })
@@ -1001,8 +1044,6 @@ describe('admin listing text', () => {
   let json: { cookie: string; accept: string }
   const listings: Record<number, string> = { 1: 'Milk 2L', 2: 'Bread 650g', 99: 'Rye 500g' }
   const lookup = { listing: vi.fn(async (stockcode: number) => listings[stockcode]) }
-
-  const readItems = async () => parse(await itemsYaml(db.sql)) as ItemsConfig
 
   beforeEach(async () => {
     lookup.listing.mockClear()
@@ -1028,15 +1069,14 @@ describe('admin listing text', () => {
       headers: json,
       payload: { word: 'Bread', url: '2', quantity: 2 },
     })
-    expect(response.json()).toEqual({
-      word: 'bread',
-      stockcode: 2,
-      quantity: 2,
+    expect(response.json()).toMatchObject({
+      words: ['bread'],
+      candidates: [{ stockcode: 2, quantity: 2 }],
       listing: 'Bread 650g',
     })
-    expect((await readItems()).bread).toEqual({
-      stockcode: 2,
-      quantity: 2,
+    const items = await loadItems(db.sql)
+    expect(items.find((item) => item.words.includes('bread'))).toMatchObject({
+      candidates: [{ stockcode: 2, quantity: 2 }],
       listing: 'Bread 650g',
     })
   })
@@ -1050,14 +1090,15 @@ describe('admin listing text', () => {
       payload: { word: 'bread', url: '2' },
     })
     expect(response.statusCode).toBe(201)
-    expect(response.json()).toEqual({ word: 'bread', stockcode: 2, quantity: 1 })
+    expect(response.json()).not.toHaveProperty('listing')
   })
 
   it('looks the listing up again when the stockcode changes', async () => {
-    await vi.waitFor(async () => expect((await readItems()).milk?.listing).toBe('Milk 2L'))
+    await vi.waitFor(async () => expect((await loadItems(db.sql))[0]?.listing).toBe('Milk 2L'))
+    const id = (await loadItems(db.sql))[0]?.id as string
     const response = await app.inject({
       method: 'PATCH',
-      url: '/items/milk',
+      url: `/items/${id}`,
       headers: json,
       payload: { stockcode: 99 },
     })
@@ -1065,28 +1106,33 @@ describe('admin listing text', () => {
   })
 
   it('keeps the listing when the stockcode is unchanged', async () => {
-    await vi.waitFor(async () => expect((await readItems()).milk?.listing).toBe('Milk 2L'))
+    await vi.waitFor(async () => expect((await loadItems(db.sql))[0]?.listing).toBe('Milk 2L'))
+    const id = (await loadItems(db.sql))[0]?.id as string
     lookup.listing.mockClear()
     const response = await app.inject({
       method: 'PATCH',
-      url: '/items/milk',
+      url: `/items/${id}`,
       headers: json,
       payload: { url: '1', quantity: 3 },
     })
-    expect(response.json()).toEqual({ word: 'milk', stockcode: 1, quantity: 3, listing: 'Milk 2L' })
+    expect(response.json()).toMatchObject({
+      words: ['milk'],
+      candidates: [{ stockcode: 1, quantity: 3 }],
+      listing: 'Milk 2L',
+    })
     expect(lookup.listing).not.toHaveBeenCalled()
   })
 
   it('backfills existing items in the background and lists them with their listing', async () => {
-    await vi.waitFor(async () => expect((await readItems()).milk?.listing).toBe('Milk 2L'))
+    await vi.waitFor(async () => expect((await loadItems(db.sql))[0]?.listing).toBe('Milk 2L'))
     const response = await app.inject({ method: 'GET', url: '/items', headers: json })
-    expect(response.json().items).toEqual([
-      { word: 'milk', stockcode: 1, quantity: 1, listing: 'Milk 2L' },
+    expect(response.json().items).toMatchObject([
+      { words: ['milk'], candidates: [{ stockcode: 1, quantity: 1 }], listing: 'Milk 2L' },
     ])
   })
 
-  it('titles the product with its listing on the admin page', async () => {
-    await vi.waitFor(async () => expect((await readItems()).milk?.listing).toBe('Milk 2L'))
+  it('titles the item with its listing on the admin page', async () => {
+    await vi.waitFor(async () => expect((await loadItems(db.sql))[0]?.listing).toBe('Milk 2L'))
     const response = await app.inject({ method: 'GET', url: '/', headers: json })
     expect(response.body).toContain('<strong class="view">Milk 2L</strong>')
   })
@@ -1126,15 +1172,25 @@ describe('admin with several users', () => {
   const add = (headers: typeof me, word: string, url: string) =>
     app.inject({ method: 'POST', url: '/items', headers, payload: { word, url } })
   const list = async (headers: typeof me) =>
-    (await app.inject({ method: 'GET', url: '/items', headers })).json()
+    (await app.inject({ method: 'GET', url: '/items', headers })).json<{
+      items: {
+        id: string
+        words: string[]
+        candidates: { stockcode: number; quantity: number }[]
+      }[]
+    }>()
 
   it('keeps each user their own items, looked up through their own account', async () => {
     await add(me, 'milk', '1')
     await add(you, 'milk', '2')
     await add(you, 'bread', '3')
-    expect(await list(me)).toEqual({
-      items: [{ word: 'milk', stockcode: 1, quantity: 1, listing: 'Listing for me@example.com' }],
-    })
+    expect((await list(me)).items).toMatchObject([
+      {
+        words: ['milk'],
+        candidates: [{ stockcode: 1, quantity: 1 }],
+        listing: 'Listing for me@example.com',
+      },
+    ])
     expect((await list(you)).items).toHaveLength(2)
     expect(lookupFor).toHaveBeenCalledWith('you@example.com')
   })
@@ -1142,15 +1198,19 @@ describe('admin with several users', () => {
   it("edits and removes only the signed-in user's items", async () => {
     await add(me, 'milk', '1')
     await add(you, 'milk', '2')
+    const yourId = (await list(you)).items[0]?.id as string
+    const myId = (await list(me)).items[0]?.id as string
     await app.inject({
       method: 'PATCH',
-      url: '/items/milk',
+      url: `/items/${yourId}`,
       headers: you,
       payload: { quantity: 5 },
     })
-    await app.inject({ method: 'DELETE', url: '/items/milk', headers: me })
+    await app.inject({ method: 'DELETE', url: `/items/${myId}`, headers: me })
     expect((await list(me)).items).toEqual([])
-    expect((await list(you)).items).toMatchObject([{ word: 'milk', stockcode: 2, quantity: 5 }])
+    expect((await list(you)).items).toMatchObject([
+      { words: ['milk'], candidates: [{ stockcode: 2, quantity: 5 }] },
+    ])
   })
 
   it("shows the page only the signed-in user's items and sessions", async () => {
@@ -1216,9 +1276,9 @@ describe('admin with several users', () => {
         ],
       })
       const items = await app.inject({ method: 'GET', url: '/items', headers: yours })
-      expect(items.json<{ items: { word: string }[] }>().items.map((item) => item.word)).toEqual([
-        'milk',
-      ])
+      expect(
+        items.json<{ items: { words: string[] }[] }>().items.map((item) => item.words),
+      ).toEqual([['milk']])
     })
 
     it('rejects an invalid, missing or reused code', async () => {

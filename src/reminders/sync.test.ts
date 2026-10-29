@@ -15,7 +15,9 @@ function recordingLogger(): { logger: SyncLogger; warnings: string[]; errors: st
   return { logger, warnings, errors }
 }
 
-const items: ItemsConfig = { milk: { stockcode: 123456, quantity: 1 } }
+const items: ItemsConfig = [
+  { id: '1', words: ['milk'], candidates: [{ stockcode: 123456, quantity: 1 }] },
+]
 
 function reminder(title: string): QueuedReminder {
   return { url: `https://example.com/${title}.ics`, etag: 'etag', title }

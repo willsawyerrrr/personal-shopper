@@ -31,17 +31,19 @@ export function createListingBackfill(
 ): () => Promise<void> {
   let running: Promise<void> | undefined
   const run = async (): Promise<void> => {
-    const missing = Object.entries(await items.load(email)).filter(
-      ([, mapping]) => !mapping.listing,
-    )
-    for (const [word, { stockcode }] of missing) {
+    const missing = (await items.load(email)).filter((item) => !item.listing)
+    for (const { id, candidates } of missing) {
+      const stockcode = candidates[0]?.stockcode
+      if (stockcode === undefined) {
+        continue
+      }
       const listing = await lookupListing(lookup, stockcode, log)
       if (!listing) {
         continue
       }
       const stored = await items.load(email)
-      const current = stored[word]
-      if (current && current.stockcode === stockcode && !current.listing) {
+      const current = stored.find((item) => item.id === id)
+      if (current && current.candidates[0]?.stockcode === stockcode && !current.listing) {
         current.listing = listing
         await items.save(email, stored)
       }

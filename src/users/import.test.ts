@@ -69,9 +69,10 @@ describe('importLegacyFiles', () => {
       'session',
       'passkey',
     ])
-    await expect(new ItemStore(db.sql).load(OWNER)).resolves.toEqual({
-      milk: { stockcode: 1, quantity: 2, listing: 'Milk 2L' },
-    })
+    const loaded = await new ItemStore(db.sql).load(OWNER)
+    expect(loaded).toMatchObject([
+      { words: ['milk'], candidates: [{ stockcode: 1, quantity: 2 }], listing: 'Milk 2L' },
+    ])
     await expect(new PgSessionStorage(db.sql, OWNER).load()).resolves.toEqual(session)
     await expect(credentials.get(OWNER)).resolves.toEqual([{ credentialId: 'abc' }])
     expect(await new TokenStore(db.sql).list()).toMatchObject([
@@ -93,13 +94,20 @@ describe('importLegacyFiles', () => {
   })
 
   it('leaves a file alone when the owner already has that data', async () => {
-    await new ItemStore(db.sql).save(OWNER, { bread: { stockcode: 9, quantity: 1 } })
+    await new ItemStore(db.sql).save(OWNER, [
+      {
+        id: '11111111-1111-1111-1111-111111111111',
+        words: ['bread'],
+        candidates: [{ stockcode: 9, quantity: 1 }],
+      },
+    ])
     await writeAll()
     const imported = await importLegacyFiles(db.sql, files, OWNER, credentials)
     expect(imported).not.toContain('items')
-    await expect(new ItemStore(db.sql).load(OWNER)).resolves.toEqual({
-      bread: { stockcode: 9, quantity: 1 },
-    })
+    const loaded = await new ItemStore(db.sql).load(OWNER)
+    expect(loaded).toMatchObject([
+      { words: ['bread'], candidates: [{ stockcode: 9, quantity: 1 }] },
+    ])
     expect(await readdir(dir)).toContain('items.yml')
   })
 
