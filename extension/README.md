@@ -60,7 +60,14 @@ sign-in, and `CREDENTIALS_ENCRYPTION_KEY` set on the server.
    for `auth.woolworths.com.au` with `PUT /woolworths/passkey`, then removes the
    authenticator, detaches and closes the window. It times out after 10 minutes.
    The server stores the credential and deletes the household's stored
-   Woolworths session; the next cart request signs in with the new credential.
+   Woolworths session.
+4. Woolworths can take a moment to accept a new passkey, so the extension waits
+   a few seconds after the window closes and then calls
+   `POST /woolworths/passkey/verify`, which signs in with the stored credential
+   and stores the new session. A rejection is retried every 3 seconds, up to
+   4 attempts, before any error shows. The options page shows "Checking…", then
+   "Passkey verified", or, only after the retries, the failure with a "Check
+   again" button (`verifyWithRetries` in `passkey-logic.js`).
 
 Incognito needs a one-time step: `chrome://extensions` → this extension's
 Details → "Allow in Incognito". Until it is on, the options page shows an

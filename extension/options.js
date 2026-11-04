@@ -48,6 +48,7 @@ async function init() {
   const passkeyState = document.getElementById('passkeyState')
   const registerButton = document.getElementById('registerPasskey')
   const cancelButton = document.getElementById('cancelPasskey')
+  const verifyButton = document.getElementById('verifyPasskey')
   const removeButton = document.getElementById('removePasskey')
   const incognitoHelp = document.getElementById('incognitoHelp')
 
@@ -73,6 +74,7 @@ async function init() {
     registerButton.textContent = registered ? 'Replace passkey' : 'Register passkey'
     incognitoHelp.hidden = !status.incognitoHelp
     cancelButton.hidden = !status.busy
+    verifyButton.hidden = !status.canVerify
     removeButton.hidden = status.busy || !registered
   }
 
@@ -170,6 +172,9 @@ async function init() {
     )
   cancelButton.addEventListener('click', () =>
     chrome.runtime.sendMessage({ type: 'passkey/cancel' }),
+  )
+  verifyButton.addEventListener('click', () =>
+    chrome.runtime.sendMessage({ type: 'passkey/verify' }),
   )
   removeButton.addEventListener('click', async () => {
     const session = await getSession()
