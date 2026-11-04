@@ -142,7 +142,7 @@ Secrets and configuration live in the shared Apple Development, General
 Purpose and Personal Shopper 1Password Environments, listed in
 [`docs/deployment.md`](docs/deployment.md#configuration). Locally they are mounted as `.env` files
 (`~/willsawyerrrr.dev/.env`, `~/willsawyerrrr.dev/.env.apple`, `~/willsawyerrrr.dev/personal-shopper/.env`);
-load them with `set -a; . "$HOME/willsawyerrrr.dev/.env"; . "$HOME/willsawyerrrr.dev/.env.apple"; . "$HOME/willsawyerrrr.dev/personal-shopper/.env"; set +a`
+run commands with `"$HOME/willsawyerrrr.dev/platform/main/scripts/load-env" "$HOME/willsawyerrrr.dev/.env" "$HOME/willsawyerrrr.dev/.env.apple" "$HOME/willsawyerrrr.dev/personal-shopper/.env" -- <command>`
 (shared first, project last; the last wins on a clash); workflows load it with
 `willsawyerrrr/platform/.github/actions/load-op-environment` (repo secret
 `OP_SERVICE_ACCOUNT_TOKEN`, repo variable `OP_ENVIRONMENT_IDS`, the only ones).

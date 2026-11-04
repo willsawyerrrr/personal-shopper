@@ -9,8 +9,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "start": "set -a; . \"$HOME/willsawyerrrr.dev/.env\"; . \"$HOME/willsawyerrrr.dev/.env.apple\"; . \"$HOME/willsawyerrrr.dev/personal-shopper/.env\"; set +a; exec node dist/src/server.js",
-    "dev": "set -a; . \"$HOME/willsawyerrrr.dev/.env\"; . \"$HOME/willsawyerrrr.dev/.env.apple\"; . \"$HOME/willsawyerrrr.dev/personal-shopper/.env\"; set +a; exec tsx watch src/server.ts",
+    "start": "\"$HOME/willsawyerrrr.dev/platform/main/scripts/load-env\" \"$HOME/willsawyerrrr.dev/.env\" \"$HOME/willsawyerrrr.dev/.env.apple\" \"$HOME/willsawyerrrr.dev/personal-shopper/.env\" -- node dist/src/server.js",
+    "dev": "\"$HOME/willsawyerrrr.dev/platform/main/scripts/load-env\" \"$HOME/willsawyerrrr.dev/.env\" \"$HOME/willsawyerrrr.dev/.env.apple\" \"$HOME/willsawyerrrr.dev/personal-shopper/.env\" -- tsx watch src/server.ts",
     "lint": "oxlint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
