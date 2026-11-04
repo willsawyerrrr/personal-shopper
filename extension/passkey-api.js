@@ -1,8 +1,8 @@
 import { normalizeServerUrl } from './auth.js'
 import { UnauthorizedError } from './passkey-logic.js'
 
-async function call(serverUrl, accessToken, method, body, fetchImpl) {
-  const response = await fetchImpl(`${normalizeServerUrl(serverUrl)}/woolworths/passkey`, {
+async function call(serverUrl, accessToken, method, body, fetchImpl, path = '') {
+  const response = await fetchImpl(`${normalizeServerUrl(serverUrl)}/woolworths/passkey${path}`, {
     method,
     headers: {
       Accept: 'application/json',
@@ -34,4 +34,9 @@ export async function fetchRegistered(serverUrl, accessToken, fetchImpl = fetch)
 
 export async function removePasskey(serverUrl, accessToken, fetchImpl = fetch) {
   await call(serverUrl, accessToken, 'DELETE', undefined, fetchImpl)
+}
+
+/** Has the server sign in to Woolworths with the stored passkey; rejects when Woolworths refuses it. */
+export async function verifyPasskey(serverUrl, accessToken, fetchImpl = fetch) {
+  await call(serverUrl, accessToken, 'POST', undefined, fetchImpl, '/verify')
 }

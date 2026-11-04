@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fetchRegistered, removePasskey, uploadPasskey } from './passkey-api.js'
+import { fetchRegistered, removePasskey, uploadPasskey, verifyPasskey } from './passkey-api.js'
 import { registerPasskey } from './passkey-flow.js'
 import { openOptionsForRegistration } from './options-tab.js'
 import { openRegistrationTab } from './passkey-window.js'
@@ -12,6 +12,7 @@ import {
   UnauthorizedError,
   decideAutoRegister,
   describeStatus,
+  verifyWithRetries,
   isTimedOut,
   selectCredential,
   withoutAutoRegister,
@@ -95,6 +96,15 @@ describe('describeStatus', () => {
     expect(describeStatus(undefined, false).text).toBe('No passkey registered.')
     expect(describeStatus(undefined, undefined).text).toBe('')
   })
+
+  it('reports verification without alarming the user until it has failed', () => {
+    expect(describeStatus({ phase: 'verifying' })).toMatchObject({ variant: 'info' })
+    expect(describeStatus({ phase: 'verified' })).toMatchObject({ variant: 'success' })
+    expect(describeStatus({ phase: 'unverified', error: 'nope' })).toMatchObject({
+      variant: 'error',
+      canVerify: true,
+    })
+  })
 })
 
 describe('passkey API', () => {
@@ -140,6 +150,65 @@ describe('passkey API', () => {
     await expect(removePasskey('https://example.test', 't', broken)).rejects.toThrow(
       'Server error (500)',
     )
+  })
+})
+
+describe('verifyPasskey', () => {
+  it('asks the server to sign in with the stored passkey', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue({ ok: true, status: 200, json: async () => ({ verified: true }) })
+    await verifyPasskey('https://example.test/', 't', fetchImpl)
+    const [url, init] = fetchImpl.mock.calls[0]
+    expect(url).toBe('https://example.test/woolworths/passkey/verify')
+    expect(init.method).toBe('POST')
+    expect(init.headers.Authorization).toBe('Bearer t')
+  })
+
+  it('rejects with the server error when Woolworths refuses the passkey', async () => {
+    const refused = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 502,
+      json: async () => ({ error: 'signing in to Woolworths failed: nope' }),
+    })
+    await expect(verifyPasskey('https://example.test', 't', refused)).rejects.toThrow(
+      'signing in to Woolworths failed: nope (502)',
+    )
+  })
+})
+
+describe('verifyWithRetries', () => {
+  const sleep = vi.fn().mockResolvedValue(undefined)
+
+  it('waits before the first attempt and stops at the first success', async () => {
+    sleep.mockClear()
+    const verify = vi.fn().mockRejectedValueOnce(new Error('early')).mockResolvedValue(undefined)
+    await verifyWithRetries({ verify, sleep, delayMs: 5 })
+    expect(verify).toHaveBeenCalledTimes(2)
+    expect(sleep).toHaveBeenNthCalledWith(1, 5)
+    expect(sleep).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects with the last failure after every attempt', async () => {
+    const verify = vi.fn().mockRejectedValue(new Error('nope'))
+    await expect(verifyWithRetries({ verify, sleep, attempts: 3 })).rejects.toThrow('nope')
+    expect(verify).toHaveBeenCalledTimes(3)
+  })
+
+  it('does not retry an unauthorised token', async () => {
+    const verify = vi.fn().mockRejectedValue(new UnauthorizedError())
+    await expect(verifyWithRetries({ verify, sleep })).rejects.toBeInstanceOf(UnauthorizedError)
+    expect(verify).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops when cancelled', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const verify = vi.fn()
+    await expect(
+      verifyWithRetries({ verify, sleep, signal: controller.signal }),
+    ).rejects.toBeInstanceOf(CancelledError)
+    expect(verify).not.toHaveBeenCalled()
   })
 })
 

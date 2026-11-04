@@ -2,6 +2,8 @@ const RP_ID = 'auth.woolworths.com.au'
 export const LOGIN_URL = 'https://www.woolworths.com.au/shop/securelogin'
 export const REGISTRATION_TIMEOUT_MS = 10 * 60 * 1000
 export const POLL_INTERVAL_MS = 1000
+export const VERIFY_ATTEMPTS = 4
+export const VERIFY_DELAY_MS = 3000
 
 /** The virtual authenticator Woolworths' passkey prompt is answered by. */
 export const AUTHENTICATOR_OPTIONS = {
@@ -26,6 +28,35 @@ export function selectCredential(credentials) {
   )
 }
 
+/**
+ * Calls `verify()` (which rejects when the server cannot sign in) after
+ * `delayMs`, and again after each failure, up to `attempts` times. Woolworths
+ * can take a moment to accept a new passkey, so an early rejection is expected.
+ * Resolves on the first success; rejects with the last failure, with
+ * `UnauthorizedError` at once, or with `CancelledError` when `signal` aborts.
+ */
+export async function verifyWithRetries({
+  verify,
+  signal,
+  attempts = VERIFY_ATTEMPTS,
+  delayMs = VERIFY_DELAY_MS,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+}) {
+  let failure
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    await sleep(delayMs)
+    if (signal?.aborted) throw new CancelledError()
+    try {
+      await verify()
+      return
+    } catch (error) {
+      if (error instanceof UnauthorizedError) throw error
+      failure = error
+    }
+  }
+  throw failure
+}
+
 /** Whether a registration started at `startedAt` (epoch ms) has run out of time. */
 export function isTimedOut(startedAt, now = Date.now()) {
   return now - startedAt > REGISTRATION_TIMEOUT_MS
@@ -33,7 +64,7 @@ export function isTimedOut(startedAt, now = Date.now()) {
 
 /**
  * Describes a registration state (`{phase, error?}`, phase one of `idle`,
- * `registering`, `uploading`, `needsIncognito`, `incognitoReady`, `failed`, `cancelled`) and the server's answer
+ * `registering`, `uploading`, `verifying`, `verified`, `unverified`, `needsIncognito`, `incognitoReady`, `failed`, `cancelled`) and the server's answer
  * (`registered`: a boolean, or `undefined` when unknown) for display.
  */
 export function describeStatus(state, registered) {
@@ -59,6 +90,25 @@ export function describeStatus(state, registered) {
       }
     case 'uploading':
       return { text: 'Saving your passkey…', variant: 'info', busy: true }
+    case 'verifying':
+      return {
+        text: 'Passkey saved. Checking that the server can sign in to Woolworths with it…',
+        variant: 'info',
+        busy: false,
+      }
+    case 'verified':
+      return {
+        text: 'Passkey verified: the server signed in to Woolworths with it.',
+        variant: 'success',
+        busy: false,
+      }
+    case 'unverified':
+      return {
+        text: `Passkey saved, but the server could not sign in to Woolworths with it: ${state.error}`,
+        variant: 'error',
+        busy: false,
+        canVerify: true,
+      }
     case 'failed':
       return { text: `Passkey error: ${state.error}`, variant: 'error', busy: false }
     case 'cancelled':
