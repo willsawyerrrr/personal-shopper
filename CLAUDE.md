@@ -32,8 +32,9 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   software authenticator answers, `ios/.../passkey-authenticator.js`) or the
   Chrome extension (virtual authenticator over `chrome.debugger`), both
   uploaded to `PUT /woolworths/passkey` in `src/passkey.ts` (bearer token
-  only, rate limited; it signs in with the credential at once and replaces the
-  household's stored session, answering 502 and leaving none if that fails;
+  only, rate limited; it stores the credential and deletes the household's stored
+  session; `POST /woolworths/passkey/verify` signs in with it and replaces the
+  session, answering 502 and leaving none if that fails;
   `DELETE` and the web app's Account page remove the credential and the stored
   session) or by hand with `pnpm register-passkey`. Credentials are AES-256-GCM encrypted in
   the app (`CREDENTIALS_ENCRYPTION_KEY`, required once any exists) before they

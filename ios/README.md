@@ -142,9 +142,12 @@ server signs in to Woolworths with, and registers, replaces or removes it
 (`GET`, `PUT` and `DELETE /woolworths/passkey`). Register passkey opens the
 Woolworths login (`https://www.woolworths.com.au/shop/securelogin`) in a
 `WKWebView` with a fresh, non-persistent data store. Log in and accept the
-prompt to create a passkey; the screen then closes. A failure, including the
-server's sign-in to Woolworths with the new passkey failing, is shown on the
-screen.
+prompt to create a passkey; the screen then closes once the server has stored
+it. Woolworths can take a moment to accept a new passkey, so a few seconds
+later the app has the server sign in with it (`POST
+/woolworths/passkey/verify`) and the settings screen shows "Checking…", then
+"Verified". A failed sign-in is retried every few seconds and shown as "Not
+verified", with a "Check again" button, only after four attempts.
 
 A `WKUserScript` (`PersonalShopperKit/Resources/passkey-authenticator.js`,
 document start, all frames) replaces `navigator.credentials.create` and `get`

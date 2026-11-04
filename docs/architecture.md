@@ -227,7 +227,10 @@ software ES256 authenticator (WebCrypto, `none` attestation). The script posts
 each credential it creates to a native message handler, which accepts it only
 from a frame on `auth.woolworths.com.au` and uploads it with
 `PUT /woolworths/passkey` in the form below; the screen reports the server's
-error, including a failed Woolworths sign-in, and dismisses on success. The
+error and dismisses on success. A few seconds later, once the browser has
+closed, the app calls `POST /woolworths/passkey/verify`, retrying quietly, and
+the settings screen shows "Verified" or, only after the retries, "Not
+verified". The
 same screen shows whether a passkey is registered and removes it with `DELETE`.
 
 The Chrome extension registers a user's passkey without the CLI

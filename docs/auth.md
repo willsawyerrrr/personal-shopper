@@ -257,25 +257,29 @@ Chrome extension) or built by the iOS app's software authenticator, or an
 array of them, of which the first usable entry is stored. A credential is
 usable when its `rpId` is `auth.woolworths.com.au`, `credentialId`,
 `userHandle` and `privateKey` are non-empty strings, and `privateKey` is a
-base64 PKCS#8 Ed25519, EC or RSA key. It replaces any stored credential, then
-signs in to Woolworths with it at once and replaces the household's stored
-session with the result, so carts are driven by the new account straight away.
-If that sign-in fails, the credential stays saved but the household's stored
-session is deleted (the old account never keeps driving the cart) and the
-response is `502`; registering again retries. `DELETE` removes the credential
-and deletes the household's stored session.
+base64 PKCS#8 Ed25519, EC or RSA key. It replaces any stored credential and deletes
+the household's stored session (the old account never keeps driving the cart);
+the next cart request signs in with the new credential. `PUT` does not sign in
+itself, because Woolworths can take a moment to accept a new passkey.
+`POST /woolworths/passkey/verify` signs in with the stored credential and
+replaces the stored session with the result: `200 {"verified": true}`, `404`
+without a credential, or `502` when Woolworths rejects it (the session is then
+deleted, and verifying again retries). `DELETE` removes the credential and
+deletes the household's stored session.
 
 | Method   | Success                                       |
 | -------- | --------------------------------------------- |
 | `PUT`    | `200 {"registered": true}`                    |
+| `POST`   | `200 {"verified": true}` (`/verify`)          |
 | `GET`    | `200 {"registered": <whether one is stored>}` |
 | `DELETE` | `200 {"registered": false}`                   |
 
-| Status | Body                                                                               |
-| ------ | ---------------------------------------------------------------------------------- |
-| `400`  | `{"error":"<message>"}`: the body has no usable credential                         |
-| `401`  | `{"error":"unauthorized"}`                                                         |
-| `502`  | `{"error":"<message>"}`: `PUT` stored the credential but signing in with it failed |
+| Status | Body                                                                          |
+| ------ | ----------------------------------------------------------------------------- |
+| `400`  | `{"error":"<message>"}`: the body has no usable credential                    |
+| `401`  | `{"error":"unauthorized"}`                                                    |
+| `404`  | `{"error":"no passkey registered"}`: `POST /verify` has no credential to use  |
+| `502`  | `{"error":"<message>"}`: `POST /verify` could not sign in with the credential |
 
 The iOS app (Settings > Woolworths passkey) registers, replaces and removes it
 with this endpoint too. `/account` shows whether the signed-in user has a passkey registered, a button

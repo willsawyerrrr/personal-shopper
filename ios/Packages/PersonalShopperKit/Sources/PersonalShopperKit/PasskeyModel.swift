@@ -2,7 +2,8 @@ import Foundation
 import Observation
 
 /// State behind the Woolworths passkey screens: whether the household has a
-/// passkey, and registering or removing it.
+/// passkey, registering or removing it, and whether the server can sign in
+/// with it.
 @MainActor
 @Observable
 public final class PasskeyModel {
@@ -12,13 +13,33 @@ public final class PasskeyModel {
         case failed(String)
     }
 
+    public enum Verification: Equatable {
+        case verifying
+        case verified
+        case failed(String)
+    }
+
     /// Whether the server holds a passkey, or `nil` until it has been asked.
     public private(set) var registered: Bool?
     public private(set) var phase = Phase.idle
+    /// Whether the server could sign in with the passkey registered in this
+    /// session, or `nil` when none has been registered since the model was made.
+    public private(set) var verification: Verification?
 
     private let makeClient: @MainActor () throws -> AdminClient
+    private let verifyDelay: Duration
+    private let verifyAttempts: Int
+    private var verifying: Task<Void, Never>?
 
-    public init(makeClient: @escaping @MainActor () throws -> AdminClient) {
+    /// `verifyDelay` is the wait before each sign-in attempt, giving Woolworths time to
+    /// accept a new passkey; a failure is reported only after `verifyAttempts` attempts.
+    public init(
+        verifyDelay: Duration = .seconds(3),
+        verifyAttempts: Int = 4,
+        makeClient: @escaping @MainActor () throws -> AdminClient
+    ) {
+        self.verifyDelay = verifyDelay
+        self.verifyAttempts = verifyAttempts
         self.makeClient = makeClient
     }
 
@@ -43,9 +64,37 @@ public final class PasskeyModel {
         }
     }
 
+    /// Signs in to Woolworths with the stored passkey, after `verifyDelay` and again
+    /// after each failure, and sets `verification` once it succeeds or runs out of attempts.
+    public func verify() async {
+        verification = .verifying
+        var failure = ""
+        for _ in 0..<verifyAttempts {
+            try? await Task.sleep(for: verifyDelay)
+            if Task.isCancelled { return }
+            do {
+                try await makeClient().verifyPasskey()
+                verification = .verified
+                return
+            } catch {
+                failure = error.localizedDescription
+            }
+        }
+        verification = .failed(failure)
+    }
+
+    /// Runs `verify()` in the background, replacing a verification already running.
+    public func startVerification() {
+        verifying?.cancel()
+        verification = .verifying
+        verifying = Task { await verify() }
+    }
+
     public func remove() async {
         await run {
             try await self.makeClient().removePasskey()
+            self.verifying?.cancel()
+            self.verification = nil
             self.registered = false
         }
     }
