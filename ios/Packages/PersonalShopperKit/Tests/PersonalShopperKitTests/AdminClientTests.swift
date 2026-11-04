@@ -793,6 +793,17 @@ extension AdminClientTests {
         #expect(StubURLProtocol.requests.withLock { $0.count } == 1)
     }
 
+    @MainActor @Test func passkeyModelReportsWhetherAMessageWasStored() async throws {
+        StubURLProtocol.stub(body: #"{"registered":true}"#)
+        let model = try passkeyModel()
+        await model.load()
+        let ignored = await model.register(message: "passkey")
+        #expect(!ignored)
+        #expect(StubURLProtocol.requests.withLock { $0.count } == 1)
+        let stored = await model.register(Self.credential)
+        #expect(stored)
+    }
+
     @MainActor @Test func passkeyModelReportsAFailedRegistration() async throws {
         StubURLProtocol.stub(status: 502)
         let model = try passkeyModel()

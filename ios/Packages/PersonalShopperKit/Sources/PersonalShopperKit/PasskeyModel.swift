@@ -27,15 +27,17 @@ public final class PasskeyModel {
     }
 
     /// Uploads the credential the web view's script posted as `message`. Ignores
-    /// anything that is not a Woolworths passkey.
-    public func register(message: Any) async {
-        guard let credential = PasskeyCredential(message: message) else { return }
-        await register(credential)
+    /// anything that is not a Woolworths passkey. Returns whether the server stored it.
+    @discardableResult
+    public func register(message: Any) async -> Bool {
+        guard let credential = PasskeyCredential(message: message) else { return false }
+        return await register(credential)
     }
 
-    public func register(_ credential: PasskeyCredential) async {
+    @discardableResult
+    public func register(_ credential: PasskeyCredential) async -> Bool {
         phase = .saving
-        await run {
+        return await run {
             try await self.makeClient().register(credential)
             self.registered = true
         }
@@ -52,12 +54,15 @@ public final class PasskeyModel {
         if case .failed = phase { phase = .idle }
     }
 
-    private func run(_ action: () async throws -> Void) async {
+    @discardableResult
+    private func run(_ action: () async throws -> Void) async -> Bool {
         do {
             try await action()
             phase = .idle
+            return true
         } catch {
             phase = .failed(error.localizedDescription)
+            return false
         }
     }
 }

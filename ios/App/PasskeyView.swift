@@ -59,8 +59,7 @@ private struct RegisterPasskeyView: View {
         NavigationStack {
             PasskeyWebView { message in
                 Task {
-                    await model.register(message: message)
-                    if model.registered == true, model.phase == .idle { dismiss() }
+                    if await model.register(message: message) { dismiss() }
                 }
             }
             .safeAreaInset(edge: .bottom) { status }
