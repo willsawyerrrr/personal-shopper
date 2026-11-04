@@ -6,7 +6,7 @@ Woolworths product without opening the web app.
 
 - **App** (`App/`): Cart tab (the household's Personal Shopper cart, one row per
   item with its count; swipe to remove; Check Out sends it to the Woolworths cart
-  and lists what was added and what failed; pull to refresh), Items tab (a cart button opens the Woolworths app,
+  and lists what was added, what failed and what was already in the Woolworths cart; pull to refresh), Items tab (a cart button opens the Woolworths app,
   or its website when the app isn't installed; one row per product, titled with its
   custom name (else its Woolworths listing), the listing beneath a custom
   name, then its trigger words, pull to refresh, tap a
@@ -28,7 +28,7 @@ Woolworths product without opening the web app.
   speaks the result, e.g. "Added Milk to your cart" ("(3 in total)" when the cart holds more) or the server's "no mapping
   configured" message. Runs in the background without opening the app.
 - **`CheckOutIntent`** (`App/AddItemIntent.swift`): calls `POST /cart/checkout`
-  and speaks what was added and what failed.
+  and speaks what was added, what failed and how many were already in the Woolworths cart.
 - **`AddManyToCartIntent`** (`App/AddItemIntent.swift`): the same, repeated.
   After "What do you want to add?" it adds each answer, speaks the result and
   asks "What next?" until the answer is "that's it", "done" or similar
@@ -123,8 +123,10 @@ the same as saying its first trigger word to Siri.
 The Cart tab lists the household's cart (`GET /cart`). Swipe an entry to remove
 all of it (`DELETE /cart/items/:id`; one already gone is not an error). Check Out
 (`POST /cart/checkout`) picks products and sends the cart to the Woolworths cart,
-never placing an order, then shows what was added and what failed with each
-reason; failed entries stay in the cart. A rejected Woolworths session shows the
+never placing an order, then shows what was added, what failed with each
+reason, and under "Already in your Woolworths cart" the items the server skipped
+because Woolworths already holds them (`skipped`; absent from older servers, so
+treated as empty); failed entries stay in the cart. A rejected Woolworths session shows the
 session-expired message.
 
 ## Pickup
@@ -219,8 +221,8 @@ name one item at a time. Say "that's it" to finish.
 To send the cart to Woolworths, say "Check out my cart with Personal Shopper",
 "Send my cart to Woolworths with Personal Shopper" or "Check out with Personal
 Shopper" (`CheckOutIntent`, also the "Check Out My Cart" Shortcuts action). Siri
-says e.g. "Added 3 items to your Woolworths cart. Couldn't add Eggs.", or "Your
-cart is empty.". Paying stays manual.
+says e.g. "Added 3 items to your Woolworths cart. Couldn't add Eggs. 1 already in your Woolworths cart.", or "Your
+cart is empty." when nothing was added, failed or skipped. Paying stays manual.
 
 ## TestFlight
 

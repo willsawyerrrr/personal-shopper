@@ -35,6 +35,13 @@ struct CartView: View {
                         }
                     }
                 }
+                if let result, !result.skipped.isEmpty {
+                    Section("Already in your Woolworths cart") {
+                        ForEach(result.skipped) { entry in
+                            Label(entry.title, systemImage: "cart")
+                        }
+                    }
+                }
                 ForEach(entries) { entry in
                     HStack {
                         VStack(alignment: .leading) {
