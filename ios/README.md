@@ -68,8 +68,8 @@ To run on a device, set your team in the gitignored `Config/Local.xcconfig`
 work for the simulator and CI):
 
 ```bash
-op run --environment b5zkkwxuutlttwbrv5xhgojye4 --environment 3i642eynjpsx2uctyqlexobgge --environment pypsxvgj5p7ioxffch5lil4w5u -- \
-  sh -c 'echo "DEVELOPMENT_TEAM = $DEVELOPMENT_TEAM" > Config/Local.xcconfig'
+set -a; . "$HOME/willsawyerrrr.dev/.env"; . "$HOME/willsawyerrrr.dev/.env.apple"; . "$HOME/willsawyerrrr.dev/personal-shopper/.env"; set +a
+echo "DEVELOPMENT_TEAM = $DEVELOPMENT_TEAM" > Config/Local.xcconfig
 xcodegen generate
 ```
 

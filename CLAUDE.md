@@ -127,10 +127,12 @@ iOS device signing: write `DEVELOPMENT_TEAM = <team ID>` to the gitignored
 `Config/Shared.xcconfig`. Never set the team in the Xcode UI or commit the ID. See
 [`ios/README.md`](ios/README.md#setup).
 
-Secrets and configuration live in the shared Apple Development (`b5zkkwxuutlttwbrv5xhgojye4`) and General
-Purpose (`3i642eynjpsx2uctyqlexobgge`) 1Password Environments and the Personal Shopper one (`pypsxvgj5p7ioxffch5lil4w5u`), listed in
-[`docs/deployment.md`](docs/deployment.md#configuration). Run commands under
-`op run --environment b5zkkwxuutlttwbrv5xhgojye4 --environment 3i642eynjpsx2uctyqlexobgge --environment pypsxvgj5p7ioxffch5lil4w5u -- <command>` (shared first, project last; the last wins on a clash); workflows load it with
+Secrets and configuration live in the shared Apple Development, General
+Purpose and Personal Shopper 1Password Environments, listed in
+[`docs/deployment.md`](docs/deployment.md#configuration). Locally they are mounted as `.env` files
+(`~/willsawyerrrr.dev/.env`, `~/willsawyerrrr.dev/.env.apple`, `~/willsawyerrrr.dev/personal-shopper/.env`);
+load them with `set -a; . "$HOME/willsawyerrrr.dev/.env"; . "$HOME/willsawyerrrr.dev/.env.apple"; . "$HOME/willsawyerrrr.dev/personal-shopper/.env"; set +a`
+(shared first, project last; the last wins on a clash); workflows load it with
 `willsawyerrrr/platform/.github/actions/load-op-environment` (repo secret
 `OP_SERVICE_ACCOUNT_TOKEN`, repo variable `OP_ENVIRONMENT_IDS`, the only ones).
 

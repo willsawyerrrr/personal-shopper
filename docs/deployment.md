@@ -35,10 +35,10 @@ registered, below).
 
 ## Configuration
 
-Secrets and settings live in three [1Password Environments](https://developer.1password.com/docs/environments/); IDs are not secrets.
-Apple Development (`b5zkkwxuutlttwbrv5xhgojye4`) and Shared (`3i642eynjpsx2uctyqlexobgge`) hold the account-level secrets
-(`DEVELOPMENT_TEAM`, `SUPABASE_ACCESS_TOKEN`, …); Personal Shopper (`pypsxvgj5p7ioxffch5lil4w5u`) holds `FLY_API_TOKEN` and the server's variables.
-Local commands run under `op run --environment b5zkkwxuutlttwbrv5xhgojye4 --environment 3i642eynjpsx2uctyqlexobgge --environment pypsxvgj5p7ioxffch5lil4w5u -- <command>` (`pnpm dev` and `pnpm start` already do).
+Secrets and settings live in three [1Password Environments](https://developer.1password.com/docs/environments/).
+Apple Development and Shared hold the account-level secrets
+(`DEVELOPMENT_TEAM`, `SUPABASE_ACCESS_TOKEN`, …); Personal Shopper holds `FLY_API_TOKEN` and the server's variables.
+Locally they are mounted as `.env` files (`~/willsawyerrrr.dev/.env`, `~/willsawyerrrr.dev/.env.apple`, `~/willsawyerrrr.dev/personal-shopper/.env`) that `pnpm dev` and `pnpm start` source; other commands source them the same way.
 In production Fly secrets and `fly.toml` supply the server's variables.
 
 CI loads the Environments with `willsawyerrrr/platform/.github/actions/load-op-environment`,
