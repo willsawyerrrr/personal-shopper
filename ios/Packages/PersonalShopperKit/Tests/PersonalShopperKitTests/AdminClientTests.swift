@@ -249,13 +249,72 @@ extension AdminClientTests {
 
     @Test func addToCartMapsSuccessToDialog() async throws {
         StubURLProtocol.stub(body: #"{"item":"milk","stockcode":888137,"quantity":2}"#)
-        #expect(try await client.addToCartDialog(item: "milk") == "Added 2 × Milk")
+        #expect(try await client.addToCartDialog(item: "milk") == "Added Milk to your cart")
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
         #expect(request.httpMethod == "POST")
         #expect(request.url?.path == "/cart/items")
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer ps_tok")
         let body = try JSONSerialization.jsonObject(with: try #require(request.httpBody)) as? [String: String]
         #expect(body == ["item": "milk"])
+    }
+
+    @Test func addToCartMentionsCountWhenMoreThanOne() async throws {
+        StubURLProtocol.stub(body: #"{"item":"milk","stockcode":888137,"quantity":2,"count":3}"#)
+        #expect(try await client.addToCartDialog(item: "milk") == "Added Milk to your cart (3 in total)")
+        StubURLProtocol.stub(body: #"{"item":"milk","stockcode":888137,"quantity":2,"count":1}"#)
+        #expect(try await client.addToCartDialog(item: "milk") == "Added Milk to your cart")
+    }
+
+    @Test func listsCart() async throws {
+        StubURLProtocol.stub(body: #"{"entries":[{"id":"1","title":"Milk","words":["milk","moo juice"],"count":2}]}"#)
+        #expect(try await client.cart() == [CartEntry(id: "1", title: "Milk", words: ["milk", "moo juice"], count: 2)])
+        let request = try #require(StubURLProtocol.requests.withLock { $0.first })
+        #expect(request.httpMethod == "GET")
+        #expect(request.url?.path == "/cart")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer ps_tok")
+    }
+
+    @Test func removesCartEntry() async throws {
+        let entry = CartEntry(id: "1", title: "Milk", words: ["milk"], count: 2)
+        StubURLProtocol.stub(status: 204)
+        try await client.remove(entry)
+        let request = try #require(StubURLProtocol.requests.withLock { $0.first })
+        #expect(request.httpMethod == "DELETE")
+        #expect(request.url?.path == "/cart/items/1")
+        StubURLProtocol.stub(status: 404, body: #"{"error":"not in cart"}"#)
+        try await client.remove(entry)
+        StubURLProtocol.stub(status: 400, body: #"{"error":"bad id"}"#)
+        await #expect(throws: AdminError.rejected("bad id")) { try await client.remove(entry) }
+    }
+
+    @Test func checksOut() async throws {
+        StubURLProtocol.stub(
+            body: #"{"added":[{"id":"1","title":"Milk","stockcode":5,"quantity":2},{"id":"2","title":"Bread","stockcode":6,"quantity":1}],"failed":[{"id":"3","title":"Eggs","error":"out of stock"}]}"#
+        )
+        let result = try await client.checkOut()
+        #expect(result.added.map(\.title) == ["Milk", "Bread"])
+        #expect(result.failed == [FailedEntry(id: "3", title: "Eggs", error: "out of stock")])
+        #expect(result.dialog == "Added 2 items to your Woolworths cart. Couldn't add Eggs.")
+        let request = try #require(StubURLProtocol.requests.withLock { $0.first })
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.path == "/cart/checkout")
+        #expect(request.httpBody == nil)
+    }
+
+    @Test func checkOutDialogs() throws {
+        #expect(CheckoutResult(added: [], failed: []).dialog == "Your cart is empty.")
+        let failed = [FailedEntry(id: "1", title: "Milk", error: "x"), FailedEntry(id: "2", title: "Eggs", error: "y")]
+        #expect(CheckoutResult(added: [], failed: failed).dialog == "Couldn't add Milk and Eggs.")
+        let added = try JSONDecoder().decode(
+            CheckoutResult.self, from: Data(#"{"added":[{"id":"1","title":"Milk","stockcode":5,"quantity":2}],"failed":[]}"#.utf8))
+        #expect(added.dialog == "Added 1 item to your Woolworths cart.")
+    }
+
+    @Test func checkOutMapsFailures() async {
+        StubURLProtocol.stub(status: 502, body: #"{"error":"session rejected"}"#)
+        await #expect(throws: AdminError.woolworthsSessionExpired) { try await client.checkOut() }
+        StubURLProtocol.stub(status: 401)
+        await #expect(throws: AdminError.unauthorized) { try await client.checkOut() }
     }
 
     @Test func addToCartSpeaksNotFoundMessage() async throws {

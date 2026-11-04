@@ -49,15 +49,15 @@ enum AddItemIntentError: Error, CustomLocalizedStringResourceConvertible {
 }
 
 struct AddToCartIntent: AppIntent {
-    static let title: LocalizedStringResource = "Add to My Woolworths Cart"
-    static let description = IntentDescription("Adds an item you've mapped in Personal Shopper to your Woolworths cart.")
+    static let title: LocalizedStringResource = "Add to My Cart"
+    static let description = IntentDescription("Adds an item you've mapped in Personal Shopper to your Personal Shopper cart.")
     static let openAppWhenRun = false
 
     @Parameter(title: "Item", requestValueDialog: "What do you want to add?")
     var item: String
 
     static var parameterSummary: some ParameterSummary {
-        Summary("Add \(\.$item) to my Woolworths cart")
+        Summary("Add \(\.$item) to my cart")
     }
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
@@ -72,16 +72,16 @@ struct AddToCartIntent: AppIntent {
 }
 
 struct AddManyToCartIntent: AppIntent {
-    static let title: LocalizedStringResource = "Add Many to My Woolworths Cart"
+    static let title: LocalizedStringResource = "Add Many to My Cart"
     static let description = IntentDescription(
-        "Keeps asking what to add to your Woolworths cart until you say \"that's it\".")
+        "Keeps asking what to add to your cart until you say \"that's it\".")
     static let openAppWhenRun = false
 
     @Parameter(title: "Item", requestValueDialog: "What do you want to add?")
     var item: String
 
     static var parameterSummary: some ParameterSummary {
-        Summary("Add several items to my Woolworths cart")
+        Summary("Add several items to my cart")
     }
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
@@ -97,6 +97,26 @@ struct AddManyToCartIntent: AppIntent {
             spoken = try await $item.requestValue(IntentDialog("\(reply). What next?"))
         }
         return .result(dialog: "Okay, that's everything.")
+    }
+}
+
+struct CheckOutIntent: AppIntent {
+    static let title: LocalizedStringResource = "Check Out My Cart"
+    static let description = IntentDescription(
+        "Sends your Personal Shopper cart to your Woolworths cart. It never places an order.")
+    static let openAppWhenRun = false
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Send my cart to Woolworths")
+    }
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        do {
+            let result = try await SettingsStore().client().checkOut()
+            return .result(dialog: "\(result.dialog)")
+        } catch {
+            throw AddItemIntentError.failed(error.localizedDescription)
+        }
     }
 }
 
@@ -119,6 +139,16 @@ struct PersonalShopperShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Add Many to Cart",
             systemImageName: "cart.fill.badge.plus"
+        )
+        AppShortcut(
+            intent: CheckOutIntent(),
+            phrases: [
+                "Check out my cart with \(.applicationName)",
+                "Send my cart to Woolworths with \(.applicationName)",
+                "Check out with \(.applicationName)",
+            ],
+            shortTitle: "Check Out",
+            systemImageName: "cart.badge.checkmark"
         )
         AppShortcut(
             intent: AddItemIntent(),

@@ -62,7 +62,7 @@ public struct AdminClient: Sendable {
         _ = try await send("POST", path: "/auth/logout")
     }
 
-    /// Adds the item mapped to the spoken term `item` to the Woolworths cart.
+    /// Adds the item mapped to the spoken term `item` to the Personal Shopper cart.
     public func addToCart(item: String) async throws -> CartAddition {
         struct Body: Encodable { let item: String }
         let data = try await send("POST", path: "/cart/items", body: JSONEncoder().encode(Body(item: item)))
@@ -77,6 +77,24 @@ public struct AdminClient: Sendable {
         } catch AdminError.notFound(let message) {
             return message
         }
+    }
+
+    /// The household's Personal Shopper cart.
+    public func cart() async throws -> [CartEntry] {
+        struct Response: Decodable { let entries: [CartEntry] }
+        return try decode(Response.self, from: await send("GET", path: "/cart")).entries
+    }
+
+    /// Removes every count of `entry` from the cart. An entry already gone is not an error.
+    public func remove(_ entry: CartEntry) async throws {
+        do {
+            _ = try await send("DELETE", path: "/cart/items/\(entry.id)")
+        } catch AdminError.notFound, AdminError.server(status: 404) {}
+    }
+
+    /// Sends the cart to the Woolworths cart. Entries that fail stay in the cart.
+    public func checkOut() async throws -> CheckoutResult {
+        try decode(CheckoutResult.self, from: await send("POST", path: "/cart/checkout"))
     }
 
     public func items() async throws -> [Item] {

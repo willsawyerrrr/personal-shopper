@@ -4,7 +4,9 @@ Native SwiftUI client for the server's JSON API (`src/admin.ts`): list, add,
 edit and remove items, plus a Share extension and an App Intent that add a
 Woolworths product without opening the web app.
 
-- **App** (`App/`): Items tab (a cart button opens the Woolworths app,
+- **App** (`App/`): Cart tab (the household's Personal Shopper cart, one row per
+  item with its count; swipe to remove; Check Out sends it to the Woolworths cart
+  and lists what was added and what failed; pull to refresh), Items tab (a cart button opens the Woolworths app,
   or its website when the app isn't installed; one row per product, titled with its
   custom name (else its Woolworths listing), the listing beneath a custom
   name, then its trigger words, pull to refresh, tap a
@@ -23,8 +25,10 @@ Woolworths product without opening the web app.
   word defaults to the lower-cased product name in the link.
 - **`AddToCartIntent`** (`App/AddItemIntent.swift`): the voice path. Takes a
   required `item` ("What do you want to add?"), calls `POST /cart/items` and
-  speaks the result, e.g. "Added 2 × Milk" or the server's "no mapping
+  speaks the result, e.g. "Added Milk to your cart" ("(3 in total)" when the cart holds more) or the server's "no mapping
   configured" message. Runs in the background without opening the app.
+- **`CheckOutIntent`** (`App/AddItemIntent.swift`): calls `POST /cart/checkout`
+  and speaks what was added and what failed.
 - **`AddManyToCartIntent`** (`App/AddItemIntent.swift`): the same, repeated.
   After "What do you want to add?" it adds each answer, speaks the result and
   asks "What next?" until the answer is "that's it", "done" or similar
@@ -111,8 +115,17 @@ appears for other URLs and text, where it shows the product form's message.
 
 ## Items list
 
-Swipe an item right and tap "Add to Cart" to add it to your Woolworths cart,
+Swipe an item right and tap "Add to Cart" to add it to your Personal Shopper cart,
 the same as saying its first trigger word to Siri.
+
+## Cart
+
+The Cart tab lists the household's cart (`GET /cart`). Swipe an entry to remove
+all of it (`DELETE /cart/items/:id`; one already gone is not an error). Check Out
+(`POST /cart/checkout`) picks products and sends the cart to the Woolworths cart,
+never placing an order, then shows what was added and what failed with each
+reason; failed entries stay in the cart. A rejected Woolworths session shows the
+session-expired message.
 
 ## Pickup
 
@@ -196,12 +209,18 @@ The App Intent is what Shortcuts and Siri use, separate from the share sheet.
 Add the "Add Woolworths Product" action to a Shortcut, or say "Add a product
 to Personal Shopper" and answer the prompt for the link.
 
-To add to the cart, say "Add to my Woolworths cart with Personal Shopper" and
+To add to the cart, say "Add to my cart with Personal Shopper" and
 answer "What do you want to add?" with a mapped item such as "milk".
 
 To add several items in one go, say "Add several items to my cart with
 Personal Shopper" (or "Start a shopping list with Personal Shopper"), then
 name one item at a time. Say "that's it" to finish.
+
+To send the cart to Woolworths, say "Check out my cart with Personal Shopper",
+"Send my cart to Woolworths with Personal Shopper" or "Check out with Personal
+Shopper" (`CheckOutIntent`, also the "Check Out My Cart" Shortcuts action). Siri
+says e.g. "Added 3 items to your Woolworths cart. Couldn't add Eggs.", or "Your
+cart is empty.". Paying stays manual.
 
 ## TestFlight
 
