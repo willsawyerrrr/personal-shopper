@@ -14,24 +14,37 @@ import {
 import {
   renderAccountPage,
   renderAddItemPage,
+  renderCartPage,
   renderHouseholdPage,
   renderItemsPage,
 } from './admin-pages.ts'
+import type { CartStore } from './cart-store.ts'
+import { checkout, type CheckoutResult } from './checkout.ts'
 import { InviteLimitError, type HouseholdStore } from './households.ts'
-import { normalizeWord, type Item, type ItemStore } from './items.ts'
+import { itemTitle, normalizeWord, type Item, type ItemStore } from './items.ts'
 import { createListingBackfill, lookupListing } from './listings.ts'
 import { PASSKEY_RATE_LIMIT, removePasskey, type PasskeyOptions } from './passkey.ts'
 import type { SessionSummary, TokenStore } from './tokens.ts'
-import type { ProductLookup } from './woolworths/client.ts'
+import type { CartClient, PriceLookup, ProductLookup } from './woolworths/client.ts'
+import { SessionRejectedError } from './woolworths/session.ts'
+
+export interface AdminOptions {
+  /** Resolves a user's product lookup for listing text. */
+  lookup?: ((email: string) => ProductLookup) | undefined
+  /** Enables the account page's passkey section. */
+  passkeys?: PasskeyOptions | undefined
+  /** Resolves a user's Woolworths cart; enables `POST /cart/checkout`. */
+  woolworths?: ((email: string) => CartClient & Partial<PriceLookup>) | undefined
+}
 
 export async function registerAdmin(
   app: FastifyInstance,
   config: AppConfig,
   tokens: TokenStore,
   store: ItemStore,
+  cart: CartStore,
   households: HouseholdStore,
-  lookupFor?: (email: string) => ProductLookup,
-  passkeys?: PasskeyOptions,
+  { lookup: lookupFor, passkeys, woolworths }: AdminOptions = {},
   now: () => number = Date.now,
 ): Promise<void> {
   const secureCookie = config.publicBaseUrl.startsWith('https:')
@@ -129,6 +142,82 @@ export async function registerAdmin(
       void backfillOf(request)
       reply.type('text/html').send(renderItemsPage(items))
     })
+
+    const itemParams = {
+      schema: {
+        params: {
+          type: 'object',
+          properties: { id: { type: 'string', format: 'uuid' } },
+        },
+      },
+    }
+    type ItemRoute = { Params: { id: string } }
+    const cartView = async (request: FastifyRequest) => {
+      const items = new Map((await store.load(emailOf(request))).map((item) => [item.id, item]))
+      return (await cart.list(emailOf(request))).flatMap(({ itemId, count }) => {
+        const item = items.get(itemId)
+        return item ? [{ id: itemId, title: itemTitle(item), words: item.words, count }] : []
+      })
+    }
+    const cartPage = async (
+      request: FastifyRequest,
+      reply: FastifyReply,
+      status: number,
+      result?: CheckoutResult,
+    ) =>
+      reply
+        .code(status)
+        .type('text/html')
+        .send(renderCartPage(await cartView(request), woolworths !== undefined, result))
+
+    // The cart web page lives at `/cart/manage`: `GET /cart` is the JSON entry list.
+    admin.get('/cart/manage', async (request, reply) => cartPage(request, reply, 200))
+
+    admin.get('/cart', async (request) => ({ entries: await cartView(request) }))
+
+    admin.delete<ItemRoute>('/cart/items/:id', itemParams, async (request, reply) => {
+      const removed = await cart.remove(emailOf(request), request.params.id)
+      return removed ? reply.code(204).send() : reply.code(404).send({ error: 'No such entry.' })
+    })
+
+    admin.post<ItemRoute>('/cart/items/:id/delete', itemParams, async (request, reply) => {
+      await cart.remove(emailOf(request), request.params.id)
+      return reply.redirect('/cart/manage')
+    })
+
+    if (woolworths) {
+      admin.post(
+        '/cart/checkout',
+        {
+          config: { rateLimit: { max: config.limits.ipRequestsPerMinute, timeWindow: '1 minute' } },
+        },
+        async (request, reply) => {
+          const email = emailOf(request)
+          let result: CheckoutResult
+          try {
+            result = await checkout(
+              email,
+              await store.load(email),
+              cart,
+              woolworths(email),
+              request.log,
+            )
+          } catch (error) {
+            if (!(error instanceof SessionRejectedError)) {
+              throw error
+            }
+            request.log.warn('woolworths session rejected')
+            return wantsJson(request)
+              ? reply.code(502).send({ error: error.message })
+              : reply
+                  .code(502)
+                  .type('text/html')
+                  .send(renderCartPage(await cartView(request), true, undefined, error.message))
+          }
+          return wantsJson(request) ? result : cartPage(request, reply, 200, result)
+        },
+      )
+    }
 
     admin.get('/items/new', async (_request, reply) => {
       reply.type('text/html').send(renderAddItemPage())
@@ -387,15 +476,6 @@ export async function registerAdmin(
       return reply.redirect('/')
     }
 
-    const itemParams = {
-      schema: {
-        params: {
-          type: 'object',
-          properties: { id: { type: 'string', format: 'uuid' } },
-        },
-      },
-    }
-    type ItemRoute = { Params: { id: string } }
     type ItemEditRoute = ItemRoute & { Body: Record<string, unknown> | null }
     admin.patch<ItemEditRoute>('/items/:id', itemParams, editItem)
     admin.post<ItemEditRoute>('/items/:id/edit', itemParams, editItem)

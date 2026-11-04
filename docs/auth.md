@@ -26,13 +26,13 @@ The server refuses to start when a required variable is missing.
 Each limit has a default and an environment variable; all are positive
 integers.
 
-| Variable                     | Default | Meaning                                                                                                         |
-| ---------------------------- | ------- | --------------------------------------------------------------------------------------------------------------- |
-| `MAX_USERS`                  | 50      | Total users. Beyond it a new Google account cannot sign up (`signup_closed`); existing users are unaffected.    |
-| `MAX_INVITES_PER_HOUSEHOLD`  | 5       | Unexpired household invites at once. `POST /household/invites` beyond it gets `409`.                            |
-| `MAX_TOKENS_PER_USER`        | 20      | Unexpired tokens (web sessions and API clients) a user may hold. A sign-in beyond it is refused (`user_limit`). |
-| `USER_RATE_LIMIT_PER_MINUTE` | 120     | Authenticated requests per minute per user on `/` and `/cart`; excess gets `429 {"error":"rate_limited"}`.      |
-| `IP_RATE_LIMIT_PER_MINUTE`   | 30      | Requests per minute per client IP on each `/auth/*` route and on `POST /cart/items`; excess gets `429`.         |
+| Variable                     | Default | Meaning                                                                                                                     |
+| ---------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `MAX_USERS`                  | 50      | Total users. Beyond it a new Google account cannot sign up (`signup_closed`); existing users are unaffected.                |
+| `MAX_INVITES_PER_HOUSEHOLD`  | 5       | Unexpired household invites at once. `POST /household/invites` beyond it gets `409`.                                        |
+| `MAX_TOKENS_PER_USER`        | 20      | Unexpired tokens (web sessions and API clients) a user may hold. A sign-in beyond it is refused (`user_limit`).             |
+| `USER_RATE_LIMIT_PER_MINUTE` | 120     | Authenticated requests per minute per user on `/` and `/cart`; excess gets `429 {"error":"rate_limited"}`.                  |
+| `IP_RATE_LIMIT_PER_MINUTE`   | 30      | Requests per minute per client IP on each `/auth/*` route, `POST /cart/items` and `POST /cart/checkout`; excess gets `429`. |
 
 A user revokes a sign-in from `/` to free a token slot.
 
@@ -103,10 +103,9 @@ sends `Authorization: Bearer <access_token>` on every API call.
 
 ### Using the token
 
-Bearer tokens authorise the JSON API on `/items`; send
+Bearer tokens authorise the JSON API on `/items` and `/cart`; send
 `Accept: application/json`. Every call acts on the token's user and their
-household: members share items, and `POST /cart/items` adds to the household's
-Woolworths cart.
+household: members share items and one Personal Shopper cart.
 
 | Request                                                                    | Success                                                                       |
 | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
@@ -114,6 +113,9 @@ Woolworths cart.
 | `POST /items` with `{word or words, url, quantity?, name?, alternatives?}` | `201` with the stored item; `400 {error}` if invalid                          |
 | `PATCH /items/:id` with any of the fields below                            | `200` with the stored item; `400`, `404`, `409` below                         |
 | `DELETE /items/:id` (or `POST /items/:id/delete`)                          | `204`; `404` for an unknown item                                              |
+| `GET /cart`                                                                | `200 {"entries":[{id, title, words, count}]}`, `id` being the item's          |
+| `DELETE /cart/items/:id` (`id` an item's)                                  | `204`; `404` when the item is not in the cart                                 |
+| `POST /cart/checkout`                                                      | `200 {added, failed}`; `502 {error}` for a rejected Woolworths session        |
 | `GET /household`                                                           | `200 {"members":[{email, you}]}`                                              |
 | `POST /household/invites`                                                  | `201 {code, expiresAt}` (epoch ms); `409 {error}` at the invite limit         |
 | `POST /household/join` with `{code}`                                       | `204`; `400 {error}` invalid, expired or used; `409 {error}` already a member |
@@ -124,7 +126,7 @@ An item is the household's own concept of a product (e.g. "kitchen garbage
 bags"), identified by `id`: `words` are the trigger phrases that resolve to
 it (each word belongs to exactly one item) and `candidates` are its
 stockcode/quantity options, an unordered set with no primary or alternative
-distinction — `POST /cart/items` (below) adds whichever is cheapest per unit.
+distinction — checkout (below) adds whichever is cheapest per unit.
 `GET /items` lists items in stored order.
 
 `POST /items` creates an item with its trigger words: `word` (a single
@@ -174,13 +176,15 @@ the same statuses by re-rendering `/` with the message, and redirect to `/`
 on success. They rely on the session cookie's `SameSite=Lax`, like the other
 form posts.
 
-### Adding to the cart
+### The cart
 
-`POST /cart/items` adds the item mapped to a spoken phrase to the Woolworths
-cart. When the item has more than one candidate, the cheapest per unit is
-added (see `candidates` above). It accepts a bearer token only (the web
-session cookie is rejected) and is rate limited per client IP
-(`IP_RATE_LIMIT_PER_MINUTE`) and per user (`USER_RATE_LIMIT_PER_MINUTE`).
+The Personal Shopper cart holds the household's wishes: items with counts.
+Products are chosen, and Woolworths contacted, only at checkout.
+
+`POST /cart/items` adds one of the item mapped to a spoken phrase to the
+cart. It accepts a bearer token only (the web session cookie is rejected) and
+is rate limited per client IP (`IP_RATE_LIMIT_PER_MINUTE`) and per user
+(`USER_RATE_LIMIT_PER_MINUTE`).
 
 ```
 POST {PUBLIC_BASE_URL}/cart/items
@@ -192,15 +196,39 @@ Content-Type: application/json
 
 | Status | Body                                                                                           |
 | ------ | ---------------------------------------------------------------------------------------------- |
-| `200`  | `{"item": "<phrase as sent>", "stockcode": 123456, "quantity": 1}`; the item is in the cart    |
+| `200`  | `{"item": "<phrase as sent>", "stockcode": 123456, "quantity": 1, "count": 2}`; one was added  |
 | `400`  | `{"error":"item is required"}`: `item` is missing, not a string or blank                       |
 | `401`  | `{"error":"unauthorized"}`                                                                     |
 | `404`  | `{"error":"no mapping configured for \"<item>\""}`: no item for the phrase in the user's items |
 | `429`  | `{"error":"rate_limited"}`: over a rate limit; `Retry-After` gives the seconds to wait         |
-| `502`  | `{"error":"<message>"}`: the Woolworths session is expired or rejected                         |
+
+`count` is the item's new count in the cart. `stockcode` and `quantity` are the
+item's first candidate's, since the product is not chosen yet; they keep the
+response decodable by clients that read it as `{item, stockcode, quantity}`.
 
 The phrase is matched against the user's items like a reminder title: trimmed,
 lower-cased, exact.
+
+`GET /cart`, `DELETE /cart/items/:id` and `POST /cart/checkout` accept a bearer
+token or the web session cookie, are rate limited per user, and answer
+`401 {"error":"unauthorized"}` without either. Checkout is also rate limited
+per client IP. It picks, for each entry, the cheapest-per-unit candidate at
+current prices, adds its quantity times the entry's count to the Woolworths
+cart, and removes what was added from the Personal Shopper cart. It never
+places an order.
+
+```
+POST {PUBLIC_BASE_URL}/cart/checkout
+Authorization: Bearer <access_token>
+Accept: application/json
+```
+
+| Status | Body                                                                                                                                    |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `200`  | `{"added":[{id, title, stockcode, quantity}],"failed":[{id, title, error}]}`; `quantity` is the total added, `failed` stays in the cart |
+| `502`  | `{"error":"<message>"}`: the Woolworths session is expired or rejected; entries already added are removed, the rest stay                |
+
+An empty cart is `200` with both lists empty.
 
 A missing, malformed, expired or revoked token gets
 `401 {"error":"unauthorized"}`. On `401` the client discards the token and
@@ -210,7 +238,7 @@ starts sign-in again.
 
 `POST /pickup/en-route` and `POST /pickup/arrived` tell Woolworths a Direct to
 boot customer is on their way, or has parked in a bay. Both accept a bearer
-token only and share `/cart/items`' rate limits. `link` is the
+token only and share `POST /cart/items`' rate limits. `link` is the
 `https://w.wowpu.com.au/<code>` short link from the ready-order SMS, or the
 `https://myorder.woolworths.com.au/pickup/order?token=<uuid>` link it redirects
 to (also sent by email). A short link is resolved with one request that does

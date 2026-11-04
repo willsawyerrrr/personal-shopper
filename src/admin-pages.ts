@@ -6,12 +6,14 @@ import {
   type AlternativeRow,
   type ItemEdit,
 } from './admin-items.ts'
+import type { CheckoutResult } from './checkout.ts'
 import { escapeHtml, formatTime } from './html.ts'
 import type { ItemsConfig } from './items.ts'
 import type { SessionSummary } from './tokens.ts'
 
 const PAGES = {
   items: { path: '/', label: 'Items', title: 'Shopping list items' },
+  cart: { path: '/cart/manage', label: 'Cart', title: 'Cart' },
   add: { path: '/items/new', label: 'Add item', title: 'Add an item' },
   household: { path: '/household/manage', label: 'Household', title: 'Household' },
   account: { path: '/account', label: 'Account', title: 'Account' },
@@ -60,6 +62,83 @@ export function renderItemsPage(items: ItemsConfig, edit?: ItemEdit, error?: str
       <div class="item-head" aria-hidden="true"><span>Item</span><span>Products</span><span></span></div>
       ${rows || '<p class="hint">No items configured yet.</p>'}
     </div>
+  </section>`,
+    error,
+  )
+}
+
+/** An item in the Personal Shopper cart, as the cart page lists it. */
+export interface CartRow {
+  id: string
+  title: string
+  words: string[]
+  count: number
+}
+
+/**
+ * The cart page. `canCheckOut` shows the Check out button (when the cart is not
+ * empty); `result` reports a checkout that just ran, and `error` one that was refused.
+ */
+export function renderCartPage(
+  entries: CartRow[],
+  canCheckOut: boolean,
+  result?: CheckoutResult,
+  error?: string,
+): string {
+  const rows = entries
+    .map(
+      (entry) => `
+        <tr>
+          <td>${escapeHtml(entry.title)}<br><span class="hint">${escapeHtml(entry.words.join(', '))}</span></td>
+          <td>${entry.count}</td>
+          <td>
+            <form method="post" action="/cart/items/${entry.id}/delete">
+              <button type="submit" class="secondary danger" aria-label="Remove ${escapeHtml(entry.title)}">Remove</button>
+            </form>
+          </td>
+        </tr>`,
+    )
+    .join('')
+  const added = result?.added.length
+    ? `<h2>Added to your Woolworths cart</h2>
+    <ul>${result.added
+      .map(
+        (line) =>
+          `<li>${line.quantity} × ${escapeHtml(line.title)} (stockcode ${line.stockcode})</li>`,
+      )
+      .join('')}</ul>`
+    : ''
+  const failed = result?.failed.length
+    ? `<h2>Still in your cart</h2>
+    <ul>${result.failed
+      .map((line) => `<li>${escapeHtml(line.title)}: ${escapeHtml(line.error)}</li>`)
+      .join('')}</ul>`
+    : ''
+  const outcome = result
+    ? `<section role="status">
+    ${added}${failed}${added || failed ? '' : '<p class="hint">Your cart was empty, so nothing was added.</p>'}
+    <p class="hint">Review and pay for the order on woolworths.com.au.</p>
+  </section>`
+    : ''
+  return renderLayout(
+    'cart',
+    `${outcome}<section>
+    <p class="hint">Products are chosen at checkout, at current prices, and added to your Woolworths cart. Nothing is ordered.</p>
+    ${
+      entries.length === 0
+        ? '<p class="hint">Your cart is empty.</p>'
+        : `<table>
+      <thead><tr><th>Item</th><th>Count</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`
+    }${
+      canCheckOut && entries.length > 0
+        ? `
+    <form method="post" action="/cart/checkout">
+      <button type="submit">Check out</button>
+    </form>`
+        : ''
+    }
   </section>`,
     error,
   )

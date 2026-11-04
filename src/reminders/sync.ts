@@ -1,5 +1,4 @@
 import { resolveItem, type ItemsConfig } from '../items.ts'
-import type { CartClient } from '../woolworths/client.ts'
 import type { RemindersClient } from './client.ts'
 
 export interface SyncLogger {
@@ -11,19 +10,18 @@ export interface SyncLogger {
 export async function syncReminders(
   reminders: RemindersClient,
   items: ItemsConfig,
-  cart: CartClient,
+  addToCart: (itemId: string) => Promise<unknown>,
   logger: SyncLogger,
 ): Promise<void> {
   const pending = await reminders.listPending()
   for (const reminder of pending) {
     const item = resolveItem(items, reminder.title)
-    const candidate = item?.candidates[0]
-    if (!candidate) {
+    if (!item?.candidates[0]) {
       logger.warn(`no mapping configured for queued reminder "${reminder.title}", leaving queued`)
       continue
     }
     try {
-      await cart.addToCart(candidate.stockcode, candidate.quantity)
+      await addToCart(item.id)
       await reminders.remove(reminder)
       logger.info(`synced queued reminder "${reminder.title}" to the cart`)
     } catch (error) {

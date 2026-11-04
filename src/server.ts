@@ -1,6 +1,7 @@
 import { buildApp } from './app.ts'
 import { loadConfig } from './config.ts'
 import { connect } from './db.ts'
+import { CartStore } from './cart-store.ts'
 import { HouseholdStore } from './households.ts'
 import { ItemStore } from './items.ts'
 import { ICloudRemindersClient } from './reminders/client.ts'
@@ -69,11 +70,12 @@ if (config.remindersSync) {
   const { icloudUsername, icloudAppSpecificPassword, listName, intervalMs } = config.remindersSync
   const reminders = new ICloudRemindersClient(icloudUsername, icloudAppSpecificPassword, listName)
   const itemStore = new ItemStore(sql)
+  const cartStore = new CartStore(sql)
   // `loadConfig` requires an owner whenever the sync is enabled.
   const owner = ownerEmail as string
   const runSync = async (): Promise<void> => {
     const items = await itemStore.load(owner)
-    await syncReminders(reminders, items, woolworths.clientFor(owner), app.log)
+    await syncReminders(reminders, items, (itemId) => cartStore.add(owner, itemId), app.log)
   }
   setInterval(() => void runSync().catch((error: unknown) => app.log.error(error)), intervalMs)
   void runSync().catch((error: unknown) => app.log.error(error))

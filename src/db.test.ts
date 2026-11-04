@@ -18,6 +18,7 @@ describe('migrations', () => {
       select relname, relrowsecurity from pg_class
       where relkind = 'r' and relnamespace = current_schema()::regnamespace`
     expect(tables.map((table) => table.relname).sort()).toEqual([
+      'cart_entries',
       'household_invites',
       'households',
       'item_candidates',

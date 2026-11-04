@@ -10,7 +10,8 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
 ## Fixed scope decisions
 
 - Retailer: Woolworths Australia only.
-- Cart only — this never places an order. Checkout stays manual.
+- Cart only — this never places an order. Paying stays manual: "checkout" in
+  this app only sends the Personal Shopper cart to the Woolworths cart.
 - Multi-user: each signed-in user (keyed by lower-cased Google email) belongs
   to a household, which has one set of items, one Woolworths session and one
   passkey credential, so its members' carts are driven by the same Woolworths
@@ -64,11 +65,19 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   `.github/workflows/deploy-server.yml` after CI passes (`FLY_API_TOKEN` from the
   Environment), which first applies unapplied migrations through the
   Supabase Management API (`SUPABASE_ACCESS_TOKEN` from Shared). See [`docs/deployment.md`](docs/deployment.md).
+- Personal Shopper cart: a household holds a cart of items with counts
+  (`src/cart-store.ts`, `cart_entries`); adding picks no product and never
+  contacts Woolworths. Products are chosen, with `pickCheapest` at current
+  prices, only at checkout (`POST /cart/checkout` in `src/checkout.ts`, bearer
+  token or session cookie), which adds each entry to the Woolworths cart,
+  removes what landed and leaves failures in the cart. `GET /cart`,
+  `DELETE /cart/items/:id` and the web app's Cart page (`/cart/manage`) review
+  and edit it.
 - Voice capture: a shared iCloud Reminders list is the queue the server
-  syncs into the owner's cart (`REMINDERS_OWNER_EMAIL`, required when the sync
-  is enabled; Siri's built-in "add X to my Shopping List"); the iOS
-  app's App Intent is the other Siri path, calling `POST /cart/items`
-  (`src/cart.ts`, bearer token only, rate limited). See
+  syncs into the owner's Personal Shopper cart (`REMINDERS_OWNER_EMAIL`,
+  required when the sync is enabled; Siri's built-in "add X to my Shopping
+  List"); the iOS app's App Intent is the other Siri path, calling
+  `POST /cart/items` (`src/cart.ts`, bearer token only, rate limited). See
   [`docs/siri-setup.md`](docs/siri-setup.md) and
   [`docs/architecture.md`](docs/architecture.md#reminders-queue).
 - Pickup arrival: `POST /pickup/en-route` and `POST /pickup/arrived`
@@ -94,7 +103,7 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
 
 `src/woolworths` is everything that talks to Woolworths' unofficial API;
 `src/app.ts` wires up Fastify, `src/login.ts` the Google sign-in routes,
-`src/admin.ts` the web app (pages rendered in `src/admin-pages.ts`) and its JSON API, `src/cart.ts` the cart route, `src/pickup.ts` the pickup arrival routes, `src/passkey.ts` the passkey routes,
+`src/admin.ts` the web app (pages rendered in `src/admin-pages.ts`) and its JSON API, `src/cart.ts` the add-to-cart route, `src/cart-store.ts` the cart store, `src/checkout.ts` checkout, `src/pickup.ts` the pickup arrival routes, `src/passkey.ts` the passkey routes,
 `src/tokens.ts` the token store, `src/items.ts` the item store, `src/db.ts` the
 Postgres connection and `src/users/` the per-user credential store, session
 storage, Woolworths clients and legacy-file import; `supabase/migrations` is the
