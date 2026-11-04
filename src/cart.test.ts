@@ -10,7 +10,7 @@ import { CartStore } from './cart-store.ts'
 import { itemIdFor, seedItems, signInClient, signInWeb, testConfig } from './testing/app.ts'
 import { createTestDb } from './testing/db.ts'
 import { FakeGoogle } from './testing/google.ts'
-import type { CartClient, PriceLookup } from './woolworths/client.ts'
+import type { CartClient, PriceLookup, TrolleyLookup } from './woolworths/client.ts'
 
 describe('POST /cart/items', () => {
   let dir: string
@@ -19,7 +19,9 @@ describe('POST /cart/items', () => {
   let app: FastifyInstance
   let output: string
   let addToCart: ReturnType<typeof vi.fn<CartClient['addToCart']>>
-  let cartFor: ReturnType<typeof vi.fn<(email: string) => CartClient & Partial<PriceLookup>>>
+  let cartFor: ReturnType<
+    typeof vi.fn<(email: string) => CartClient & TrolleyLookup & Partial<PriceLookup>>
+  >
   let bearer: { authorization: string }
 
   const post = (payload: unknown, headers: Record<string, string> = bearer) =>
@@ -38,7 +40,7 @@ describe('POST /cart/items', () => {
     await seedItems(db.sql, 'milk:\n  stockcode: 123456\n  quantity: 2\n')
     google = await FakeGoogle.create()
     addToCart = vi.fn<CartClient['addToCart']>().mockResolvedValue(undefined)
-    cartFor = vi.fn((_email: string) => ({ addToCart }))
+    cartFor = vi.fn((_email: string) => ({ addToCart, trolley: () => Promise.resolve(new Map()) }))
     const logStream = new Writable({
       write(chunk: Buffer, _encoding, callback) {
         output += chunk.toString()

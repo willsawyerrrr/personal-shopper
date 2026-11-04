@@ -15,7 +15,7 @@ import { registerPasskey, type PasskeyOptions } from './passkey.ts'
 import { registerPickup } from './pickup.ts'
 import { registerPrivacy } from './privacy.ts'
 import { TokenStore } from './tokens.ts'
-import type { CartClient, PriceLookup, ProductLookup } from './woolworths/client.ts'
+import type { CartClient, PriceLookup, ProductLookup, TrolleyLookup } from './woolworths/client.ts'
 import type { PickupNotifier } from './woolworths/pickup.ts'
 
 declare module 'fastify' {
@@ -37,7 +37,7 @@ export interface AppOptions {
   /** Replaces the clock (used by tests). */
   now?: () => number
   /** Resolves a user's Woolworths cart; enables `POST /cart/checkout`, which does not exist without it. */
-  cart?: (email: string) => CartClient & Partial<PriceLookup>
+  cart?: (email: string) => CartClient & TrolleyLookup & Partial<PriceLookup>
   /** Enables `POST /pickup/en-route` and `POST /pickup/arrived`, which do not exist without it. */
   pickup?: PickupNotifier
   /** Resolves a user's product lookup for listing text; without it items are stored without one. */

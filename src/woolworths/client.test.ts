@@ -171,4 +171,57 @@ describe('WoolworthsClient', () => {
       await expect(new WoolworthsClient(fakeSessionStore()).price(1)).rejects.toThrow('403')
     })
   })
+
+  describe('trolley', () => {
+    const respond = (body: unknown, status = 200) => {
+      global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status }))
+    }
+
+    it('maps the stockcodes in AvailableItems to their quantities', async () => {
+      respond({
+        AvailableItems: [
+          {
+            Stockcode: 49622,
+            Quantity: 1,
+            QuantityInTrolley: 1,
+            Name: 'Golden Crumpets Round',
+            DisplayName: 'Golden Crumpets Round 6 pack',
+            IsInTrolley: true,
+            SalePrice: 5.2,
+          },
+          { Stockcode: 7, Quantity: 3 },
+        ],
+        BundleItems: [],
+        UnavailableItems: [{ Stockcode: 8, Quantity: 1 }],
+        RestrictedItems: [],
+        ConflictedItems: [],
+        Errors: [],
+      })
+      const trolley = await new WoolworthsClient(fakeSessionStore()).trolley()
+      expect(trolley).toEqual(
+        new Map([
+          [49622, 1],
+          [7, 3],
+        ]),
+      )
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://www.woolworths.com.au/apis/ui/Trolley',
+        expect.objectContaining({ method: 'GET' }),
+      )
+    })
+
+    it('ignores malformed entries and a missing AvailableItems', async () => {
+      respond({ AvailableItems: [null, { Stockcode: '5' }, { Stockcode: 9 }] })
+      await expect(new WoolworthsClient(fakeSessionStore()).trolley()).resolves.toEqual(
+        new Map([[9, 1]]),
+      )
+      respond({})
+      await expect(new WoolworthsClient(fakeSessionStore()).trolley()).resolves.toEqual(new Map())
+    })
+
+    it('throws when Woolworths rejects the request', async () => {
+      respond({}, 403)
+      await expect(new WoolworthsClient(fakeSessionStore()).trolley()).rejects.toThrow('403')
+    })
+  })
 })
