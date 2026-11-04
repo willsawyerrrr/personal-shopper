@@ -289,12 +289,13 @@ extension AdminClientTests {
 
     @Test func checksOut() async throws {
         StubURLProtocol.stub(
-            body: #"{"added":[{"id":"1","title":"Milk","stockcode":5,"quantity":2},{"id":"2","title":"Bread","stockcode":6,"quantity":1}],"failed":[{"id":"3","title":"Eggs","error":"out of stock"}]}"#
+            body: #"{"added":[{"id":"1","title":"Milk","stockcode":5,"quantity":2},{"id":"2","title":"Bread","stockcode":6,"quantity":1}],"failed":[{"id":"3","title":"Eggs","error":"out of stock"}],"skipped":[{"id":"4","title":"Tea","stockcode":9}]}"#
         )
         let result = try await client.checkOut()
         #expect(result.added.map(\.title) == ["Milk", "Bread"])
         #expect(result.failed == [FailedEntry(id: "3", title: "Eggs", error: "out of stock")])
-        #expect(result.dialog == "Added 2 items to your Woolworths cart. Couldn't add Eggs.")
+        #expect(result.skipped == [SkippedEntry(id: "4", title: "Tea", stockcode: 9)])
+        #expect(result.dialog == "Added 2 items to your Woolworths cart. Couldn't add Eggs. 1 already in your Woolworths cart.")
         let request = try #require(StubURLProtocol.requests.withLock { $0.first })
         #expect(request.httpMethod == "POST")
         #expect(request.url?.path == "/cart/checkout")
@@ -307,7 +308,10 @@ extension AdminClientTests {
         #expect(CheckoutResult(added: [], failed: failed).dialog == "Couldn't add Milk and Eggs.")
         let added = try JSONDecoder().decode(
             CheckoutResult.self, from: Data(#"{"added":[{"id":"1","title":"Milk","stockcode":5,"quantity":2}],"failed":[]}"#.utf8))
+        #expect(added.skipped.isEmpty)
         #expect(added.dialog == "Added 1 item to your Woolworths cart.")
+        let skipped = [SkippedEntry(id: "1", title: "Milk", stockcode: 5)]
+        #expect(CheckoutResult(added: [], failed: [], skipped: skipped).dialog == "1 already in your Woolworths cart.")
     }
 
     @Test func checkOutMapsFailures() async {
