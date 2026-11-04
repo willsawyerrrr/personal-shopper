@@ -8,7 +8,7 @@ struct PersonalShopperApp: App {
     @State private var sharedLink: String?
     @Environment(\.scenePhase) private var scenePhase
 
-    private enum AppTab { case items, pickup, settings }
+    private enum AppTab { case items, cart, pickup, settings }
 
     var body: some Scene {
         WindowGroup {
@@ -16,6 +16,7 @@ struct PersonalShopperApp: App {
                 if session.signedIn {
                     TabView(selection: $tab) {
                         Tab("Items", systemImage: "list.bullet", value: AppTab.items) { ItemsView(session: session) }
+                        Tab("Cart", systemImage: "cart", value: AppTab.cart) { CartView(session: session) }
                         Tab("Pickup", systemImage: "car", value: AppTab.pickup) {
                             PickupView(session: session, sharedLink: $sharedLink)
                         }
