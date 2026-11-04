@@ -25,8 +25,8 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   brand edits their mapping.
 - Session auth is cookie replay, kept alive by `GET /auth/heartbeat`
   refreshes (on demand near token expiry, plus an opt-out timer) that persist
-  the rotating `w-aref` cookie. When the refresh is rejected the server signs
-  in over plain HTTP with the user's stored passkey credential
+  the rotating `w-aref` cookie. When the refresh is rejected, or no session is
+  stored, the server signs in over plain HTTP with the user's stored passkey credential
   (`src/woolworths/passkey.ts`; no browser), which a user registers from the
   iOS app (a web view on the Woolworths login whose WebAuthn calls a bundled
   software authenticator answers, `ios/.../passkey-authenticator.js`) or the

@@ -55,12 +55,32 @@ export class SessionStore {
     private readonly login?: () => Promise<StoredSession | undefined>,
   ) {}
 
-  /** The stored session; throws the session-expired error when there is none. */
+  /**
+   * The stored session. With none stored, signs in with the passkey (when
+   * `login` is configured), saves the result and returns it; concurrent calls
+   * share one sign-in. Throws the session-expired error when there is no
+   * passkey, and a failed sign-in's own error otherwise.
+   */
   async load(): Promise<StoredSession> {
     const session = await this.find()
+    if (session) {
+      return session
+    }
+    if (!this.login) {
+      throw new SessionRejectedError(SESSION_EXPIRED_MESSAGE)
+    }
+    this.refreshing ??= this.signIn().finally(() => {
+      this.refreshing = undefined
+    })
+    return this.refreshing
+  }
+
+  private async signIn(): Promise<StoredSession> {
+    const session = await this.login?.()
     if (!session) {
       throw new SessionRejectedError(SESSION_EXPIRED_MESSAGE)
     }
+    await this.save(session)
     return session
   }
 
