@@ -106,7 +106,7 @@ export class ItemStore {
     }))
   }
 
-  /** Replaces the user's household's items with `items`, atomically. */
+  /** Replaces the user's household's items with `items`, atomically; an item keeping its id stays in the cart. */
   async save(email: string, items: ItemsConfig): Promise<void> {
     const householdId = await ensureHousehold(this.sql, email)
     const itemRows = items.map((item, position) => ({
@@ -132,10 +132,22 @@ export class ItemStore {
         position,
       })),
     )
+    // Kept items are updated in place, so the cart entries that refer to them survive.
     await this.sql.begin(async (tx) => {
-      await tx`delete from items where household_id = ${householdId}`
+      const keep = itemRows.map((row) => row.id)
+      await tx`
+        delete from items
+        where household_id = ${householdId}
+          ${keep.length > 0 ? tx`and id not in ${tx(keep)}` : tx``}`
+      await tx`delete from item_words where household_id = ${householdId}`
+      await tx`
+        delete from item_candidates
+        where item_id in (select id from items where household_id = ${householdId})`
       if (itemRows.length > 0) {
-        await tx`insert into items ${tx(itemRows)}`
+        await tx`
+          insert into items ${tx(itemRows)}
+          on conflict (id) do update set
+            position = excluded.position, name = excluded.name, listing = excluded.listing`
       }
       if (wordRows.length > 0) {
         await tx`insert into item_words ${tx(wordRows)}`

@@ -4,6 +4,7 @@ import Fastify, { LogController, type FastifyInstance } from 'fastify'
 import { registerAdmin } from './admin.ts'
 import { requestPath } from './auth.ts'
 import { registerCart } from './cart.ts'
+import { CartStore } from './cart-store.ts'
 import type { AppConfig } from './config.ts'
 import type { Sql } from './db.ts'
 import { GoogleOAuth } from './google.ts'
@@ -14,7 +15,7 @@ import { registerPasskey, type PasskeyOptions } from './passkey.ts'
 import { registerPickup } from './pickup.ts'
 import { registerPrivacy } from './privacy.ts'
 import { TokenStore } from './tokens.ts'
-import type { CartClient, ProductLookup } from './woolworths/client.ts'
+import type { CartClient, PriceLookup, ProductLookup } from './woolworths/client.ts'
 import type { PickupNotifier } from './woolworths/pickup.ts'
 
 declare module 'fastify' {
@@ -35,8 +36,8 @@ export interface AppOptions {
   fetch?: typeof fetch
   /** Replaces the clock (used by tests). */
   now?: () => number
-  /** Resolves a user's cart; enables `POST /cart/items`, which does not exist without it. */
-  cart?: (email: string) => CartClient
+  /** Resolves a user's Woolworths cart; enables `POST /cart/checkout`, which does not exist without it. */
+  cart?: (email: string) => CartClient & Partial<PriceLookup>
   /** Enables `POST /pickup/en-route` and `POST /pickup/arrived`, which do not exist without it. */
   pickup?: PickupNotifier
   /** Resolves a user's product lookup for listing text; without it items are stored without one. */
@@ -60,6 +61,7 @@ export function buildApp(config: AppConfig, options: AppOptions): FastifyInstanc
 
   const tokens = new TokenStore(options.sql, now, config.limits.maxTokensPerUser)
   const items = new ItemStore(options.sql)
+  const cart = new CartStore(options.sql)
   const households = new HouseholdStore(options.sql, now, config.limits.maxInvitesPerHousehold)
   app.decorate('tokens', tokens)
   const google = new GoogleOAuth({
@@ -100,10 +102,17 @@ export function buildApp(config: AppConfig, options: AppOptions): FastifyInstanc
 
   void registerPrivacy(app)
   void registerLogin(app, { config, sql: options.sql, tokens, google, now })
-  void registerAdmin(app, config, tokens, items, households, options.lookup, options.passkeys, now)
-  if (options.cart) {
-    void registerCart(app, config, tokens, items, options.cart, now)
-  }
+  void registerAdmin(
+    app,
+    config,
+    tokens,
+    items,
+    cart,
+    households,
+    { lookup: options.lookup, passkeys: options.passkeys, woolworths: options.cart },
+    now,
+  )
+  void registerCart(app, config, tokens, items, cart, now)
 
   if (options.pickup) {
     void registerPickup(app, config, tokens, options.pickup, now)

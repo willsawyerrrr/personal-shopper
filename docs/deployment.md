@@ -64,7 +64,7 @@ duplicate name). The reusable `ios-testflight.yml` loads them the same way.
 | `MAX_INVITES_PER_HOUSEHOLD`                                                  | server          | Unexpired invites per household; default `5`                                                                                                                                                                      |
 | `MAX_TOKENS_PER_USER`                                                        | server          | Unexpired tokens per user; default `20`                                                                                                                                                                           |
 | `USER_RATE_LIMIT_PER_MINUTE`                                                 | server          | Authenticated requests per minute per user on `/` and `/cart`; default `120`                                                                                                                                      |
-| `IP_RATE_LIMIT_PER_MINUTE`                                                   | server          | Requests per minute per client IP on each `/auth/*` route and `POST /cart/items`; default `30`                                                                                                                    |
+| `IP_RATE_LIMIT_PER_MINUTE`                                                   | server          | Requests per minute per client IP on each `/auth/*` route, `POST /cart/items` and `POST /cart/checkout`; default `30`                                                                                             |
 | `SESSION_KEEPALIVE_INTERVAL_MS`                                              | server          | Woolworths login heartbeat; `0` disables; default `21600000`                                                                                                                                                      |
 | `ICLOUD_USERNAME`, `ICLOUD_APP_SPECIFIC_PASSWORD`                            | server          | Set both to enable the Reminders sync; the password is generated at appleid.apple.com. See [`architecture.md`](architecture.md)                                                                                   |
 | `REMINDERS_LIST_NAME`                                                        | server          | Default `Shopping List`                                                                                                                                                                                           |
@@ -90,7 +90,7 @@ contract. The service is internet-reachable and sign-up is open: any Google
 account with a verified email can sign in and gets a user on first sign-in,
 bounded by the limits in [`auth.md`](auth.md#limits) (`MAX_USERS` total users,
 per-household items and invites, per-user tokens and request rates, and per-IP request rates on `/auth/*`
-and `POST /cart/items`); excess requests get `429`. `GET /healthz` is
+`POST /cart/items` and `POST /cart/checkout`); excess requests get `429`. `GET /healthz` is
 unauthenticated and backs the Fly health check. The server refuses to start
 without the Google variables.
 

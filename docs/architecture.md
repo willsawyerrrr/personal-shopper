@@ -13,7 +13,10 @@
 2. **The web app** (`src/admin.ts`, pages in `src/admin-pages.ts`): signed-in
    pages share a top navigation (marking the current page with
    `aria-current="page"`, plus Sign out): **Items** (`/`) lists, edits and
-   removes the user's items, **Add item** (`/items/new`) adds one, **Household**
+   removes the user's items, **Cart** (`/cart/manage`) lists the household's
+   Personal Shopper cart with a Remove button per entry and a Check out button
+   that shows what was added to the Woolworths cart and what stayed (the
+   button exists only when the server has a Woolworths cart client), **Add item** (`/items/new`) adds one, **Household**
    (`/household/manage`) manages the household and **Account** (`/account`)
    shows the user's own active sessions with a revoke button and whether a
    Woolworths passkey is registered, with a "Remove passkey" button when one
@@ -21,13 +24,14 @@
    `DELETE /woolworths/passkey`, both through `removePasskey` in
    `src/passkey.ts`, which also deletes the household's stored Woolworths session). Form posts return to the page they came
    from, showing validation errors there. The household page is not at
-   `/household` because `GET /household` is the JSON member list. Items
+   `/household` because `GET /household` is the JSON member list, and the cart
+   page is not at `/cart` because `GET /cart` is the JSON entry list. Items
    are the signed-in user's own, kept across three tables (`src/items.ts`,
    `ItemStore`): `items` (an id and, optionally, a household-chosen `name` and
    the looked-up `listing`), `item_words` (the trigger phrases that resolve to
    an item — a word belongs to exactly one item) and `item_candidates` (an
    item's stockcode/quantity options, an unordered set with no primary or
-   alternative distinction — see `pickCheapest` below). An item is the
+   alternative distinction — see `pickCheapest` in the cart section below). An item is the
    household's own concept of a product (e.g. "kitchen garbage bags"), listed
    one row per item: its trigger words display-cased, one per line, under its
    title (its name, else its listing, else its first word), and every
@@ -41,9 +45,10 @@
    in, and the stockcode is parsed out of `/shop/productdetails/<stockcode>/...`.
    Requests with `Accept: application/json` and a bearer token get JSON
    instead of the web UI's redirects: `GET /items`,
-   `POST /items`, `PATCH /items/:id`, `DELETE /items/:id`,
-   the household routes below, and `401 {error}` when unauthenticated. The web app owns the root-level paths `/`, `/login`, `/logout`, `/account`, `/items`, `/household` and `/sessions`; everything else lives under `/auth`, `/cart`, `/pickup`, `/woolworths` or `/healthz`. Saving a user's items replaces
-   them in one transaction, so a reader never sees a partial list. An
+   `POST /items`, `PATCH /items/:id`, `DELETE /items/:id`, `GET /cart`,
+   `DELETE /cart/items/:id`, `POST /cart/checkout`,
+   the household routes below, and `401 {error}` when unauthenticated. The web app owns the root-level paths `/`, `/login`, `/logout`, `/account`, `/items`, `/household` and `/sessions`; everything else lives under `/auth`, `/cart`, `/pickup`, `/woolworths` or `/healthz` (the web app's cart page and the cart's JSON routes, which accept the session cookie, are the exceptions under `/cart`). Saving a user's items replaces
+   them in one transaction, so a reader never sees a partial list; an item that keeps its id keeps its cart entry. An
    item's `listing`, the product's title on woolworths.com.au, is looked up
    with `WoolworthsClient.listing` (below) for its first candidate when the
    item is added or that candidate's stockcode changes, and backfilled in the
@@ -58,12 +63,25 @@
    [`extension/README.md`](../extension/README.md) and
    [`ios/README.md`](../ios/README.md); both sign in with the client flow in
    [`auth.md`](auth.md#api-client-sign-in).
-4. **Two paths into the cart**: an iCloud Reminders list that the server
-   syncs (below), and `POST /cart/items` (`src/cart.ts`), which the iOS app's
-   App Intent calls with a bearer token and a spoken phrase. It resolves the
-   phrase against the token's user's items and calls that user's
-   `WoolworthsClient.addToCart` directly; a rejected Woolworths session is a `502`. Contract in
-   [`auth.md`](auth.md#adding-to-the-cart).
+4. **The Personal Shopper cart** (`src/cart-store.ts`, `CartStore`) holds the
+   household's wishes: the `cart_entries` table, one row per item with a
+   count, keyed by household like items. Adding picks no product and never
+   contacts Woolworths, so a price change before checkout cannot make the
+   choice stale. There are two ways in: an iCloud Reminders list that the
+   server syncs (below), and `POST /cart/items` (`src/cart.ts`), which the iOS
+   app's App Intent calls with a bearer token and a spoken phrase. It
+   resolves the phrase against the token's user's items and adds one to that
+   item's count. `GET /cart`, `DELETE /cart/items/:id` and the Cart page
+   read and edit the cart. **Checkout** (`POST /cart/checkout`,
+   `src/checkout.ts`; bearer token or session cookie) sends the cart to the
+   Woolworths cart: for each entry it picks the candidate with `pickCheapest`
+   at current prices, adds that candidate's quantity times the entry's count
+   with `WoolworthsClient.addToCart`, and removes the count it added (so
+   anything added to the cart meanwhile stays). An entry that fails stays in the
+   cart and is reported in `failed`; a rejected Woolworths session is a `502`
+   after removing the entries that had already landed. It never places an
+   order; paying stays manual. Contract in
+   [`auth.md`](auth.md#the-cart).
 5. **Pickup arrival**: `POST /pickup/en-route` and `POST /pickup/arrived`
    (`src/pickup.ts`) tell Woolworths a Direct to boot customer is on their way or
    has parked in a bay. The body carries the `w.wowpu.com.au/<code>` short link
@@ -90,11 +108,11 @@
    number) the current price, `undefined` when unavailable or unparsable.
    `POST /apis/ui/Search/products` for search is confirmed broken or
    deprecated; see the risks below. When an item has more than one candidate,
-   `POST /cart/items` (`src/cart.ts`, `pickCheapest`) looks up the price of
+   checkout (`src/checkout.ts`, `pickCheapest`) looks up the price of
    each of the item's candidates and adds whichever has the lowest price per
    unit, falling back to the first candidate (in stored order) when a price
    lookup fails or none is cheaper — a candidate's price lookup failing never
-   fails the cart-add.
+   fails the checkout; an item with one candidate costs no lookup.
 7. **`SessionStore`** (`src/woolworths/session.ts`) holds a user's cookie jar
    (the `woolworths_sessions` table, via `PgSessionStorage`) those calls
    authenticate with and refreshes it through `GET /auth/heartbeat`
@@ -170,7 +188,7 @@ file is imported only into an empty destination and then renamed with an
 ## Reminders queue
 
 A shared iCloud Reminders list ("Shopping List" by default) is the queue the
-server drains into the cart. Adding a reminder to it, such as with Siri's
+server drains into the Personal Shopper cart. Adding a reminder to it, such as with Siri's
 built-in "add milk to my Shopping List", queues that item.
 
 `ICloudRemindersClient` (`src/reminders/client.ts`) polls that list over
@@ -180,12 +198,11 @@ an app-specific password (`ICLOUD_USERNAME` /
 Apple ID password itself). `syncReminders` (`src/reminders/sync.ts`) runs on
 an interval (`REMINDERS_SYNC_INTERVAL_MS`, default 5 minutes) from
 `src/server.ts`: for each pending reminder it resolves the title against
-the owner's items (an exact, normalised match on the trigger word), calls
-`WoolworthsClient.addToCart` directly with the item's first candidate (in
-stored order, with no price comparison across several), and deletes the
-reminder once it lands in the cart. A reminder with no mapping, or one that fails because the
-Woolworths session is expired (heartbeat refresh rejected), is left queued and
-retried on the next interval. This is opt-in: deployments that don't set both
+the owner's items (an exact, normalised match on the trigger word), adds one
+of that item to the owner's Personal Shopper cart, and deletes the
+reminder once it is in the cart. The sync never contacts Woolworths, so it does not
+depend on a live session. A reminder with no mapping, or one that fails to be
+added, is left queued and retried on the next interval. This is opt-in: deployments that don't set both
 iCloud env vars skip it entirely. It is server-side only and needs no sign-in.
 The list belongs to the operator, so the sync acts for one user, the owner
 (`REMINDERS_OWNER_EMAIL`, required to enable the sync): it resolves

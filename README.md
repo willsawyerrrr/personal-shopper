@@ -1,8 +1,8 @@
 # Personal Shopper
 
 Voice-triggered automation that adds preferred products to a Woolworths
-Click & Collect cart: "Hey Siri, add milk to Grocery List" on a HomePod ends
-with the household's usual milk in the cart.
+Click & Collect cart: "Hey Siri, add milk to Grocery List" on a HomePod puts
+milk in the household's cart, and checking out sends the usual milk to Woolworths.
 
 See [`docs/architecture.md`](docs/architecture.md) for how it fits together,
 [`docs/auth.md`](docs/auth.md) for Google sign-in and the API client contract,
@@ -37,8 +37,10 @@ Sign-in is Google only and open to any account with a verified email, up to
 tokens.
 
 The `ios/` app (see [`ios/README.md`](ios/README.md)) manages items and adds a
-product from the iOS share sheet. Its Siri App Intent adds an item to the cart
-through `POST /cart/items`, authorised by the app's bearer token. The server can
+product from the iOS share sheet. Its Siri App Intent adds an item to the
+Personal Shopper cart through `POST /cart/items`, authorised by the app's bearer
+token; products are chosen at checkout, from the web app's Cart page or
+`POST /cart/checkout`. The server can
 also tell Woolworths you are on your way to, or parked for, a Direct to boot pickup
 (`POST /pickup/en-route`, `POST /pickup/arrived`), given either the short link
 from the ready-order text or the full link it redirects to.
