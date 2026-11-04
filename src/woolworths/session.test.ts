@@ -40,6 +40,48 @@ describe('SessionStore', () => {
     await expect(store.load()).rejects.toThrow(SessionRejectedError)
   })
 
+  describe('load without a stored session', () => {
+    const loggedIn: StoredSession = {
+      cookies: [{ name: 'w-aref', value: 'login-aref' }],
+      capturedAt: new Date().toISOString(),
+    }
+
+    it('signs in with the passkey and saves the session', async () => {
+      const login = vi.fn().mockResolvedValue(loggedIn)
+      const withLogin = new SessionStore(storage, login)
+      await expect(withLogin.load()).resolves.toEqual(loggedIn)
+      expect(stored).toEqual(loggedIn)
+    })
+
+    it('shares one sign-in between concurrent calls', async () => {
+      const login = vi.fn().mockResolvedValue(loggedIn)
+      const withLogin = new SessionStore(storage, login)
+      await Promise.all([withLogin.load(), withLogin.load()])
+      expect(login).toHaveBeenCalledTimes(1)
+    })
+
+    it('reports the session as expired when there is no passkey', async () => {
+      const login = vi.fn().mockResolvedValue(undefined)
+      const withLogin = new SessionStore(storage, login)
+      await expect(withLogin.load()).rejects.toThrow(SESSION_EXPIRED_MESSAGE)
+      expect(stored).toBeUndefined()
+    })
+
+    it('surfaces a failed sign-in and retries on the next call', async () => {
+      const login = vi.fn().mockRejectedValueOnce(new Error('rejected')).mockResolvedValue(loggedIn)
+      const withLogin = new SessionStore(storage, login)
+      await expect(withLogin.load()).rejects.toThrow('rejected')
+      await expect(withLogin.load()).resolves.toEqual(loggedIn)
+    })
+
+    it('leaves find() without a session and does not sign in', async () => {
+      const login = vi.fn()
+      const withLogin = new SessionStore(storage, login)
+      await expect(withLogin.find()).resolves.toBeUndefined()
+      expect(login).not.toHaveBeenCalled()
+    })
+  })
+
   it('treats a freshly captured session as not expired', () => {
     const session: StoredSession = { cookies: [], capturedAt: new Date().toISOString() }
     expect(store.isExpired(session)).toBe(false)

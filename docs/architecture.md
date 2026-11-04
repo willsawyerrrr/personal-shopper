@@ -280,6 +280,12 @@ fails with the session-expired error (and the Reminders sync leaves items
 queued) until `pnpm passkey-login` or `pnpm capture-session` is run. A failed
 passkey login surfaces its own error; the next call retries it.
 
+When no session is stored (cleared after a failed sign-in, say) but the user has
+a passkey credential, `SessionStore.load` signs in with it, saves the session
+and returns it; concurrent callers share one sign-in. Without a credential it
+throws the session-expired error. `find` never signs in, so the keepalive timer
+skips users with no stored session.
+
 ## Deployment
 
 Runs as one always-on Fly.io machine in `syd`, publicly reachable over HTTPS
