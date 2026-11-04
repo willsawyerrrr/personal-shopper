@@ -25,6 +25,19 @@ struct PasskeyView: View {
                     case nil: Text("…")
                     }
                 }
+                if let verification = model.verification {
+                    LabeledContent("Sign-in") {
+                        switch verification {
+                        case .verifying: Text("Checking…")
+                        case .verified: Label("Verified", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                        case .failed: Text("Not verified").foregroundStyle(.red)
+                        }
+                    }
+                    if case .failed(let message) = verification {
+                        Text(message).font(.footnote).foregroundStyle(.secondary)
+                        Button("Check again") { model.startVerification() }
+                    }
+                }
                 Button(model.registered == true ? "Replace passkey" : "Register passkey") {
                     model.dismissFailure()
                     registering = true
@@ -50,7 +63,7 @@ struct PasskeyView: View {
 }
 
 /// The Woolworths login in a web view whose passkey prompts a software
-/// authenticator answers; dismisses itself once the server has the passkey.
+/// authenticator answers; dismisses itself once the server has stored the passkey.
 private struct RegisterPasskeyView: View {
     let model: PasskeyModel
     let dismiss: () -> Void
@@ -59,7 +72,10 @@ private struct RegisterPasskeyView: View {
         NavigationStack {
             PasskeyWebView { message in
                 Task {
-                    if await model.register(message: message) { dismiss() }
+                    if await model.register(message: message) {
+                        dismiss()
+                        model.startVerification()
+                    }
                 }
             }
             .safeAreaInset(edge: .bottom) { status }

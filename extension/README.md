@@ -59,8 +59,8 @@ sign-in, and `CREDENTIALS_ENCRYPTION_KEY` set on the server.
 3. The extension polls `WebAuthn.getCredentials`, uploads the first credential
    for `auth.woolworths.com.au` with `PUT /woolworths/passkey`, then removes the
    authenticator, detaches and closes the window. It times out after 10 minutes.
-   The server signs in with the credential at once and replaces the household's
-   stored Woolworths session; a failed sign-in is reported as the upload's error.
+   The server stores the credential and deletes the household's stored
+   Woolworths session; the next cart request signs in with the new credential.
 
 Incognito needs a one-time step: `chrome://extensions` → this extension's
 Details → "Allow in Incognito". Until it is on, the options page shows an

@@ -177,13 +177,19 @@ public struct AdminClient: Sendable {
         return try decode(Response.self, from: await send("GET", path: "/woolworths/passkey")).registered
     }
 
-    /// Stores `credential` as the household's Woolworths passkey. The server signs in
-    /// with it at once, so this fails if Woolworths rejects it.
+    /// Stores `credential` as the household's Woolworths passkey. The server does not
+    /// sign in with it; `verifyPasskey()` does.
     public func register(_ credential: PasskeyCredential) async throws {
+        _ = try await send("PUT", path: "/woolworths/passkey", body: JSONEncoder().encode(credential))
+    }
+
+    /// Has the server sign in to Woolworths with the stored passkey. Throws when
+    /// Woolworths rejects it, which is expected for a moment after registering.
+    public func verifyPasskey() async throws {
         do {
-            _ = try await send("PUT", path: "/woolworths/passkey", body: JSONEncoder().encode(credential))
+            _ = try await send("POST", path: "/woolworths/passkey/verify")
         } catch AdminError.woolworthsSessionExpired {
-            throw AdminError.rejected("The passkey was saved, but signing in to Woolworths with it failed. Try again.")
+            throw AdminError.rejected("Signing in to Woolworths with the passkey failed.")
         }
     }
 

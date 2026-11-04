@@ -89,13 +89,14 @@ describe('/woolworths/passkey', () => {
   let bearer: Record<string, string>
 
   const call = (
-    method: 'PUT' | 'GET' | 'DELETE',
+    method: 'PUT' | 'GET' | 'DELETE' | 'POST',
     payload?: unknown,
     headers: Record<string, string> = bearer,
+    url = '/woolworths/passkey',
   ) =>
     app.inject({
       method,
-      url: '/woolworths/passkey',
+      url,
       headers,
       ...(payload === undefined ? {} : { payload: payload as object }),
     })
@@ -131,36 +132,50 @@ describe('/woolworths/passkey', () => {
 
   const aref = async () => (await stored.load())?.cookies[0]?.value
 
-  it('stores the first usable credential of an array and signs in with it', async () => {
+  it('stores the first usable credential of an array without signing in', async () => {
     const usable = credential({ credentialId: 'b3Ro' })
     const response = await call('PUT', [credential({ rpId: 'example.com' }), usable])
     expect(response.statusCode).toBe(200)
     expect(response.json()).toEqual({ registered: true })
     await expect(credentials.get('me@example.com')).resolves.toEqual([usable])
-    expect(passkeyLogin).toHaveBeenCalledWith([usable])
-    expect(await aref()).toBe('new')
+    expect(passkeyLogin).not.toHaveBeenCalled()
   })
 
-  it('replaces the stored session with the new account', async () => {
-    const replacement = credential({ credentialId: 'bmV3' })
+  it('deletes the stored session of the previous passkey when storing a new one', async () => {
+    await stored.save(session('old-account'))
+    expect((await call('PUT', credential({ credentialId: 'bmV3' }))).statusCode).toBe(200)
+    await expect(stored.load()).resolves.toBeUndefined()
+  })
+
+  it('verifies the stored passkey and replaces the stored session', async () => {
+    const value = credential({ credentialId: 'bmV3' })
+    await call('PUT', value)
     vi.mocked(passkeyLogin).mockResolvedValue(session('other-account'))
-    expect((await call('PUT', replacement)).statusCode).toBe(200)
-    expect(passkeyLogin).toHaveBeenCalledWith([replacement])
+    const response = await call('POST', undefined, bearer, '/woolworths/passkey/verify')
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toEqual({ verified: true })
+    expect(passkeyLogin).toHaveBeenCalledWith([value])
     expect(await aref()).toBe('other-account')
   })
 
-  it('keeps the credential, deletes the session and answers 502 when sign-in fails', async () => {
+  it('keeps the credential, deletes the session and answers 502 when verification fails', async () => {
     vi.mocked(passkeyLogin).mockRejectedValue(new Error('Woolworths passkey login was rejected'))
     const value = credential()
-    const response = await call('PUT', value)
+    await call('PUT', value)
+    const response = await call('POST', undefined, bearer, '/woolworths/passkey/verify')
     expect(response.statusCode).toBe(502)
     expect(response.json()).toEqual({
-      error:
-        'passkey saved, but signing in to Woolworths with it failed: Woolworths passkey login was rejected',
+      error: 'signing in to Woolworths failed: Woolworths passkey login was rejected',
     })
     await expect(credentials.get('me@example.com')).resolves.toEqual([value])
     await expect(stored.load()).resolves.toBeUndefined()
     expect(output).not.toContain(value.privateKey)
+  })
+
+  it('answers 404 to verification without a passkey', async () => {
+    const response = await call('POST', undefined, bearer, '/woolworths/passkey/verify')
+    expect(response.statusCode).toBe(404)
+    expect(passkeyLogin).not.toHaveBeenCalled()
   })
 
   it('replaces an existing credential', async () => {

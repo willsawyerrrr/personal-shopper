@@ -82,14 +82,16 @@ export async function removePasskey(
 }
 
 /**
- * Registers `PUT`, `GET` and `DELETE /woolworths/passkey`, which store,
- * report on and remove the Woolworths passkey of the user the bearer token
- * belongs to. Authorised by a bearer token only, never the web session
- * cookie. Credential content is never logged. `PUT` signs in with the
- * credential at once and replaces the household's stored session with the
- * result; when that fails it answers `502`, keeps the credential and leaves
- * the household with no stored session. `DELETE` also deletes the stored
- * session.
+ * Registers `PUT`, `GET` and `DELETE /woolworths/passkey` and `POST
+ * /woolworths/passkey/verify`, which store, report on, remove and test the
+ * Woolworths passkey of the user the bearer token belongs to. Authorised by a
+ * bearer token only, never the web session cookie. Credential content is
+ * never logged. `PUT` only stores the credential and deletes the household's
+ * stored session, which belongs to the previous passkey; Woolworths can take
+ * a moment to accept a new passkey, so signing in is left to `verify`, which
+ * signs in with the stored credential and replaces the stored session with the
+ * result, answering `502` and leaving no session when that fails (a `404`
+ * when there is no credential). `DELETE` also deletes the stored session.
  */
 export async function registerPasskey(
   app: FastifyInstance,
@@ -117,17 +119,26 @@ export async function registerPasskey(
       }
       const email = emails.get(request) as string
       await credentials.put(email, [selected.credential])
+      await sessions.clearSession(email)
+      request.log.info('woolworths passkey registered')
+      return { registered: true }
+    })
+
+    routes.post('/woolworths/passkey/verify', { config: { rateLimit } }, async (request, reply) => {
+      const email = emails.get(request) as string
+      const stored = await credentials.get(email)
+      if (!stored?.[0]) {
+        return reply.code(404).send({ error: 'no passkey registered' })
+      }
       try {
-        await sessions.replaceSession(email, selected.credential)
+        await sessions.replaceSession(email, stored[0])
       } catch (error) {
         request.log.warn({ err: error }, 'woolworths passkey sign-in failed')
         const reason = error instanceof Error ? error.message : String(error)
-        return reply.code(502).send({
-          error: `passkey saved, but signing in to Woolworths with it failed: ${reason}`,
-        })
+        return reply.code(502).send({ error: `signing in to Woolworths failed: ${reason}` })
       }
-      request.log.info('woolworths passkey registered')
-      return { registered: true }
+      request.log.info('woolworths passkey verified')
+      return { verified: true }
     })
 
     routes.get('/woolworths/passkey', { config: { rateLimit } }, async (request) => ({

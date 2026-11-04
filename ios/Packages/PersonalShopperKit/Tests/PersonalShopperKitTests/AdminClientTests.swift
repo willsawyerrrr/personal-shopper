@@ -704,7 +704,7 @@ extension AdminClientTests {
 
     @MainActor private func passkeyModel() throws -> PasskeyModel {
         let client = client
-        return PasskeyModel { client }
+        return PasskeyModel(verifyDelay: .zero, verifyAttempts: 3) { client }
     }
 
     @Test func reportsWhetherAPasskeyIsRegistered() async throws {
@@ -730,12 +730,18 @@ extension AdminClientTests {
             ])
     }
 
+    @Test func verifiesAPasskey() async throws {
+        StubURLProtocol.stub(body: #"{"verified":true}"#)
+        try await client.verifyPasskey()
+        let request = try #require(StubURLProtocol.requests.withLock { $0.first })
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://example.test/woolworths/passkey/verify")
+    }
+
     @Test func reportsAFailedWoolworthsSignIn() async throws {
-        StubURLProtocol.stub(status: 502, body: #"{"error":"passkey saved, but signing in to Woolworths with it failed: nope"}"#)
-        await #expect(
-            throws: AdminError.rejected("The passkey was saved, but signing in to Woolworths with it failed. Try again.")
-        ) {
-            try await client.register(Self.credential)
+        StubURLProtocol.stub(status: 502, body: #"{"error":"signing in to Woolworths failed: nope"}"#)
+        await #expect(throws: AdminError.rejected("Signing in to Woolworths with the passkey failed.")) {
+            try await client.verifyPasskey()
         }
     }
 
@@ -805,13 +811,32 @@ extension AdminClientTests {
     }
 
     @MainActor @Test func passkeyModelReportsAFailedRegistration() async throws {
-        StubURLProtocol.stub(status: 502)
+        StubURLProtocol.stub(status: 500)
         let model = try passkeyModel()
-        await model.register(Self.credential)
+        let stored = await model.register(Self.credential)
+        #expect(!stored)
         #expect(model.registered == nil)
-        #expect(model.phase == .failed("The passkey was saved, but signing in to Woolworths with it failed. Try again."))
+        guard case .failed = model.phase else { Issue.record("expected a failure"); return }
         model.dismissFailure()
         #expect(model.phase == .idle)
+    }
+
+    @MainActor @Test func passkeyModelVerifiesAfterRegistering() async throws {
+        StubURLProtocol.stub(body: #"{"verified":true}"#)
+        let model = try passkeyModel()
+        #expect(model.verification == nil)
+        await model.verify()
+        #expect(model.verification == .verified)
+        let request = try #require(StubURLProtocol.requests.withLock { $0.first })
+        #expect(request.url?.path == "/woolworths/passkey/verify")
+    }
+
+    @MainActor @Test func passkeyModelRetriesVerificationBeforeReportingFailure() async throws {
+        StubURLProtocol.stub(status: 502, body: #"{"error":"nope"}"#)
+        let model = try passkeyModel()
+        await model.verify()
+        #expect(model.verification == .failed("Signing in to Woolworths with the passkey failed."))
+        #expect(StubURLProtocol.requests.withLock { $0.count } == 3)
     }
 
     @MainActor @Test func passkeyModelRemovesThePasskey() async throws {
