@@ -19,13 +19,13 @@ import {
   renderItemsPage,
 } from './admin-pages.ts'
 import type { CartStore } from './cart-store.ts'
-import { checkout, type CheckoutResult } from './checkout.ts'
+import { checkout, TrolleyUnreadableError, type CheckoutResult } from './checkout.ts'
 import { InviteLimitError, type HouseholdStore } from './households.ts'
 import { itemTitle, normalizeWord, type Item, type ItemStore } from './items.ts'
 import { createListingBackfill, lookupListing } from './listings.ts'
 import { PASSKEY_RATE_LIMIT, removePasskey, type PasskeyOptions } from './passkey.ts'
 import type { SessionSummary, TokenStore } from './tokens.ts'
-import type { CartClient, PriceLookup, ProductLookup } from './woolworths/client.ts'
+import type { CartClient, PriceLookup, ProductLookup, TrolleyLookup } from './woolworths/client.ts'
 import { SessionRejectedError } from './woolworths/session.ts'
 
 export interface AdminOptions {
@@ -34,7 +34,7 @@ export interface AdminOptions {
   /** Enables the account page's passkey section. */
   passkeys?: PasskeyOptions | undefined
   /** Resolves a user's Woolworths cart; enables `POST /cart/checkout`. */
-  woolworths?: ((email: string) => CartClient & Partial<PriceLookup>) | undefined
+  woolworths?: ((email: string) => CartClient & TrolleyLookup & Partial<PriceLookup>) | undefined
 }
 
 export async function registerAdmin(
@@ -203,10 +203,12 @@ export async function registerAdmin(
               request.log,
             )
           } catch (error) {
-            if (!(error instanceof SessionRejectedError)) {
+            if (!(
+              error instanceof SessionRejectedError || error instanceof TrolleyUnreadableError
+            )) {
               throw error
             }
-            request.log.warn('woolworths session rejected')
+            request.log.warn({ error }, 'checkout refused')
             return wantsJson(request)
               ? reply.code(502).send({ error: error.message })
               : reply

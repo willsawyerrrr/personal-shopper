@@ -114,9 +114,16 @@ export function renderCartPage(
       .map((line) => `<li>${escapeHtml(line.title)}: ${escapeHtml(line.error)}</li>`)
       .join('')}</ul>`
     : ''
+  const skipped = result?.skipped.length
+    ? `<h2>Already in your Woolworths cart</h2>
+    <ul>${result.skipped
+      .map((line) => `<li>${escapeHtml(line.title)} (stockcode ${line.stockcode})</li>`)
+      .join('')}</ul>
+    <p class="hint">They were not added again, and they have been cleared from your cart.</p>`
+    : ''
   const outcome = result
     ? `<section role="status">
-    ${added}${failed}${added || failed ? '' : '<p class="hint">Your cart was empty, so nothing was added.</p>'}
+    ${added}${skipped}${failed}${added || skipped || failed ? '' : '<p class="hint">Your cart was empty, so nothing was added.</p>'}
     <p class="hint">Review and pay for the order on woolworths.com.au.</p>
   </section>`
     : ''

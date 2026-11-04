@@ -74,12 +74,19 @@
    item's count. `GET /cart`, `DELETE /cart/items/:id` and the Cart page
    read and edit the cart. **Checkout** (`POST /cart/checkout`,
    `src/checkout.ts`; bearer token or session cookie) sends the cart to the
-   Woolworths cart: for each entry it picks the candidate with `pickCheapest`
-   at current prices, adds that candidate's quantity times the entry's count
+   Woolworths cart. It reads the Woolworths cart once first
+   (`WoolworthsClient.trolley`); an entry any of whose candidates is already in
+   it, in any quantity, counts as satisfied: it is not added, leaves the cart
+   (only the counted amount) and is reported in `skipped`. Otherwise it picks
+   the candidate with `pickCheapest` at current prices, adds that candidate's quantity times the entry's count
    with `WoolworthsClient.addToCart`, and removes the count it added (so
    anything added to the cart meanwhile stays). An entry that fails stays in the
    cart and is reported in `failed`; a rejected Woolworths session is a `502`
-   after removing the entries that had already landed. It never places an
+   after removing the entries that had already landed. A cart that cannot be
+   read is also a `502`, with nothing changed, so a duplicate is never risked.
+   Limits: a product the item has no candidate for, or one added to the
+   Woolworths cart after the read, is not detected, and any quantity of a
+   present candidate counts as satisfied. It never places an
    order; paying stays manual. Contract in
    [`auth.md`](auth.md#the-cart).
 5. **Pickup arrival**: `POST /pickup/en-route` and `POST /pickup/arrived`
@@ -104,7 +111,9 @@
    unofficial API directly. `POST /api/v3/ui/trolley/update` for cart changes
    is confirmed working against a live cart. `GET /apis/ui/product/detail/<stockcode>`
    is read-only and works with the same session cookies (and fails without
-   them); `Product.DisplayName` is the listing text and `Product.Price` (a plain
+   them); `GET /apis/ui/Trolley` (not `/api/v3/ui/trolley`) is the cart read:
+   `AvailableItems[].Stockcode` and `Quantity` are what is in it, and the other
+   `*Items` arrays are not counted; `Product.DisplayName` is the listing text and `Product.Price` (a plain
    number) the current price, `undefined` when unavailable or unparsable.
    `POST /apis/ui/Search/products` for search is confirmed broken or
    deprecated; see the risks below. When an item has more than one candidate,

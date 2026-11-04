@@ -13,6 +13,11 @@ export interface CartClient {
   addToCart(stockcode: number, quantity: number): Promise<void>
 }
 
+export interface TrolleyLookup {
+  /** The stockcodes in the Woolworths cart, each with the quantity in it. */
+  trolley(): Promise<Map<number, number>>
+}
+
 export interface ProductLookup {
   /** The product's title as listed on woolworths.com.au, or `undefined` when there is none. */
   listing(stockcode: number): Promise<string | undefined>
@@ -25,7 +30,7 @@ export interface PriceLookup {
 
 const LOOKUP_TIMEOUT_MS = 10_000
 
-export class WoolworthsClient implements CartClient, ProductLookup, PriceLookup {
+export class WoolworthsClient implements CartClient, TrolleyLookup, ProductLookup, PriceLookup {
   constructor(private readonly sessions: SessionStore) {}
 
   async search(term: string): Promise<SearchResultProduct[]> {
@@ -54,6 +59,13 @@ export class WoolworthsClient implements CartClient, ProductLookup, PriceLookup 
   async price(stockcode: number): Promise<number | undefined> {
     const response = await this.request(`/apis/ui/product/detail/${stockcode}`)
     return parsePrice(response)
+  }
+
+  // `GET /apis/ui/Trolley` is read-only and works with the session cookies (verified 2026-11);
+  // `AvailableItems` holds the items in the cart. The other `*Items` arrays (unavailable,
+  // restricted, conflicted, bundles) are not counted as in it.
+  async trolley(): Promise<Map<number, number>> {
+    return parseTrolley(await this.request('/apis/ui/Trolley'))
   }
 
   async addToCart(stockcode: number, quantity: number): Promise<void> {
@@ -116,6 +128,19 @@ function parsePrice(response: unknown): number | undefined {
   const price = product.Price as Record<string, unknown> | number | undefined
   const value = typeof price === 'object' ? price?.Value : price
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined
+}
+
+function parseTrolley(response: unknown): Map<number, number> {
+  const items = (response as { AvailableItems?: unknown } | null)?.AvailableItems
+  const trolley = new Map<number, number>()
+  for (const item of Array.isArray(items) ? (items as unknown[]) : []) {
+    const { Stockcode, Quantity } = (item ?? {}) as Record<string, unknown>
+    if (typeof Stockcode === 'number' && Number.isInteger(Stockcode)) {
+      const quantity = typeof Quantity === 'number' && Number.isFinite(Quantity) ? Quantity : 1
+      trolley.set(Stockcode, (trolley.get(Stockcode) ?? 0) + quantity)
+    }
+  }
+  return trolley
 }
 
 // `POST /apis/ui/Search/products` returns a generic 400 against a real

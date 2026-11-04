@@ -9,7 +9,7 @@ import { pickCheapest } from './checkout.ts'
 import { itemIdFor, seedItems, signInClient, signInWeb, testConfig } from './testing/app.ts'
 import { createTestDb } from './testing/db.ts'
 import { FakeGoogle } from './testing/google.ts'
-import type { CartClient, PriceLookup } from './woolworths/client.ts'
+import type { CartClient, PriceLookup, TrolleyLookup } from './woolworths/client.ts'
 import { SESSION_EXPIRED_MESSAGE, SessionRejectedError } from './woolworths/session.ts'
 
 describe('pickCheapest', () => {
@@ -62,6 +62,7 @@ describe('cart API and checkout', () => {
   let google: FakeGoogle
   let app: FastifyInstance
   let addToCart: ReturnType<typeof vi.fn<CartClient['addToCart']>>
+  let trolley: ReturnType<typeof vi.fn<TrolleyLookup['trolley']>>
   let price: ReturnType<typeof vi.fn<PriceLookup['price']>>
   let bearer: { authorization: string; accept: string }
   let cookie: { cookie: string }
@@ -86,11 +87,12 @@ describe('cart API and checkout', () => {
     await seedItems(db.sql, YAML)
     google = await FakeGoogle.create()
     addToCart = vi.fn<CartClient['addToCart']>().mockResolvedValue(undefined)
+    trolley = vi.fn<TrolleyLookup['trolley']>().mockResolvedValue(new Map())
     price = vi.fn<PriceLookup['price']>((stockcode) => Promise.resolve(stockcode === 1 ? 3 : 10))
     app = buildApp(testConfig(dir), {
       sql: db.sql,
       fetch: google.fetch,
-      cart: () => ({ addToCart, price }),
+      cart: () => ({ addToCart, trolley, price }),
     })
     bearer = {
       authorization: `Bearer ${await signInClient(app, google)}`,
@@ -154,6 +156,7 @@ describe('cart API and checkout', () => {
       expect(response.json()).toEqual({
         added: [{ id: await id('milk'), title: 'Milk', stockcode: 100, quantity: 6 }],
         failed: [],
+        skipped: [],
       })
       expect(addToCart).toHaveBeenCalledWith(100, 6)
       expect(price).not.toHaveBeenCalled()
@@ -188,6 +191,7 @@ describe('cart API and checkout', () => {
       expect(response.json()).toEqual({
         added: [{ id: await id('bread'), title: 'Bread', stockcode: 300, quantity: 1 }],
         failed: [{ id: await id('milk'), title: 'Milk', error: expect.any(String) }],
+        skipped: [],
       })
       expect(await cart.list('me@example.com')).toEqual([{ itemId: await id('milk'), count: 1 }])
     })
@@ -208,6 +212,67 @@ describe('cart API and checkout', () => {
       await fill('milk')
       await send('POST', '/cart/checkout')
       expect(await cart.list('me@example.com')).toEqual([{ itemId: await id('milk'), count: 1 }])
+    })
+
+    it('skips an item whose candidate is already in the Woolworths cart', async () => {
+      trolley.mockResolvedValue(new Map([[100, 1]]))
+      await fill('milk', 'milk', 'bread')
+      const response = await send('POST', '/cart/checkout')
+      expect(response.json()).toEqual({
+        added: [{ id: await id('bread'), title: 'Bread', stockcode: 300, quantity: 1 }],
+        failed: [],
+        skipped: [{ id: await id('milk'), title: 'Milk', stockcode: 100 }],
+      })
+      expect(addToCart).toHaveBeenCalledTimes(1)
+      expect(addToCart).toHaveBeenCalledWith(300, 1)
+      expect(trolley).toHaveBeenCalledTimes(1)
+      expect(await cart.list('me@example.com')).toEqual([])
+    })
+
+    it('skips an item when any of its candidates is in the Woolworths cart', async () => {
+      trolley.mockResolvedValue(new Map([[2, 5]]))
+      await fill('bars')
+      const response = await send('POST', '/cart/checkout')
+      expect(response.json()).toMatchObject({
+        added: [],
+        skipped: [{ title: 'Bars', stockcode: 2 }],
+      })
+      expect(addToCart).not.toHaveBeenCalled()
+      expect(price).not.toHaveBeenCalled()
+    })
+
+    it('removes only the counted amount of a skipped item', async () => {
+      trolley.mockImplementation(async () => {
+        await fill('milk')
+        return new Map([[100, 1]])
+      })
+      await fill('milk')
+      await send('POST', '/cart/checkout')
+      expect(await cart.list('me@example.com')).toEqual([{ itemId: await id('milk'), count: 1 }])
+    })
+
+    it('answers an unreadable Woolworths cart with 502 and changes nothing', async () => {
+      trolley.mockRejectedValue(new Error('boom'))
+      await fill('milk', 'bread')
+      const response = await send('POST', '/cart/checkout')
+      expect(response.statusCode).toBe(502)
+      expect(response.json()).toEqual({ error: expect.stringContaining('Woolworths cart') })
+      expect(addToCart).not.toHaveBeenCalled()
+      expect(await cart.list('me@example.com')).toHaveLength(2)
+    })
+
+    it('answers a session rejected by the cart read with 502', async () => {
+      trolley.mockRejectedValue(new SessionRejectedError(SESSION_EXPIRED_MESSAGE))
+      await fill('milk')
+      const response = await send('POST', '/cart/checkout')
+      expect(response.statusCode).toBe(502)
+      expect(response.json()).toEqual({ error: SESSION_EXPIRED_MESSAGE })
+      expect(addToCart).not.toHaveBeenCalled()
+    })
+
+    it('does not read the Woolworths cart for an empty cart', async () => {
+      await send('POST', '/cart/checkout')
+      expect(trolley).not.toHaveBeenCalled()
     })
 
     it('answers a rejected Woolworths session with 502 and keeps the cart', async () => {
@@ -239,7 +304,11 @@ describe('cart API and checkout', () => {
     })
 
     it('adds nothing for an empty cart', async () => {
-      expect((await send('POST', '/cart/checkout')).json()).toEqual({ added: [], failed: [] })
+      expect((await send('POST', '/cart/checkout')).json()).toEqual({
+        added: [],
+        failed: [],
+        skipped: [],
+      })
       expect(addToCart).not.toHaveBeenCalled()
     })
 
@@ -305,6 +374,25 @@ describe('cart API and checkout', () => {
       expect(response.body).toContain('Added to your Woolworths cart')
       expect(response.body).toContain('1 × Bread')
       expect(response.body).toContain('Still in your cart')
+    })
+
+    it('shows skipped items', async () => {
+      trolley.mockResolvedValue(new Map([[100, 1]]))
+      await fill('milk')
+      const response = await app.inject({ method: 'POST', url: '/cart/checkout', headers: cookie })
+      expect(response.statusCode).toBe(200)
+      expect(response.body).toContain('Already in your Woolworths cart')
+      expect(response.body).toContain('Milk (stockcode 100)')
+      expect(response.body).not.toContain('Your cart was empty')
+    })
+
+    it('shows an unreadable Woolworths cart as an error', async () => {
+      trolley.mockRejectedValue(new Error('boom'))
+      await fill('milk')
+      const response = await app.inject({ method: 'POST', url: '/cart/checkout', headers: cookie })
+      expect(response.statusCode).toBe(502)
+      expect(response.body).toContain('Could not read your Woolworths cart')
+      expect(response.body).toContain('Milk')
     })
 
     it('shows a rejected session as an error', async () => {

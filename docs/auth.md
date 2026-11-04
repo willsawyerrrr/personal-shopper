@@ -107,20 +107,20 @@ Bearer tokens authorise the JSON API on `/items` and `/cart`; send
 `Accept: application/json`. Every call acts on the token's user and their
 household: members share items and one Personal Shopper cart.
 
-| Request                                                                    | Success                                                                       |
-| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `GET /items`                                                               | `200 {"items":[{id, words, candidates, listing?, name?}]}`                    |
-| `POST /items` with `{word or words, url, quantity?, name?, alternatives?}` | `201` with the stored item; `400 {error}` if invalid                          |
-| `PATCH /items/:id` with any of the fields below                            | `200` with the stored item; `400`, `404`, `409` below                         |
-| `DELETE /items/:id` (or `POST /items/:id/delete`)                          | `204`; `404` for an unknown item                                              |
-| `GET /cart`                                                                | `200 {"entries":[{id, title, words, count}]}`, `id` being the item's          |
-| `DELETE /cart/items/:id` (`id` an item's)                                  | `204`; `404` when the item is not in the cart                                 |
-| `POST /cart/checkout`                                                      | `200 {added, failed}`; `502 {error}` for a rejected Woolworths session        |
-| `GET /household`                                                           | `200 {"members":[{email, you}]}`                                              |
-| `POST /household/invites`                                                  | `201 {code, expiresAt}` (epoch ms); `409 {error}` at the invite limit         |
-| `POST /household/join` with `{code}`                                       | `204`; `400 {error}` invalid, expired or used; `409 {error}` already a member |
-| `POST /household/leave`                                                    | `204`; `409 {error}` for a sole member                                        |
-| `POST /auth/logout`                                                        | `204`; revokes the presented token                                            |
+| Request                                                                    | Success                                                                           |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `GET /items`                                                               | `200 {"items":[{id, words, candidates, listing?, name?}]}`                        |
+| `POST /items` with `{word or words, url, quantity?, name?, alternatives?}` | `201` with the stored item; `400 {error}` if invalid                              |
+| `PATCH /items/:id` with any of the fields below                            | `200` with the stored item; `400`, `404`, `409` below                             |
+| `DELETE /items/:id` (or `POST /items/:id/delete`)                          | `204`; `404` for an unknown item                                                  |
+| `GET /cart`                                                                | `200 {"entries":[{id, title, words, count}]}`, `id` being the item's              |
+| `DELETE /cart/items/:id` (`id` an item's)                                  | `204`; `404` when the item is not in the cart                                     |
+| `POST /cart/checkout`                                                      | `200 {added, failed, skipped}`; `502 {error}` for a rejected session or cart read |
+| `GET /household`                                                           | `200 {"members":[{email, you}]}`                                                  |
+| `POST /household/invites`                                                  | `201 {code, expiresAt}` (epoch ms); `409 {error}` at the invite limit             |
+| `POST /household/join` with `{code}`                                       | `204`; `400 {error}` invalid, expired or used; `409 {error}` already a member     |
+| `POST /household/leave`                                                    | `204`; `409 {error}` for a sole member                                            |
+| `POST /auth/logout`                                                        | `204`; revokes the presented token                                                |
 
 An item is the household's own concept of a product (e.g. "kitchen garbage
 bags"), identified by `id`: `words` are the trigger phrases that resolve to
@@ -214,8 +214,11 @@ token or the web session cookie, are rate limited per user, and answer
 `401 {"error":"unauthorized"}` without either. Checkout is also rate limited
 per client IP. It picks, for each entry, the cheapest-per-unit candidate at
 current prices, adds its quantity times the entry's count to the Woolworths
-cart, and removes what was added from the Personal Shopper cart. It never
-places an order.
+cart, and removes what was added from the Personal Shopper cart. It first reads
+the Woolworths cart: an item any of whose candidates is already in it, in any
+quantity, is not added, is removed from the Personal Shopper cart and is
+reported in `skipped`. A product the item has no candidate for, or one added to
+the Woolworths cart after the read, is not detected. It never places an order.
 
 ```
 POST {PUBLIC_BASE_URL}/cart/checkout
@@ -223,12 +226,12 @@ Authorization: Bearer <access_token>
 Accept: application/json
 ```
 
-| Status | Body                                                                                                                                    |
-| ------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `200`  | `{"added":[{id, title, stockcode, quantity}],"failed":[{id, title, error}]}`; `quantity` is the total added, `failed` stays in the cart |
-| `502`  | `{"error":"<message>"}`: the Woolworths session is expired or rejected; entries already added are removed, the rest stay                |
+| Status | Body                                                                                                                                                                                                                                                       |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `200`  | `{"added":[{id, title, stockcode, quantity}],"failed":[{id, title, error}],"skipped":[{id, title, stockcode}]}`; `quantity` is the total added, `failed` stays in the cart, `skipped` was already in the Woolworths cart (`stockcode` the candidate found) |
+| `502`  | `{"error":"<message>"}`: the Woolworths session is expired or rejected, or its cart could not be read; entries already added are removed, the rest stay                                                                                                    |
 
-An empty cart is `200` with both lists empty.
+An empty cart is `200` with all three lists empty.
 
 A missing, malformed, expired or revoked token gets
 `401 {"error":"unauthorized"}`. On `401` the client discards the token and
