@@ -26,16 +26,19 @@ struct PasskeyView: View {
                     }
                 }
                 if let verification = model.verification {
-                    LabeledContent("Sign-in") {
-                        switch verification {
-                        case .verifying: Text("Checking…")
-                        case .verified: Label("Verified", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-                        case .failed: Text("Not verified").foregroundStyle(.red)
+                    VStack(alignment: .leading, spacing: 8) {
+                        LabeledContent("Sign-in") {
+                            switch verification {
+                            case .verifying: Text("Checking…")
+                            case .verified:
+                                Label("Verified", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                            case .failed: Text("Not verified").foregroundStyle(.red)
+                            }
                         }
-                    }
-                    if case .failed(let message) = verification {
-                        Text(message).font(.footnote).foregroundStyle(.secondary)
-                        Button("Check again") { model.startVerification() }
+                        if case .failed(let message) = verification {
+                            Text(message).font(.footnote).foregroundStyle(.secondary)
+                            Button("Check again") { model.startVerification() }.buttonStyle(.borderless)
+                        }
                     }
                 }
                 Button(model.registered == true ? "Replace passkey" : "Register passkey") {
@@ -52,6 +55,7 @@ struct PasskeyView: View {
                 )
             }
         }
+        .animation(nil, value: model.verification)
         .navigationTitle("Woolworths passkey")
         .refreshable { await model.load() }
         .task { await model.load() }
