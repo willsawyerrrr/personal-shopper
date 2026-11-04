@@ -163,7 +163,11 @@ The private key leaves the page only to the signed-in server, and is never
 stored on the device.
 
 `create` and `get` are installed as non-configurable, getter-only properties
-on `navigator.credentials`, not plain assignments: Woolworths' login page
+on `navigator.credentials` and on `CredentialsContainer.prototype`, not plain
+assignments. The prototype is locked too because the account's "Create
+passkey" prompt page reads a `CredentialsContainer` other than the instance
+present at document start, so an instance-only override left it calling the
+native `create`: Woolworths' login page
 reassigns them back to the native implementation shortly after this script
 runs (anti-tampering), and the native implementation always rejects with
 `NotAllowedError` since the app has no Associated Domains entitlement for

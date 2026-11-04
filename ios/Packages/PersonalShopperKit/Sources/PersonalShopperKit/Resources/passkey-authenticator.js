@@ -272,14 +272,21 @@
   // non-configurable property can't be reassigned or redefined, so it stays ours.
   const ourCreate = intercept('create', originalCreate, create)
   const ourGet = intercept('get', originalGet, get)
-  for (const [name, fn] of [
-    ['create', ourCreate],
-    ['get', ourGet],
-  ]) {
-    try {
-      Object.defineProperty(container, name, { get: () => fn, configurable: false })
-    } catch (error) {
-      debugLog(`locking navigator.credentials.${name} failed: ${error}`)
+  // The page can end up with a different `CredentialsContainer` instance than
+  // the one present at document start, so the prototype is locked as well.
+  const targets = [container]
+  const prototype = window.CredentialsContainer?.prototype
+  if (prototype && prototype !== container) targets.push(prototype)
+  for (const target of targets) {
+    for (const [name, fn] of [
+      ['create', ourCreate],
+      ['get', ourGet],
+    ]) {
+      try {
+        Object.defineProperty(target, name, { get: () => fn, configurable: false })
+      } catch (error) {
+        debugLog(`locking credentials.${name} failed: ${error}`)
+      }
     }
   }
 
