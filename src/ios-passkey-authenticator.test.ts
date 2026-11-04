@@ -258,6 +258,41 @@ describe('passkey authenticator script', () => {
     }
   })
 
+  it('answers create on any credentials container, not just the one present at start', async () => {
+    class CredentialsContainer {
+      async create(_options: object): Promise<unknown> {
+        return 'native-create'
+      }
+      async get(_options: object): Promise<unknown> {
+        return 'native-get'
+      }
+    }
+    const navigator = { credentials: new CredentialsContainer() }
+    const window: Record<string, unknown> = {
+      CredentialsContainer,
+      webkit: { messageHandlers: { passkey: { postMessage: () => {} } } },
+    }
+    window.top = window
+    new Function('navigator', 'location', 'window', script)(
+      navigator,
+      new URL(`${ORIGIN}/u/login`),
+      window,
+    )
+    const replacement = new CredentialsContainer()
+    expect(() => {
+      CredentialsContainer.prototype.create = async () => 'native-create'
+    }).toThrow()
+    await expect(
+      replacement.create({
+        publicKey: {
+          challenge: new Uint8Array(32),
+          rp: { id: RP_ID },
+          user: { id: new Uint8Array(4) },
+        },
+      }),
+    ).resolves.toMatchObject({ type: 'public-key' })
+  })
+
   it('rejects get when no matching passkey exists', async () => {
     const { credentials } = load()
     await expect(credentials.get({ publicKey: { challenge, rpId: RP_ID } })).rejects.toMatchObject({
