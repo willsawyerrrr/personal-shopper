@@ -149,8 +149,8 @@ run commands with `"$HOME/willsawyerrrr.dev/platform/main/scripts/load-env" "$HO
 
 ## Conventions
 
-- CI, local development and production all run Node 24 (`.nvmrc`, `engines`
-  `24.x`, the `Dockerfile`'s `node:24-slim`, `@types/node` `^24`), the Fly.io
+- CI, local development and production all run Node 26 (`.nvmrc`, `engines`
+  `26.x`, the `Dockerfile`'s `node:26-slim`, `@types/node` `^26`), the Fly.io
   server's runtime. Dependabot ignores Node major bumps.
 - Planning happens in Linear, not in ad-hoc conversation or another planning
   tool: break work into issues in the **Personal Shopper** project (team

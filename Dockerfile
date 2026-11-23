@@ -1,4 +1,4 @@
-FROM node:24-slim AS base
+FROM node:26-slim AS base
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 RUN corepack enable
@@ -14,7 +14,7 @@ RUN pnpm run build
 FROM base AS prod-deps
 RUN pnpm install --frozen-lockfile --prod
 
-FROM node:24-slim
+FROM node:26-slim
 ENV NODE_ENV=production
 WORKDIR /app
 COPY package.json ./
