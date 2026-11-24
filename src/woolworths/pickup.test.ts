@@ -96,6 +96,30 @@ describe('PickupClient', () => {
     })
   })
 
+  it('returns the store Woolworths names in the order', async () => {
+    const order = {
+      ...status('On the way'),
+      store: {
+        storeName: 'Town Hall',
+        streetAddress: '1 George St ',
+        suburbAddress: 'Sydney NSW 2000',
+      },
+    }
+    const { client } = setup(json({}), json(order))
+    expect((await client.enRoute(LINK, -33.8688, 151.2093)).store).toEqual({
+      name: 'Town Hall',
+      address: '1 George St, Sydney NSW 2000',
+    })
+  })
+
+  it.each([undefined, {}, { storeName: 'Town Hall', streetAddress: ' ' }])(
+    'omits a store without an address (%j)',
+    async (store) => {
+      const { client } = setup(json({}), json({ ...status('On the way'), store }))
+      expect(await client.enRoute(LINK, 1, 2)).not.toHaveProperty('store')
+    },
+  )
+
   it('checks in at a drive bay when arrived', async () => {
     const { fetchMock, client } = setup(json(status('Preparing for arrival')))
     const result = await client.arrived(LINK)

@@ -43,7 +43,8 @@ token; products are chosen at checkout, from the web app's Cart page or
 `POST /cart/checkout`. The server can
 also tell Woolworths you are on your way to, or parked for, a Direct to boot pickup
 (`POST /pickup/en-route`, `POST /pickup/arrived`), given either the short link
-from the ready-order text or the full link it redirects to.
+from the ready-order text or the full link it redirects to; the iOS app tells
+Woolworths you've arrived automatically when you reach the store.
 
 ## Development
 
