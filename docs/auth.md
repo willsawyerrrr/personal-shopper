@@ -26,13 +26,13 @@ The server refuses to start when a required variable is missing.
 Each limit has a default and an environment variable; all are positive
 integers.
 
-| Variable                     | Default | Meaning                                                                                                                                                     |
-| ---------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MAX_USERS`                  | 50      | Total users. Beyond it a new Google account cannot sign up (`signup_closed`); existing users are unaffected.                                                |
-| `MAX_INVITES_PER_HOUSEHOLD`  | 5       | Unexpired household invites at once. `POST /household/invites` beyond it gets `409`.                                                                        |
-| `MAX_TOKENS_PER_USER`        | 20      | Unexpired tokens (web sessions and API clients) a user may hold. A sign-in beyond it is refused (`user_limit`).                                             |
-| `USER_RATE_LIMIT_PER_MINUTE` | 120     | Authenticated requests per minute per user on `/` and `/cart`; excess gets `429 {"error":"rate_limited"}`.                                                  |
-| `IP_RATE_LIMIT_PER_MINUTE`   | 30      | Requests per minute per client IP on each `/auth/*` route, `POST /cart/items`, `POST /cart/checkout` and `POST /cart/add-to-woolworths`; excess gets `429`. |
+| Variable                     | Default | Meaning                                                                                                                     |
+| ---------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `MAX_USERS`                  | 50      | Total users. Beyond it a new Google account cannot sign up (`signup_closed`); existing users are unaffected.                |
+| `MAX_INVITES_PER_HOUSEHOLD`  | 5       | Unexpired household invites at once. `POST /household/invites` beyond it gets `409`.                                        |
+| `MAX_TOKENS_PER_USER`        | 20      | Unexpired tokens (web sessions and API clients) a user may hold. A sign-in beyond it is refused (`user_limit`).             |
+| `USER_RATE_LIMIT_PER_MINUTE` | 120     | Authenticated requests per minute per user on `/` and `/cart`; excess gets `429 {"error":"rate_limited"}`.                  |
+| `IP_RATE_LIMIT_PER_MINUTE`   | 30      | Requests per minute per client IP on each `/auth/*` route, `POST /cart/items` and `POST /cart/checkout`; excess gets `429`. |
 
 A user revokes a sign-in from `/` to free a token slot.
 
@@ -116,7 +116,6 @@ household: members share items and one Personal Shopper cart.
 | `GET /cart`                                                                | `200 {"entries":[{id, title, words, count}]}`, `id` being the item's              |
 | `DELETE /cart/items/:id` (`id` an item's)                                  | `204`; `404` when the item is not in the cart                                     |
 | `POST /cart/checkout`                                                      | `200 {added, failed, skipped}`; `502 {error}` for a rejected session or cart read |
-| `POST /cart/add-to-woolworths`                                             | as checkout, with every entry kept in the cart                                    |
 | `GET /household`                                                           | `200 {"members":[{email, you}]}`                                                  |
 | `POST /household/invites`                                                  | `201 {code, expiresAt}` (epoch ms); `409 {error}` at the invite limit             |
 | `POST /household/join` with `{code}`                                       | `204`; `400 {error}` invalid, expired or used; `409 {error}` already a member     |
@@ -226,10 +225,6 @@ POST {PUBLIC_BASE_URL}/cart/checkout
 Authorization: Bearer <access_token>
 Accept: application/json
 ```
-
-`POST /cart/add-to-woolworths` takes the same request, rate limits and
-responses, but leaves every entry in the Personal Shopper cart, including
-those added and those in `skipped`.
 
 | Status | Body                                                                                                                                                                                                                                                       |
 | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -46,7 +46,7 @@
    Requests with `Accept: application/json` and a bearer token get JSON
    instead of the web UI's redirects: `GET /items`,
    `POST /items`, `PATCH /items/:id`, `DELETE /items/:id`, `GET /cart`,
-   `DELETE /cart/items/:id`, `POST /cart/checkout`, `POST /cart/add-to-woolworths`,
+   `DELETE /cart/items/:id`, `POST /cart/checkout`,
    the household routes below, and `401 {error}` when unauthenticated. The web app owns the root-level paths `/`, `/login`, `/logout`, `/account`, `/items`, `/household` and `/sessions`; everything else lives under `/auth`, `/cart`, `/pickup`, `/woolworths` or `/healthz` (the web app's cart page and the cart's JSON routes, which accept the session cookie, are the exceptions under `/cart`). Saving a user's items replaces
    them in one transaction, so a reader never sees a partial list; an item that keeps its id keeps its cart entry. An
    item's `listing`, the product's title on woolworths.com.au, is looked up
@@ -86,9 +86,8 @@
    read is also a `502`, with nothing changed, so a duplicate is never risked.
    Limits: a product the item has no candidate for, or one added to the
    Woolworths cart after the read, is not detected, and any quantity of a
-   present candidate counts as satisfied. `POST /cart/add-to-woolworths` runs
-   the same logic but leaves every entry in the Personal Shopper cart. It never
-   places an order; paying stays manual. Contract in
+   present candidate counts as satisfied. It never places an
+   order; paying stays manual. Contract in
    [`auth.md`](auth.md#the-cart).
 5. **Pickup arrival**: `POST /pickup/en-route` and `POST /pickup/arrived`
    (`src/pickup.ts`) tell Woolworths a Direct to boot customer is on their way or

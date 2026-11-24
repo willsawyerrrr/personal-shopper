@@ -72,8 +72,7 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   token or session cookie), which reads the Woolworths cart first and skips (and
   clears) entries with a candidate already in it, adds the rest,
   removes what landed and leaves failures in the cart; an unreadable Woolworths
-  cart stops it with a `502`. `POST /cart/add-to-woolworths` does the same but
-  keeps every entry in the cart. `GET /cart`,
+  cart stops it with a `502`. `GET /cart`,
   `DELETE /cart/items/:id` and the web app's Cart page (`/cart/manage`) review
   and edit it.
 - Voice capture: a shared iCloud Reminders list is the queue the server

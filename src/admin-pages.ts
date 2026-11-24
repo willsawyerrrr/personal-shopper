@@ -78,14 +78,12 @@ export interface CartRow {
 /**
  * The cart page. `canCheckOut` shows the Check out button (when the cart is not
  * empty); `result` reports a checkout that just ran, and `error` one that was refused.
- * `kept` marks a result whose entries all stayed in the cart.
  */
 export function renderCartPage(
   entries: CartRow[],
   canCheckOut: boolean,
   result?: CheckoutResult,
   error?: string,
-  kept = false,
 ): string {
   const rows = entries
     .map(
@@ -111,7 +109,7 @@ export function renderCartPage(
       .join('')}</ul>`
     : ''
   const failed = result?.failed.length
-    ? `<h2>${kept ? 'Not added' : 'Still in your cart'}</h2>
+    ? `<h2>Still in your cart</h2>
     <ul>${result.failed
       .map((line) => `<li>${escapeHtml(line.title)}: ${escapeHtml(line.error)}</li>`)
       .join('')}</ul>`
@@ -121,7 +119,7 @@ export function renderCartPage(
     <ul>${result.skipped
       .map((line) => `<li>${escapeHtml(line.title)} (stockcode ${line.stockcode})</li>`)
       .join('')}</ul>
-    <p class="hint">They were not added again${kept ? '' : ', and they have been cleared from your cart'}.</p>`
+    <p class="hint">They were not added again, and they have been cleared from your cart.</p>`
     : ''
   const outcome = result
     ? `<section role="status">
@@ -132,7 +130,7 @@ export function renderCartPage(
   return renderLayout(
     'cart',
     `${outcome}<section>
-    <p class="hint">Products are chosen at checkout, at current prices, and added to your Woolworths cart. Nothing is ordered. Adding without checking out keeps every item in this cart.</p>
+    <p class="hint">Products are chosen at checkout, at current prices, and added to your Woolworths cart. Nothing is ordered.</p>
     ${
       entries.length === 0
         ? '<p class="hint">Your cart is empty.</p>'
@@ -145,9 +143,6 @@ export function renderCartPage(
         ? `
     <form method="post" action="/cart/checkout">
       <button type="submit">Check out</button>
-    </form>
-    <form method="post" action="/cart/add-to-woolworths">
-      <button type="submit" class="secondary">Add to Woolworths cart, keep here</button>
     </form>`
         : ''
     }
