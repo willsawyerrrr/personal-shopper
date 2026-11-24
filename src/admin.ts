@@ -164,20 +164,11 @@ export async function registerAdmin(
       reply: FastifyReply,
       status: number,
       result?: CheckoutResult,
-      kept = false,
     ) =>
       reply
         .code(status)
         .type('text/html')
-        .send(
-          renderCartPage(
-            await cartView(request),
-            woolworths !== undefined,
-            result,
-            undefined,
-            kept,
-          ),
-        )
+        .send(renderCartPage(await cartView(request), woolworths !== undefined, result))
 
     // The cart web page lives at `/cart/manage`: `GET /cart` is the JSON entry list.
     admin.get('/cart/manage', async (request, reply) => cartPage(request, reply, 200))
@@ -195,47 +186,39 @@ export async function registerAdmin(
     })
 
     if (woolworths) {
-      for (const [path, keep] of [
-        ['/cart/checkout', false],
-        ['/cart/add-to-woolworths', true],
-      ] as const) {
-        admin.post(
-          path,
-          {
-            config: {
-              rateLimit: { max: config.limits.ipRequestsPerMinute, timeWindow: '1 minute' },
-            },
-          },
-          async (request, reply) => {
-            const email = emailOf(request)
-            let result: CheckoutResult
-            try {
-              result = await checkout(
-                email,
-                await store.load(email),
-                cart,
-                woolworths(email),
-                request.log,
-                { keep },
-              )
-            } catch (error) {
-              if (!(
-                error instanceof SessionRejectedError || error instanceof TrolleyUnreadableError
-              )) {
-                throw error
-              }
-              request.log.warn({ error }, 'checkout refused')
-              return wantsJson(request)
-                ? reply.code(502).send({ error: error.message })
-                : reply
-                    .code(502)
-                    .type('text/html')
-                    .send(renderCartPage(await cartView(request), true, undefined, error.message))
+      admin.post(
+        '/cart/checkout',
+        {
+          config: { rateLimit: { max: config.limits.ipRequestsPerMinute, timeWindow: '1 minute' } },
+        },
+        async (request, reply) => {
+          const email = emailOf(request)
+          let result: CheckoutResult
+          try {
+            result = await checkout(
+              email,
+              await store.load(email),
+              cart,
+              woolworths(email),
+              request.log,
+            )
+          } catch (error) {
+            if (!(
+              error instanceof SessionRejectedError || error instanceof TrolleyUnreadableError
+            )) {
+              throw error
             }
-            return wantsJson(request) ? result : cartPage(request, reply, 200, result, keep)
-          },
-        )
-      }
+            request.log.warn({ error }, 'checkout refused')
+            return wantsJson(request)
+              ? reply.code(502).send({ error: error.message })
+              : reply
+                  .code(502)
+                  .type('text/html')
+                  .send(renderCartPage(await cartView(request), true, undefined, error.message))
+          }
+          return wantsJson(request) ? result : cartPage(request, reply, 200, result)
+        },
+      )
     }
 
     admin.get('/items/new', async (_request, reply) => {
