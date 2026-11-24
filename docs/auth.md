@@ -258,9 +258,12 @@ Content-Type: application/json
 
 `POST /pickup/arrived` takes `{"link": "..."}` only.
 
+`store` is `{"name", "address"}`, the store the order is collected from, present
+when Woolworths gives its address; Woolworths gives no store coordinates.
+
 | Status | Body                                                                                                       |
 | ------ | ---------------------------------------------------------------------------------------------------------- |
-| `200`  | `{"statusTitle", "statusDescription", "collectionMethod"}`: the order's status after the call              |
+| `200`  | `{"statusTitle", "statusDescription", "collectionMethod", "store"?}`: the order's status after the call    |
 | `400`  | `{"error":"link is required"}` or `{"error":"latitude and longitude are required"}` (finite, within range) |
 | `401`  | `{"error":"unauthorized"}`                                                                                 |
 | `422`  | `{"error":"..."}`: not a Woolworths pickup link, or Woolworths says it is invalid or expired               |

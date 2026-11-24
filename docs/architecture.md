@@ -101,9 +101,13 @@
    short-lived bearer token (its `orderNo` claim names the order), not the
    household's session, then calls `/handover/portal/v1/wow/customer/orders/<orderNo>`:
    `featureStatus` (location consent) then `enroute`, or `Checkin/atdrivebay`.
+   Both answer the order's status, plus the store's name and address from the
+   order Woolworths returns (it gives no store coordinates).
    A link Woolworths rejects is a `422`, other upstream failures a `502`. Links,
    tokens and coordinates are never logged. The iOS app's Pickup tab and its
-   Siri pickup shortcuts are the clients; its Share extension leaves a shared link in the shared Keychain
+   Siri pickup shortcuts are the clients; after the tab's `en-route` it geocodes
+   the store's address on the device, watches a 150 m `CLMonitor` geofence
+   around it and calls `arrived` on entry. Its Share extension leaves a shared link in the shared Keychain
    access group for the app to pick up, the short `w.wowpu.com.au` link as
    received. Contract in
    [`auth.md`](auth.md#pickup-arrival).

@@ -36,6 +36,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
+        NSLocationAlwaysAndWhenInUseUsageDescription: Personal Shopper tells Woolworths you've parked when you reach the store after tapping I'm on my way, even while the app is in the background.
         NSLocationWhenInUseUsageDescription: Personal Shopper shares your location with Woolworths when you tap I'm on my way, so the store knows you're close.
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]

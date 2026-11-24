@@ -41,13 +41,16 @@ struct PickupModelTests {
     let status = #"{"statusTitle":"On the way","statusDescription":"We'll bring it out.","collectionMethod":"DriveUp"}"#
 
     private func model(
-        locate: @escaping @MainActor () async throws -> Coordinates = { Coordinates(latitude: -33.5, longitude: 151.25) }
+        locate: @escaping @MainActor () async throws -> Coordinates = { Coordinates(latitude: -33.5, longitude: 151.25) },
+        waitForArrival: @escaping @MainActor (PickupStore, Coordinates) async throws -> Void = { _, _ in
+            try await Task.sleep(for: .seconds(60))
+        }
     ) throws -> PickupModel {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubURLProtocol.self]
         let client = try AdminClient(
             serverURL: "https://example.test", token: "ps_tok", session: URLSession(configuration: configuration))
-        let model = PickupModel(makeClient: { client }, locate: locate)
+        let model = PickupModel(makeClient: { client }, locate: locate, waitForArrival: waitForArrival)
         model.link = link
         return model
     }
@@ -110,6 +113,67 @@ struct PickupModelTests {
         await model.arrived()
         #expect(model.phase == .failed(error.localizedDescription))
         #expect(model.status == nil)
+    }
+
+    private let statusWithStore =
+        #"{"statusTitle":"On the way","statusDescription":"","collectionMethod":"DriveUp","store":{"name":"Town Hall","address":"1 George St, Sydney NSW 2000"}}"#
+    private let store = PickupStore(name: "Town Hall", address: "1 George St, Sydney NSW 2000")
+
+    private func waitUntil(_ condition: @MainActor () -> Bool) async {
+        for _ in 0..<200 where !condition() { try? await Task.sleep(for: .milliseconds(10)) }
+    }
+
+    @Test func reportsArrivalOnReachingTheStore() async throws {
+        StubURLProtocol.stub(body: statusWithStore)
+        let watched = Mutex<(PickupStore, Coordinates)?>(nil)
+        let model = try model(waitForArrival: { store, near in watched.withLock { $0 = (store, near) } })
+        await model.enRoute()
+        await waitUntil { StubURLProtocol.requests.withLock { $0.count } == 2 && !model.busy }
+        let (store, near) = try #require(watched.withLock { $0 })
+        #expect(store == self.store)
+        #expect(near == Coordinates(latitude: -33.5, longitude: 151.25))
+        let request = try #require(StubURLProtocol.requests.withLock { $0.last })
+        #expect(request.url?.absoluteString == "https://example.test/pickup/arrived")
+        #expect(try body() as NSDictionary == ["link": link] as NSDictionary)
+        #expect(model.watchedStore == nil)
+    }
+
+    @Test func stoppingDoesNotReportArrival() async throws {
+        StubURLProtocol.stub(body: statusWithStore)
+        let model = try model()
+        await model.enRoute()
+        #expect(model.watchedStore == store)
+        model.stopWatching()
+        #expect(model.watchedStore == nil)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(StubURLProtocol.requests.withLock { $0.count } == 1)
+        #expect(model.phase == .idle)
+    }
+
+    @Test func parkingByHandStopsWatching() async throws {
+        StubURLProtocol.stub(body: statusWithStore)
+        let model = try model()
+        await model.enRoute()
+        await model.arrived()
+        #expect(model.watchedStore == nil)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(StubURLProtocol.requests.withLock { $0.count } == 2)
+    }
+
+    @Test func watchFailureShowsItsMessage() async throws {
+        StubURLProtocol.stub(body: statusWithStore)
+        let model = try model(waitForArrival: { _, _ in throw LocationError.storeNotFound })
+        await model.enRoute()
+        await waitUntil { model.watchedStore == nil }
+        #expect(model.phase == .failed(LocationError.storeNotFound.localizedDescription))
+        #expect(StubURLProtocol.requests.withLock { $0.count } == 1)
+    }
+
+    @Test func doesNotWatchWithoutAStore() async throws {
+        StubURLProtocol.stub(body: status)
+        let model = try model(waitForArrival: { _, _ in Issue.record("watched") })
+        await model.enRoute()
+        #expect(model.watchedStore == nil)
     }
 
     @Test func adoptTakesALinkFromText() throws {
