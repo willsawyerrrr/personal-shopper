@@ -111,6 +111,7 @@ export async function checkout(
   cart: CartStore,
   client: CartClient & TrolleyLookup & Partial<PriceLookup>,
   log: Pick<FastifyRequest['log'], 'warn' | 'info'>,
+  { keep = false }: { keep?: boolean } = {},
 ): Promise<CheckoutResult> {
   const byId = new Map(items.map((item) => [item.id, item]))
   const entries = await cart.list(email)
@@ -138,7 +139,9 @@ export async function checkout(
     }
     const present = item.candidates.find((candidate) => trolley.has(candidate.stockcode))
     if (present) {
-      await cart.remove(email, id, count)
+      if (!keep) {
+        await cart.remove(email, id, count)
+      }
       result.skipped.push({ id, title, stockcode: present.stockcode })
       continue
     }
@@ -156,7 +159,9 @@ export async function checkout(
       result.failed.push({ id, title, error: 'Woolworths did not accept this item.' })
       continue
     }
-    await cart.remove(email, id, count)
+    if (!keep) {
+      await cart.remove(email, id, count)
+    }
     result.added.push(line)
   }
   log.info(

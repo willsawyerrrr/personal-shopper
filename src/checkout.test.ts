@@ -326,6 +326,55 @@ describe('cart API and checkout', () => {
     })
   })
 
+  describe('POST /cart/add-to-woolworths', () => {
+    it('adds the cheapest products and keeps every entry in the cart', async () => {
+      await fill('milk', 'bars', 'bars')
+      const response = await send('POST', '/cart/add-to-woolworths')
+      expect(response.statusCode).toBe(200)
+      expect(response.json()).toEqual({
+        added: [
+          { id: await id('milk'), title: 'Milk', stockcode: 100, quantity: 2 },
+          { id: await id('bars'), title: 'Bars', stockcode: 2, quantity: 8 },
+        ],
+        failed: [],
+        skipped: [],
+      })
+      expect(addToCart).toHaveBeenCalledWith(100, 2)
+      expect(addToCart).toHaveBeenCalledWith(2, 8)
+      expect(await cart.list('me@example.com')).toHaveLength(2)
+    })
+
+    it('keeps an item already in the Woolworths cart without adding it', async () => {
+      trolley.mockResolvedValue(new Map([[100, 1]]))
+      await fill('milk')
+      const response = await send('POST', '/cart/add-to-woolworths')
+      expect(response.json()).toMatchObject({ added: [], skipped: [{ title: 'Milk' }] })
+      expect(addToCart).not.toHaveBeenCalled()
+      expect(await cart.list('me@example.com')).toHaveLength(1)
+    })
+
+    it('answers an unreadable Woolworths cart with 502', async () => {
+      trolley.mockRejectedValue(new Error('boom'))
+      await fill('milk')
+      const response = await send('POST', '/cart/add-to-woolworths')
+      expect(response.statusCode).toBe(502)
+      expect(addToCart).not.toHaveBeenCalled()
+    })
+
+    it('shows the result on the cart page, which offers the button', async () => {
+      await fill('milk')
+      const response = await app.inject({
+        method: 'POST',
+        url: '/cart/add-to-woolworths',
+        headers: cookie,
+      })
+      expect(response.statusCode).toBe(200)
+      expect(response.body).toContain('Added to your Woolworths cart')
+      expect(response.body).toContain('action="/cart/add-to-woolworths"')
+      expect(response.body).toContain('Milk')
+    })
+  })
+
   describe('cart page', () => {
     const page = (path = '/cart/manage') =>
       app.inject({ method: 'GET', url: path, headers: cookie })
