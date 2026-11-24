@@ -20,14 +20,18 @@ public final class PickupModel {
 
     private let makeClient: @MainActor () throws -> AdminClient
     private let locate: @MainActor () async throws -> Coordinates
+    private let memory: PickupLinkStore?
 
     /// `locate` returns the device's current location, or throws a `LocalizedError`.
+    /// `memory`, when given, keeps each link used for Siri and Shortcuts.
     public init(
         makeClient: @escaping @MainActor () throws -> AdminClient,
-        locate: @escaping @MainActor () async throws -> Coordinates
+        locate: @escaping @MainActor () async throws -> Coordinates,
+        memory: PickupLinkStore? = nil
     ) {
         self.makeClient = makeClient
         self.locate = locate
+        self.memory = memory
     }
 
     /// The pickup link in `link`, or `nil` when it holds none.
@@ -41,6 +45,7 @@ public final class PickupModel {
     public func adopt(_ text: String) -> Bool {
         guard let parsed = PickupLink.parse(text) else { return false }
         link = parsed
+        try? memory?.remember(parsed)
         status = nil
         dismissFailure()
         return true
@@ -74,6 +79,7 @@ public final class PickupModel {
             phase = .failed(AdminError.invalidPickupLink.localizedDescription)
             return nil
         }
+        try? memory?.remember(parsed)
         return parsed
     }
 

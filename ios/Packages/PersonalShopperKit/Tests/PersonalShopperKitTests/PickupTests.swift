@@ -152,3 +152,47 @@ struct PickupInboxTests {
         #expect(try inbox.take() == other)
     }
 }
+
+@Suite(.serialized)
+@MainActor
+struct PickupShortcutTests {
+    let link = "https://myorder.woolworths.com.au/pickup/order?token=0b6f1c9e-1d2a-4c3b-9e8f-123456789abc"
+    let status = #"{"statusTitle":"On the way","statusDescription":"We'll bring it out.","collectionMethod":"DriveUp"}"#
+    let inbox = PickupInboxTests.MemoryStore()
+    let memory = PickupInboxTests.MemoryStore()
+
+    private func shortcut() throws -> PickupShortcut {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubURLProtocol.self]
+        let client = try AdminClient(
+            serverURL: "https://example.test", token: "ps_tok", session: URLSession(configuration: configuration))
+        return PickupShortcut(
+            makeClient: { client }, locate: { Coordinates(latitude: -33.5, longitude: 151.25) },
+            inbox: PickupInbox(store: inbox), memory: PickupLinkStore(store: memory))
+    }
+
+    @Test func enRouteUsesTheGivenLinkAndRemembersIt() async throws {
+        StubURLProtocol.stub(body: status)
+        let said = try await shortcut().enRoute(link: " \(link) ")
+        #expect(said == "On the way. We'll bring it out.")
+        #expect(try memory.read() == link)
+    }
+
+    @Test func arrivedFallsBackToTheInboxThenMemory() async throws {
+        StubURLProtocol.stub(body: status)
+        try inbox.write(link)
+        _ = try await shortcut().arrived(link: nil)
+        #expect(try inbox.read() == nil)
+        #expect(try memory.read() == link)
+        StubURLProtocol.stub(body: status)
+        _ = try await shortcut().arrived(link: nil)
+    }
+
+    @Test func rejectsAnInvalidGivenLink() async throws {
+        await #expect(throws: AdminError.invalidPickupLink) { try await shortcut().arrived(link: "milk") }
+    }
+
+    @Test func failsWithoutAnyLink() async throws {
+        await #expect(throws: AdminError.noPickupLink) { try await shortcut().arrived(link: nil) }
+    }
+}
