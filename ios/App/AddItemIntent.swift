@@ -120,6 +120,61 @@ struct CheckOutIntent: AppIntent {
     }
 }
 
+@MainActor
+private func pickupShortcut() -> PickupShortcut {
+    let location = LocationProvider()
+    return PickupShortcut(makeClient: { try SettingsStore().client() }, locate: { try await location.current() })
+}
+
+struct OnMyWayIntent: AppIntent {
+    static let title: LocalizedStringResource = "Tell Woolworths I'm on My Way"
+    static let description = IntentDescription(
+        "Tells Woolworths you're on your way to collect your order, sharing your location once.")
+    static let openAppWhenRun = true
+
+    @Parameter(title: "Pickup Link", description: "Defaults to the latest ready-order link you shared.")
+    var link: String?
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Tell Woolworths I'm on my way") {
+            \.$link
+        }
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        do {
+            return .result(dialog: "\(try await pickupShortcut().enRoute(link: link))")
+        } catch {
+            throw AddItemIntentError.failed(error.localizedDescription)
+        }
+    }
+}
+
+struct ArrivedIntent: AppIntent {
+    static let title: LocalizedStringResource = "Tell Woolworths I've Arrived"
+    static let description = IntentDescription("Tells Woolworths you've parked in a bay to collect your order.")
+    static let openAppWhenRun = false
+
+    @Parameter(title: "Pickup Link", description: "Defaults to the latest ready-order link you shared.")
+    var link: String?
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Tell Woolworths I've arrived") {
+            \.$link
+        }
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        do {
+            return .result(dialog: "\(try await pickupShortcut().arrived(link: link))")
+        } catch {
+            throw AddItemIntentError.failed(error.localizedDescription)
+        }
+    }
+}
+
 struct PersonalShopperShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
@@ -158,6 +213,24 @@ struct PersonalShopperShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Add Product",
             systemImageName: "cart.badge.plus"
+        )
+        AppShortcut(
+            intent: OnMyWayIntent(),
+            phrases: [
+                "I'm on my way with \(.applicationName)",
+                "Tell Woolworths I'm on my way with \(.applicationName)",
+            ],
+            shortTitle: "On My Way",
+            systemImageName: "car"
+        )
+        AppShortcut(
+            intent: ArrivedIntent(),
+            phrases: [
+                "I've arrived with \(.applicationName)",
+                "Tell Woolworths I've arrived with \(.applicationName)",
+            ],
+            shortTitle: "Arrived",
+            systemImageName: "parkingsign"
         )
     }
 }

@@ -9,6 +9,7 @@ public enum AdminError: Error, Equatable, LocalizedError {
     case notFound(String)
     case woolworthsSessionExpired
     case invalidPickupLink
+    case noPickupLink
     case pickupUnavailable
     case rateLimited
     case signInFailed(String)
@@ -25,6 +26,8 @@ public enum AdminError: Error, Equatable, LocalizedError {
         case .woolworthsSessionExpired: "The server's Woolworths session has expired. Refresh it on the server."
         case .invalidPickupLink:
             "That pickup link isn't valid or has expired. Copy the link from your latest ready-order message."
+        case .noPickupLink:
+            "No pickup link saved. Share your ready-order message to Personal Shopper, or say the link."
         case .pickupUnavailable: "Woolworths couldn't update your pickup. Try again in a moment."
         case .rateLimited: "Too many requests. Wait a minute and try again."
         case .server(let status): "The server returned an error (\(status))."

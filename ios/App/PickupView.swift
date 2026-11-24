@@ -15,7 +15,9 @@ struct PickupView: View {
         _sharedLink = sharedLink
         let location = LocationProvider()
         _model = State(
-            initialValue: PickupModel(makeClient: { try session.store.client() }, locate: { try await location.current() })
+            initialValue: PickupModel(
+                makeClient: { try session.store.client() }, locate: { try await location.current() },
+                memory: PickupLinkStore())
         )
     }
 
