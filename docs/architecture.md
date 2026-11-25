@@ -160,7 +160,8 @@ user starts in a household of their own.
   leave.
 - `GET /household` lists the members (`{members:[{email, you}]}`).
 - Members edit one shared list; concurrent edits replace the whole list, so
-  the last save wins.
+  the last save wins. Saves lock the household row, so they run one at a
+  time.
 
 Membership changes are serialised by a Postgres advisory lock, so a household
 is never deleted while someone joins it.
