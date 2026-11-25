@@ -14,6 +14,14 @@ export interface PickupStatus {
   statusTitle: string
   statusDescription: string
   collectionMethod: string
+  /** The store the order is collected from, when Woolworths names its address. */
+  store?: PickupStore
+}
+
+/** A pickup store as Woolworths describes it; it gives no coordinates. */
+export interface PickupStore {
+  name: string
+  address: string
 }
 
 export interface PickupNotifier {
@@ -203,12 +211,19 @@ function orderNumber(token: string): string | undefined {
   }
 }
 
+/** Reads the order Woolworths answers a pickup call with. */
 function parseStatus(response: unknown): PickupStatus {
   const status = (response ?? {}) as Record<string, unknown>
-  const text = (value: unknown): string => (typeof value === 'string' ? value : '')
+  const store = (status.store ?? {}) as Record<string, unknown>
+  const address = [store.streetAddress, store.suburbAddress].map(text).filter(Boolean).join(', ')
   return {
     statusTitle: text(status.statusTitle),
     statusDescription: text(status.statusDescription),
     collectionMethod: text(status.collectionMethod),
+    ...(address ? { store: { name: text(store.storeName), address } } : {}),
   }
+}
+
+function text(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
 }

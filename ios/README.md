@@ -33,6 +33,13 @@ Woolworths product without opening the web app.
   After "What do you want to add?" it adds each answer, speaks the result and
   asks "What next?" until the answer is "that's it", "done" or similar
   (`DoneSpeech`).
+- **`OnMyWayIntent`** and **`ArrivedIntent`** (`App/AddItemIntent.swift`): call
+  `POST /pickup/en-route` and `POST /pickup/arrived` like the Pickup tab and
+  speak the returned status title and description. Each takes an optional pickup
+  link; without one they use a link waiting from the share extension, else the
+  last link the app or a shortcut used (`PickupLinkStore`, a Keychain item in
+  the shared group, never logged). `OnMyWayIntent` opens the app so iOS can
+  take the one-shot location fix; `ArrivedIntent` runs in the background.
 - **`Packages/PersonalShopperKit`**: API client, PKCE and sign-in, Keychain and
   settings storage, product URL parsing and the add-item form, shared by all
   of the above.
@@ -147,7 +154,20 @@ in a bay" calls `POST /pickup/arrived` with the link. The returned status
 title, description and collection method are shown. An invalid or expired link
 (`422`), a Woolworths failure (`502`), a rate limit (`429`) and denied
 location each show their own message. The link and coordinates are held in
-memory only and never logged. Geofence-triggered calls are not supported.
+memory only and never logged, except that the latest link the tab uses
+is also kept in the Keychain for the Siri pickup shortcuts (below).
+
+When the `en-route` answer names the store, the tab geocodes its address on the
+device (`CLGeocoder`, searched near the en-route fix), asks to upgrade location
+access to Always (`CLServiceSession`), and watches a 150 m `CLMonitor` geofence
+around it (`App/ArrivalMonitor.swift`). Entering it calls `POST /pickup/arrived`,
+holding a background task while the call runs. "Watching for you at <store>"
+shows meanwhile, with Stop watching to cancel; parking by hand, a new link or a
+new "I'm on my way" also stop it. An address that can't be geocoded shows its
+own message. Without Always access the geofence only fires while the app is in
+use. The watch lives in memory, so it ends if iOS terminates the app;
+conditions left by an earlier launch are removed when the next watch starts.
+The Siri "on my way" shortcut does not start a watch.
 
 ## Woolworths passkey
 
@@ -222,6 +242,15 @@ To send the cart to Woolworths, say "Check out my cart with Personal Shopper",
 Shopper" (`CheckOutIntent`, also the "Check Out My Cart" Shortcuts action). Siri
 says e.g. "Added 3 items to your Woolworths cart. Couldn't add Eggs. 1 already in your Woolworths cart.", or "Your
 cart is empty." when nothing was added, failed or skipped. Paying stays manual.
+
+To update a Direct to boot pickup, say "I'm on my way with Personal Shopper"
+or "Tell Woolworths I'm on my way with Personal Shopper" (`OnMyWayIntent`,
+"Tell Woolworths I'm on My Way" in Shortcuts), then "I've arrived with Personal
+Shopper" or "Tell Woolworths I've arrived with Personal Shopper"
+(`ArrivedIntent`, "Tell Woolworths I've Arrived"). Siri speaks Woolworths'
+status, e.g. "On the way. We'll bring it out.". Both use the latest ready-order
+link shared to the app or used on the Pickup tab; a Shortcuts action can pass a
+link instead. With none saved, Siri asks you to share the ready-order message.
 
 ## TestFlight
 

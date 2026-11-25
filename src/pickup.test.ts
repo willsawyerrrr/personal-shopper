@@ -79,6 +79,13 @@ describe('pickup routes', () => {
     expect(enRoute).toHaveBeenCalledWith(LINK, -33.8688, 151.2093)
   })
 
+  it('returns the store being collected from', async () => {
+    const store = { name: 'Town Hall', address: '1 George St, Sydney NSW 2000' }
+    enRoute.mockResolvedValue({ ...STATUS, store })
+    const response = await post('/pickup/en-route', { link: LINK, latitude: 1, longitude: 2 })
+    expect(response.json()).toEqual({ ...STATUS, store })
+  })
+
   it('tells Woolworths the user has parked', async () => {
     const response = await post('/pickup/arrived', { link: LINK })
     expect(response.statusCode).toBe(200)

@@ -92,7 +92,13 @@ cart. See [`README.md`](README.md) and [`docs/`](docs/) for scope and design.
   coordinates. The iOS app's Pickup tab calls them (link pasted, read from
   the clipboard or shared from the share sheet through the shared Keychain
   group, never an App Group or URL; the short `w.wowpu.com.au` link is sent as
-  received, never resolved on the device; one-shot when-in-use location for `en-route`). See
+  received, never resolved on the device; one-shot when-in-use location for `en-route`), as do
+  the Siri pickup shortcuts (`OnMyWayIntent`, `ArrivedIntent`), which fall back
+  to the latest link kept in the shared Keychain group.
+  `en-route` also answers the store's name and address (Woolworths gives no
+  coordinates); after the Pickup tab's `en-route` the app geocodes it on the
+  device and calls `arrived` when a 150 m `CLMonitor` geofence around it is
+  entered (Always location for the background; cancellable). See
   [`docs/architecture.md`](docs/architecture.md).
 - iOS release: merges to `main` touching `ios/**` ship to TestFlight via
   `.github/workflows/deploy-ios.yml` (platform's reusable `ios-testflight.yml`).

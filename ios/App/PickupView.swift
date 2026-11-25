@@ -14,8 +14,13 @@ struct PickupView: View {
         self.session = session
         _sharedLink = sharedLink
         let location = LocationProvider()
+        let arrival = ArrivalMonitor()
         _model = State(
-            initialValue: PickupModel(makeClient: { try session.store.client() }, locate: { try await location.current() })
+            initialValue: PickupModel(
+                makeClient: { try session.store.client() },
+                locate: { try await location.current() },
+                waitForArrival: { try await arrival.arrival(at: $0, near: $1) },
+                memory: PickupLinkStore())
         )
     }
 
@@ -49,11 +54,26 @@ struct PickupView: View {
                 } footer: {
                     Text("Copy the link from the text or email Woolworths sends when your order is ready.")
                 }
+                if let store = model.watchedStore {
+                    Section {
+                        let place = store.name.isEmpty ? store.address : store.name
+                        Label("Watching for you at \(place)", systemImage: "location.circle")
+                        Button("Stop watching", systemImage: "xmark.circle", role: .cancel) { model.stopWatching() }
+                    } footer: {
+                        Text(
+                            "Woolworths is told you've parked when you reach the store. Allow location Always "
+                                + "for this to work while the app is in the background, and keep it open there."
+                        )
+                    }
+                }
                 Section {
                     Button("I'm on my way", systemImage: "car") { Task { await model.enRoute() } }
                     Button("I've parked in a bay", systemImage: "parkingsign") { Task { await model.arrived() } }
                 } footer: {
-                    Text("On my way shares your location with Woolworths once, when you tap it.")
+                    Text(
+                        "On my way shares your location with Woolworths once, when you tap it, then watches "
+                            + "for you to reach the store."
+                    )
                 }
                 .disabled(model.busy || model.parsedLink == nil)
                 Section {

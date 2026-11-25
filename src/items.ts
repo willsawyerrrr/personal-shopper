@@ -134,6 +134,8 @@ export class ItemStore {
     )
     // Kept items are updated in place, so the cart entries that refer to them survive.
     await this.sql.begin(async (tx) => {
+      // Serialises saves per household; concurrent delete-then-insert would collide.
+      await tx`select 1 from households where id = ${householdId} for update`
       const keep = itemRows.map((row) => row.id)
       await tx`
         delete from items

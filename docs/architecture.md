@@ -101,9 +101,13 @@
    short-lived bearer token (its `orderNo` claim names the order), not the
    household's session, then calls `/handover/portal/v1/wow/customer/orders/<orderNo>`:
    `featureStatus` (location consent) then `enroute`, or `Checkin/atdrivebay`.
+   Both answer the order's status, plus the store's name and address from the
+   order Woolworths returns (it gives no store coordinates).
    A link Woolworths rejects is a `422`, other upstream failures a `502`. Links,
-   tokens and coordinates are never logged. The iOS app's Pickup tab is the
-   client; its Share extension leaves a shared link in the shared Keychain
+   tokens and coordinates are never logged. The iOS app's Pickup tab and its
+   Siri pickup shortcuts are the clients; after the tab's `en-route` it geocodes
+   the store's address on the device, watches a 150 m `CLMonitor` geofence
+   around it and calls `arrived` on entry. Its Share extension leaves a shared link in the shared Keychain
    access group for the app to pick up, the short `w.wowpu.com.au` link as
    received. Contract in
    [`auth.md`](auth.md#pickup-arrival).
@@ -156,7 +160,8 @@ user starts in a household of their own.
   leave.
 - `GET /household` lists the members (`{members:[{email, you}]}`).
 - Members edit one shared list; concurrent edits replace the whole list, so
-  the last save wins.
+  the last save wins. Saves lock the household row, so they run one at a
+  time.
 
 Membership changes are serialised by a Postgres advisory lock, so a household
 is never deleted while someone joins it.

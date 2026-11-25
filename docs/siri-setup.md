@@ -43,3 +43,9 @@ want to add?", or "Add several items to my cart with Personal Shopper" to be
 asked "What next?" after each item until you say "that's it". The "Add Woolworths Product" intent ("Add a product to Personal
 Shopper") adds a trigger word to the user's items from a product link instead; it
 does not add to the cart.
+
+"I'm on my way with Personal Shopper" and "I've arrived with Personal Shopper"
+tell Woolworths a Direct to boot customer is on their way or parked
+(`POST /pickup/en-route` and `POST /pickup/arrived`), using the latest
+ready-order link shared to the app or used on its Pickup tab. See
+[`ios/README.md`](../ios/README.md#shortcuts-and-siri).

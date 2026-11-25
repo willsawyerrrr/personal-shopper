@@ -216,4 +216,17 @@ describe('ItemStore', () => {
     const yours = await store.load('YOU@example.com')
     expect(yours.map((item) => item.candidates)).toEqual([[{ stockcode: 9, quantity: 2 }]])
   })
+
+  it('saves concurrently for one household without conflict', async () => {
+    const items: ItemsConfig = [
+      {
+        id: '11111111-1111-1111-1111-111111111111',
+        words: ['milk'],
+        candidates: [{ stockcode: 1, quantity: 1 }],
+      },
+    ]
+    await store.save('me@example.com', items)
+    await Promise.all(Array.from({ length: 8 }, () => store.save('me@example.com', items)))
+    expect(await store.load('me@example.com')).toEqual(items)
+  })
 })
