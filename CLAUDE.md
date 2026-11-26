@@ -158,6 +158,9 @@ run commands with `"$HOME/willsawyerrrr.dev/platform/main/scripts/load-env" "$HO
 - CI, local development and production all run Node 26 (`.nvmrc`, `engines`
   `26.x`, the `Dockerfile`'s `node:26-slim`, `@types/node` `^26`), the Fly.io
   server's runtime. Dependabot ignores Node major bumps.
+- Local development and TestFlight releases build the iOS app with Xcode 27.2
+  (`.xcode-version`; platform's `ios-testflight.yml` pins it on the `xcode-27`
+  runner). Bump them together.
 - Planning happens in Linear, not in ad-hoc conversation or another planning
   tool: break work into issues in the **Personal Shopper** project (team
   `WSD`) before implementing, and track decisions there.
