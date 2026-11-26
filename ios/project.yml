@@ -2,7 +2,7 @@ name: PersonalShopper
 options:
   bundleIdPrefix: dev.willsawyerrrr.personal-shopper
   deploymentTarget:
-    iOS: '18.0'
+    iOS: '27.0'
   createIntermediateGroups: true
 configFiles:
   Debug: Config/Shared.xcconfig
