@@ -62,7 +62,8 @@ show the signed-out state. Sign out revokes the token with
 
 ## Setup
 
-Requires Xcode 27.2 ([`.xcode-version`](../.xcode-version)) and
+The app requires iOS 27. Building it requires Xcode 27.2
+([`.xcode-version`](../.xcode-version)) and
 [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 
 ```bash
