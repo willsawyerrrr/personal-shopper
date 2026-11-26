@@ -62,8 +62,8 @@ show the signed-out state. Sign out revokes the token with
 
 ## Setup
 
-Requires Xcode 16+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen)
-(`brew install xcodegen`).
+Requires Xcode 27.2 ([`.xcode-version`](../.xcode-version)) and
+[XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 
 ```bash
 cd ios
