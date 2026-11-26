@@ -1,4 +1,5 @@
 import CoreLocation
+import MapKit
 import PersonalShopperKit
 import UIKit
 
@@ -40,12 +41,13 @@ final class ArrivalMonitor {
     }
 
     private func locate(_ store: PickupStore, near: Coordinates) async throws -> CLLocationCoordinate2D {
-        let region = CLCircularRegion(
+        let request = MKGeocodingRequest(addressString: "\(store.address), Australia")
+        request?.region = MKCoordinateRegion(
             center: CLLocationCoordinate2D(latitude: near.latitude, longitude: near.longitude),
-            radius: Self.searchRadius, identifier: "search")
-        let placemarks = try? await CLGeocoder().geocodeAddressString(
-            "\(store.address), Australia", in: region, preferredLocale: Locale(identifier: "en_AU"))
-        guard let coordinate = placemarks?.first?.location?.coordinate else { throw LocationError.storeNotFound }
+            latitudinalMeters: Self.searchRadius * 2, longitudinalMeters: Self.searchRadius * 2)
+        request?.preferredLocale = Locale(identifier: "en_AU")
+        let items = try? await request?.mapItems
+        guard let coordinate = items?.first?.location.coordinate else { throw LocationError.storeNotFound }
         return coordinate
     }
 

@@ -159,16 +159,16 @@ memory only and never logged, except that the latest link the tab uses
 is also kept in the Keychain for the Siri pickup shortcuts (below).
 
 When the `en-route` answer names the store, the tab geocodes its address on the
-device (`CLGeocoder`, searched near the en-route fix), asks to upgrade location
-access to Always (`CLServiceSession`), and watches a 150 m `CLMonitor` geofence
-around it (`App/ArrivalMonitor.swift`). Entering it calls `POST /pickup/arrived`,
-holding a background task while the call runs. "Watching for you at <store>"
-shows meanwhile, with Stop watching to cancel; parking by hand, a new link or a
-new "I'm on my way" also stop it. An address that can't be geocoded shows its
-own message. Without Always access the geofence only fires while the app is in
-use. The watch lives in memory, so it ends if iOS terminates the app;
-conditions left by an earlier launch are removed when the next watch starts.
-The Siri "on my way" shortcut does not start a watch.
+device (`MKGeocodingRequest`, searched near the en-route fix), asks to upgrade
+location access to Always (`CLServiceSession`), and watches a 150 m `CLMonitor`
+geofence around it (`App/ArrivalMonitor.swift`). Entering it calls
+`POST /pickup/arrived`, holding a background task while the call runs. "Watching
+for you at <store>" shows meanwhile, with Stop watching to cancel; parking by
+hand, a new link or a new "I'm on my way" also stop it. An address that can't be
+geocoded shows its own message. Without Always access the geofence only fires
+while the app is in use. The watch lives in memory, so it ends if iOS terminates
+the app; conditions left by an earlier launch are removed when the next watch
+starts. The Siri "on my way" shortcut does not start a watch.
 
 ## Woolworths passkey
 
